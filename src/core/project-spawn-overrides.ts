@@ -1,3 +1,4 @@
+import { isWslShellValue } from '../shared/terminal-profiles'
 import {
   resolveProjectSettings,
   type ProjectSettingsDoc,
@@ -106,7 +107,10 @@ export function makeProjectSpawnOverrides(
     if (envSetting && (!isShared(envSetting) || (await admit('agents')))) {
       out.env = { ...envSetting.value }
     }
-    if (shellSetting && (!isShared(shellSetting) || (await admit('shell')))) {
+    // A distribution is this machine's choice: a shared file may not name one, even with consent.
+    const shellAllowed =
+      shellSetting && !(isShared(shellSetting) && isWslShellValue(shellSetting.value))
+    if (shellAllowed && (!isShared(shellSetting) || (await admit('shell')))) {
       out.shell = shellSetting.value
     }
     return out.env || out.shell ? out : null

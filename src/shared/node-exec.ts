@@ -35,6 +35,7 @@
 
 import { normalizePendingLaunch } from './pending-launch-shape'
 import { sshExtraArgsEnableLocalExec } from './ssh'
+import { parseWslShell } from './terminal-profiles'
 import type { CanvasMutation, CanvasNodeState, PendingLaunch } from './types'
 
 /** Per-node exec values the LOCAL machine typed. Persisted only in the machine-local index. */
@@ -68,6 +69,7 @@ export function safeSessionProgram(shell: string | undefined): string | undefine
   if (!shell) return undefined
   const s = shell.trim()
   if (!s || s.startsWith('-')) return undefined
+  if (parseWslShell(s)) return s
   if (!SAFE_PROGRAM.test(s)) return undefined
   return s
 }

@@ -56,7 +56,16 @@ export function shellKillLineSequence(
   ) {
     return WINDOWS_KILL_LINE
   }
-  if (exe === 'bash' || exe === 'bash.exe' || exe === 'zsh' || exe === 'sh' || exe === 'fish') {
+  if (
+    exe === 'bash' ||
+    exe === 'bash.exe' ||
+    exe === 'zsh' ||
+    exe === 'sh' ||
+    exe === 'fish' ||
+    exe === 'wsl' ||
+    exe === 'wsl.exe' ||
+    exe.startsWith('wsl:')
+  ) {
     return KILL_LINE
   }
   return platform === 'win32' ? WINDOWS_KILL_LINE : KILL_LINE

@@ -9,6 +9,10 @@ import { WATCH_CHAT_CAST, WATCH_EVENT, WATCH_HISTORY_CAST, WATCH_INPUT_CAST, WAT
  * per-shell `startsWith` that one of them forgets to copy.
  */
 describe('isHostOnlyChannel', () => {
+  it('keeps the host’s installed WSL distributions from relay peers', () => {
+    expect(isHostOnlyChannel(IPC.ptyTerminalProfiles)).toBe(true)
+  })
+
   it('covers the whole GitHub host-control namespace by prefix', () => {
     expect(isHostOnlyChannel(IPC.githubControlApprove)).toBe(true)
     expect(isHostOnlyChannel(IPC.githubControlSaveToken)).toBe(true)

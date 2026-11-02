@@ -71,6 +71,10 @@ describe('quoteDroppedPath', () => {
 describe('dropDialect', () => {
   const win = { corePlatform: 'win32', remote: false } as const
 
+  it('is posix for a WSL profile on a Windows core', () => {
+    expect(dropDialect({ ...win, shell: 'wsl:Ubuntu' })).toBe('posix')
+  })
+
   it('is posix for every non-Windows core, whatever the shell', () => {
     for (const corePlatform of ['darwin', 'linux']) {
       expect(dropDialect({ corePlatform, remote: false, shell: 'pwsh' })).toBe('posix')

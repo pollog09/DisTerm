@@ -19,6 +19,7 @@
 //
 // Editors and owners pass untouched: Editor is shell access by definition, so gating them would be
 // theatre.
+import { isWslShellValue } from '../../shared/terminal-profiles'
 import path from 'node:path'
 import { IPC } from '../../shared/ipc'
 import { decodePtyDataSessionId } from '../../shared/rpc'
@@ -370,6 +371,7 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.projectSettingsWriteShared,
   IPC.projectSettingsUpdateLocal,
   IPC.projectSettingsLaunchInfo,
+  IPC.ptyTerminalProfiles,
   IPC.projectSetupRun,
   IPC.projectSetupCancel,
   IPC.projectSetupConsentSubmit,
@@ -507,7 +509,23 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
 const ROLE_NAME: Readonly<Record<string, string>> = { owner: 'Owners', editor: 'Editors', commenter: 'Commenters', viewer: 'Viewers' }
 
 export function decideAccess(_kind: 'req' | 'cast', method: string, args: unknown[], ctx: AccessContext): AccessDecision {
-  if (isEditor(ctx.role)) return OK
+  if (isEditor(ctx.role)) {
+    // Editors may start shells on the host, but a WSL distribution is the host user's own choice.
+    const create = method === IPC.ptyCreate && Array.isArray(args) ? args[0] : undefined
+    if (create && typeof create === 'object' && isWslShellValue((create as { shell?: unknown }).shell)) {
+      const { shell: _shell, ...rest } = create as Record<string, unknown>
+      return { allow: true, args: [rest, ...args.slice(1)] }
+    }
+    // The same choice stored instead of used: a project's local shell applies to the host's own
+    // terminals, so this one is refused rather than quietly dropped from a settings save.
+    if (method === IPC.projectSettingsUpdateLocal && Array.isArray(args)) {
+      const local = args[1] as { terminal?: { shell?: unknown } } | undefined
+      if (isWslShellValue(local?.terminal?.shell)) {
+        return no('A WSL distribution can only be chosen on the host machine.')
+      }
+    }
+    return OK
+  }
   // Own keys only: a method named `constructor` must not find Object.prototype's.
   const check =
     typeof method !== 'string'

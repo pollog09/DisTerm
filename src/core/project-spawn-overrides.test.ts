@@ -103,6 +103,19 @@ describe('makeProjectSpawnOverrides — env', () => {
 })
 
 describe('makeProjectSpawnOverrides — shell', () => {
+  it('never lets a SHARED file name a WSL distribution, even once trusted', async () => {
+    const doc = { terminal: { shell: 'wsl:Ubuntu' } }
+    const hash = hashTrustContent(projectTrustContent('shell', doc)!)
+    const { read, requested } = make({ snap: snapshot(sharedDoc(doc)), trusted: [hash] })
+    expect(await read('p1')).toBeNull()
+    expect(requested).toEqual([])
+  })
+
+  it('lets this machine’s LOCAL settings name a WSL distribution', async () => {
+    const { read } = make({ snap: snapshot(null, { terminal: { shell: 'wsl:Ubuntu' } }) })
+    expect(await read('p1')).toEqual({ shell: 'wsl:Ubuntu' })
+  })
+
   it('applies a LOCAL shell with no trust question', async () => {
     const { read, asked } = make({ snap: snapshot(null, { terminal: { shell: '/bin/fish' } }) })
     expect(await read('p1')).toEqual({ shell: '/bin/fish' })

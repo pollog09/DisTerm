@@ -848,6 +848,7 @@ import {
   viewFor
 } from '../state/viewMode'
 import { GlobalKanbanView } from '../components/kanban/GlobalKanbanView'
+import { useTerminalProfiles } from '../terminal/use-terminal-profiles'
 import { useFocusNode, FOCUS_SURFACE_ID } from '../state/focusNode'
 import { focusTargetId } from '../lib/focusTarget'
 import {
@@ -5603,7 +5604,9 @@ export function Canvas() {
       /** Force the working directory (e.g. a Source Control action running in a worktree scope). */
       cwdOverride?: string,
       /** A title for the node (a `nodeterm://open` link's `title`). */
-      title?: string
+      title?: string,
+      /** This node's session program (a `wsl:<distro>` row of the add menu). */
+      shell?: string
     ) => {
       // Live read + epoch guard: same rule as addAgentNode (issue #443) — a menu closure built
       // under the previous project must not root a terminal in that project's folder.
@@ -5635,7 +5638,8 @@ export function Canvas() {
       const ssh = nodeSshFor(project?.ssh, cwdOverride)
       setNodes((ns) => {
         const made = createTerminalNode(ns.length, cwd, center ?? emptyNodePos(), initialCommand, ssh)
-        const node = title ? { ...made, data: { ...made.data, title } } : made
+        const titled = title ? { ...made, data: { ...made.data, title } } : made
+        const node = shell ? { ...titled, data: { ...titled.data, shell } } : titled
         return [...ns, groupId ? parentInto(node, groupId) : node]
       })
       markDirty()
@@ -11675,19 +11679,31 @@ export function Canvas() {
   // project-header "+", and any other ContextMenu-based surface pass the same handlers and can no
   // longer drift on which kinds are addable. Agent entries are layered on by each surface from
   // `agentCreationEntries` (already shared) — the spec owns the content list only.
+  // Not for an SSH or relay project: the distributions belong to this desktop, not that core.
+  const terminalProfiles = useTerminalProfiles(
+    isWindowsCore && !isSshProject && sessionForProject(activeProjectId || '').source !== 'relay'
+  )
+  const wslTerminals = useMemo(
+    () =>
+      terminalProfiles
+        .filter((p) => p.kind === 'wsl')
+        .map((p) => ({ label: p.label, shell: p.value })),
+    [terminalProfiles]
+  )
   const addCtx = useMemo(
     () => ({
       hasCwd: !!(useProjects.getState().getProject(activeProjectId)?.ssh?.remoteCwd ??
         useProjects.getState().getProject(activeProjectId)?.cwd),
       isSshProject,
       isWindowsCore,
-      isRelayTab: sessionForProject(activeProjectId || '').source === 'relay'
+      isRelayTab: sessionForProject(activeProjectId || '').source === 'relay',
+      wslTerminals
     }),
-    [activeProjectId, isSshProject, isWindowsCore]
+    [activeProjectId, isSshProject, isWindowsCore, wslTerminals]
   )
   const addHandlers = useMemo<AddHandlers>(
     () => ({
-      terminal: (at) => addTerminal(at),
+      terminal: (at, shell) => addTerminal(at, undefined, undefined, undefined, undefined, shell),
       remote: (screenPos) => openRemotePicker(screenPos),
       browser: (at) => addBrowser(at),
       web: (at) => void addWebView(at),

@@ -6,6 +6,11 @@ import {
 } from './shell-kill-line'
 
 describe('shellKillLineSequence', () => {
+  it('treats a WSL pane as the POSIX shell it is, on a Windows core', () => {
+    expect(shellKillLineSequence(undefined, 'wsl:Ubuntu', 'win32')).toBe(KILL_LINE)
+    expect(shellKillLineSequence(undefined, 'C:\\Windows\\System32\\wsl.exe', 'win32')).toBe(KILL_LINE)
+  })
+
   it('returns \\x1b for Windows PowerShell, pwsh, and cmd dialects', () => {
     expect(shellKillLineSequence('windows-powershell')).toBe(WINDOWS_KILL_LINE)
     expect(shellKillLineSequence('pwsh')).toBe(WINDOWS_KILL_LINE)

@@ -26,6 +26,7 @@
 // sandbox. What the shell cannot reach without a prompt are keychain-held secrets, and the host's
 // secret-bearing RPCs (settings:save + agent:discover-models, accounts, license) are host-only for
 // every peer (shared/host-control.ts). The invite copy says exactly this.
+import { isWslShellValue } from '../../shared/terminal-profiles'
 import fs from 'node:fs'
 import path from 'node:path'
 import { IPC } from '../../shared/ipc'
@@ -318,6 +319,8 @@ const ptyCreate: Check = (a, s) => {
   if (pending) opts.newOnly = true
   if (opts.ownerProjectId !== undefined && opts.ownerProjectId !== s.projectId) return no(OUTSIDE)
   delete opts.sshRemote
+  // A WSL distribution is the host user's own choice, never a guest's.
+  if (isWslShellValue(opts.shell)) delete opts.shell
   // The local-login exemption from the SSH-project refusal is this machine's own UI's mark, never
   // a guest's (issue #1186).
   delete opts.localOnSshCanvas
@@ -526,6 +529,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.projectSettingsWriteShared,
   IPC.projectSettingsUpdateLocal,
   IPC.projectSettingsLaunchInfo,
+  IPC.ptyTerminalProfiles,
   IPC.projectSetupRun,
   IPC.projectSetupCancel,
   IPC.projectSetupConsentSubmit,

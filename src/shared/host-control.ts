@@ -88,6 +88,8 @@ export const HOST_ONLY_CHANNEL_PREFIXES: readonly string[] = [
 ]
 
 export const HOST_ONLY_CHANNELS: ReadonlySet<string> = new Set([
+  // The host's installed WSL distributions: a machine fact, and running wsl.exe can boot one.
+  IPC.ptyTerminalProfiles,
   IPC.projectSetupRun,
   IPC.projectSetupCancel,
   IPC.projectSetupConsentSubmit,

@@ -65,6 +65,10 @@ means — and what you may assume when writing a feature — is three tiers, not
   looks (beside the loaded `conpty.node`), restaged after `electron-rebuild` wipes `build/`
   (`scripts/stage-conpty-dll.mjs`), and missing ⇒ the inbox ConPTY. Details + device checklist:
   docs/windows-session-host.md, "Which ConPTY".
+- **A WSL terminal is a `wsl:<distro>` value of the machine-local `shell` field**, resolved to argv by
+  `core/terminal-profiles.ts` in `spawnNew`, never accepted as argv from a wire payload. Do not use
+  `wsl.exe --cd`: it runs the command anyway when the directory is missing. Details:
+  docs/windows-session-host.md, "Windows profile resolution".
 - **New code is platform-neutral by default.** Do not hardcode POSIX assumptions. Publish files
   through `renameAtomic`/`writeFileAtomic` (`src/core/fs-atomic.ts`), not a bare `fs.rename` — the
   guard test (`fs-atomic.guard.test.ts`) enforces this. Resolve path separators / absolute-path

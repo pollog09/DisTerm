@@ -9,6 +9,8 @@ import { platform } from './platform'
 import * as pty from 'node-pty'
 import { IPC } from '../shared/ipc'
 import { safeSessionProgram } from '../shared/node-exec'
+import { isWslShellValue, parseWslShell } from '../shared/terminal-profiles'
+import { listTerminalProfiles, resolveWslLaunch, type WslLaunchPlan } from './terminal-profiles'
 import { REF_MAX_LEN } from '../shared/presence'
 import { xtermScrollback } from '../shared/scrollback'
 import {
@@ -826,6 +828,42 @@ const SESSION_HOST_WATCH: unique symbol = Symbol('nodeterm.sessionHostWatch')
 type SessionHostWatchOptions = PtyCreateOptions & { readonly [SESSION_HOST_WATCH]?: true }
 function isSessionHostWatch(options: PtyCreateOptions): boolean {
   return (options as SessionHostWatchOptions)[SESSION_HOST_WATCH] === true
+}
+
+/**
+ * A WSL launch plan `spawnNew` resolved from a `wsl:<distro>` shell. Same symbol discipline as
+ * `WATCHER_CLIENT`: argv never comes from a wire payload, only the validated distribution name does.
+ */
+const WSL_LAUNCH: unique symbol = Symbol('nodeterm.wslLaunch')
+type WslLaunchOptions = PtyCreateOptions & { readonly [WSL_LAUNCH]?: WslLaunchPlan }
+function wslLaunchOf(options: PtyCreateOptions): WslLaunchPlan | undefined {
+  return (options as WslLaunchOptions)[WSL_LAUNCH]
+}
+/** The shell a create asks for. The ONE reading of it, so the probe, the plan and the spawn cannot
+ *  disagree: an explicit value that is not a usable program falls back to the default, as it does
+ *  for every other shell, while any `wsl:` value stays itself and is refused by name if malformed. */
+function requestedSessionShell(explicit: string | undefined, defaultShell: string): string | undefined {
+  if (isWslShellValue(explicit)) return explicit
+  return safeSessionProgram(explicit) ?? defaultShell
+}
+/**
+ * Is a session already live under this key? A probe that cannot answer is not "no": treating it so
+ * would translate a directory and possibly start a second terminal for a live one, so it rejects
+ * with the host's own reason.
+ */
+async function wslSessionLive(persistKey: string): Promise<boolean> {
+  try {
+    return await sessionHostHasSession(sessionName(persistKey))
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new Error(`Could not check for a running WSL terminal: ${reason}`)
+  }
+}
+/** Why this core cannot start a new terminal from a `wsl:` value. */
+function wslSpawnRefusal(value: string, runtimePlatform: NodeJS.Platform): string | null {
+  if (!parseWslShell(value)) return `"${value}" is not a valid WSL distribution.`
+  if (runtimePlatform !== 'win32') return 'A new WSL terminal can only be started by the Windows app.'
+  return null
 }
 
 interface Session {
@@ -2284,6 +2322,7 @@ export class PtyManager {
       this.sendToEmptyPrompt(persistKey, text, typeof agentId === 'string' ? agentId : '')
     )
     platform().handle(IPC.ptyTmuxStatus, () => this.tmuxStatus())
+    platform().handle(IPC.ptyTerminalProfiles, () => listTerminalProfiles(this.runtimePlatform))
     platform().handle(IPC.ptyPaneCommand, (persistKey: string, opts?: { resolveUnmounted?: boolean }) =>
       this.paneCommand(persistKey, opts?.resolveUnmounted === true ? { resolveUnmounted: true } : undefined)
     )
@@ -2918,10 +2957,8 @@ export class PtyManager {
     // — i.e. first open, or after a machine reboot killed the tmux server. Plain (non-tmux)
     // sessions are always fresh: they have no cross-restart continuity. The renderer uses this
     // to decide whether to replay the persisted scrollback and re-launch a resumable agent.
-    // The Windows-profile warm-backend probe (attach-only reattach of a proven session-host or
-    // tmux generation, decided ahead of trusted profile resolution) lands with the
-    // windows-terminal-profiles phase; until then nothing assigns this and every create takes the
-    // ordinary attach-or-create path below.
+    // Assigned only when a `wsl:` shell proves a live session-host generation (below), which attaches
+    // without translating the directory. Every other create takes the ordinary attach-or-create path.
     let warmWindowsBackend: 'session-host' | 'tmux' | undefined
     const tmuxBacked = !!this.tmuxPath && this.getSettings().tmuxEnabled && !!options.persistKey
     // For an SSH-project node, "fresh" is decided by the REMOTE tmux server (over the project's
@@ -3123,6 +3160,33 @@ export class PtyManager {
         : null
     let sessionId: string
     try {
+      // A live WSL session is reattached without asking WSL anything, so an unmapped drive can
+      // never cut a user off from a terminal that is still running. Only a new one translates its
+      // directory, here before the synchronous spawn; a failure rejects this create with the real
+      // reason, and the node shows it.
+      const requestedShell = requestedSessionShell(
+        options.shell ?? projectOverrides?.shell,
+        this.getSettings().defaultShell
+      )
+      if (
+        !options.sshRemote &&
+        isWslShellValue(requestedShell) &&
+        !warmWindowsBackend &&
+        !isSessionHostWatch(options)
+      ) {
+        const live =
+          !!options.persistKey &&
+          this.hostBackendEligible() &&
+          (await wslSessionLive(options.persistKey))
+        if (live) {
+          warmWindowsBackend = 'session-host'
+        } else {
+          const refusal = wslSpawnRefusal(requestedShell, this.runtimePlatform)
+          if (refusal) throw new Error(refusal)
+          const launch = await resolveWslLaunch(parseWslShell(requestedShell) as string, options.cwd)
+          options = { ...options, [WSL_LAUNCH]: launch } as WslLaunchOptions
+        }
+      }
       sessionId = this.spawnSession(
         options,
         clientId,
@@ -3981,7 +4045,16 @@ export class PtyManager {
       attach: async (sinks) => {
         await resolveShellPath()
         const overrides = await this.projectSpawnOverrides(options)
-        return this.spawnSession(options, null, sinks, undefined, overrides)
+        // A phone may join a live WSL terminal; only starting a new one is refused.
+        const requestedShell = requestedSessionShell(
+          options.shell ?? overrides?.shell,
+          this.getSettings().defaultShell
+        )
+        const liveWsl =
+          isWslShellValue(requestedShell) &&
+          this.hostBackendEligible() &&
+          (await wslSessionLive(nodeId))
+        return this.spawnSession(options, null, sinks, liveWsl ? 'session-host' : undefined, overrides)
       }
     }
   }
@@ -4352,6 +4425,28 @@ export class PtyManager {
         devices
       )
     }
+    // A `wsl:` value names this machine's distribution, so an SSH node ignores it. Otherwise only
+    // `spawnNew` can resolve one for a new terminal, on a Windows core: anywhere else it must not
+    // reach tmux, Zellij or node-pty as a program, and must not become a different shell. Attaching
+    // to a live session starts nothing, so it needs no plan. Ahead of the swap-out below, for the
+    // same reason as the check above: a refusal leaves the node as it found it.
+    const wslLaunch = wslLaunchOf(options)
+    const wslRequested = requestedSessionShell(
+      options.shell ?? overrides?.shell,
+      this.getSettings().defaultShell
+    )
+    if (
+      isWslShellValue(wslRequested) &&
+      !options.sshRemote &&
+      !wslLaunch &&
+      warmWindowsBackend !== 'session-host' &&
+      !isSessionHostWatch(options)
+    ) {
+      throw new Error(
+        wslSpawnRefusal(wslRequested, this.runtimePlatform) ??
+          'A new WSL terminal can only be started from the Windows app.'
+      )
+    }
 
     // SWAP-OUT, before anything at all is spawned: a painter pty client is arriving for this node,
     // and a session never has both. The painter attaches with `-D` and would kick the shadow off by
@@ -4383,7 +4478,8 @@ export class PtyManager {
     // For a remote (ssh-project) node the local PTY just holds the ssh client, so its local cwd
     // must be a real LOCAL directory (options.cwd is a REMOTE path that wouldn't exist locally and
     // would make pty.spawn throw). The remote working dir is passed to tmux via sshRemote.remoteCwd.
-    let cwd = options.sshRemote ? os.homedir() : options.cwd || os.homedir()
+    // A WSL terminal's directory is the Linux path in its argv, for the same reason.
+    let cwd = options.sshRemote || wslLaunch ? os.homedir() : options.cwd || os.homedir()
     // `|| os.homedir()` only catches an EMPTY cwd. A cwd that is set but STALE — a project folder
     // the user deleted/unmounted — still reaches pty.spawn and makes posix_spawn fail. Verify the
     // directory actually exists and fall back to home if not, so a dead folder never kills the node.
@@ -4692,12 +4788,14 @@ export class PtyManager {
     // project's — the caller asked for a specific program and did not get the project's instead.
     // Validation covers both sources: a project settings.json is git-shared (and on an SSH project
     // it lives on the remote HOST), i.e. exactly the foreign provenance this check exists for.
-    const reqShell = safeSessionProgram(options.shell ?? overrides?.shell)
-    const program = reqShell === 'ssh' ? findSsh() ?? 'ssh' : reqShell
-    const programArgs = options.shellArgs ?? []
+    const explicitShell = options.shell ?? overrides?.shell
+    const defaultShell = isWslShellValue(settings.defaultShell) ? '' : settings.defaultShell
+    const reqShell = isWslShellValue(explicitShell) ? undefined : safeSessionProgram(explicitShell)
+    const program = wslLaunch ? wslLaunch.file : reqShell === 'ssh' ? findSsh() ?? 'ssh' : reqShell
+    const programArgs = wslLaunch ? wslLaunch.args : options.shellArgs ?? []
     // One resolver for BOTH direct node-pty and the persistent session-host backend, so the two
     // paths cannot drift on "which shell" (see resolveLocalSessionShell).
-    const localSessionShell = resolveLocalSessionShell(program, settings.defaultShell)
+    const localSessionShell = resolveLocalSessionShell(program, defaultShell)
     const localSessionArgs = program ? programArgs : []
 
     // SSH project node: run `ssh -t '<remote tmux attach-or-create>'` as the PTY program. The
@@ -4872,7 +4970,7 @@ export class PtyManager {
         localSessionShell,
         // tmux starts its own default shell as a LOGIN shell when neither the node nor the setting
         // names a program; mirror that so the same rc files run under either backend.
-        program || settings.defaultShell ? localSessionArgs : loginShellArgs(localSessionShell)
+        program || defaultShell ? localSessionArgs : loginShellArgs(localSessionShell)
       )
       useLocalZellij = true
       this.zellijKeys.add(options.persistKey)
@@ -4966,7 +5064,7 @@ export class PtyManager {
         sessionName(options.persistKey)
       ]
       // Honor a custom session program at creation (ignored on reattach).
-      const shell = program || settings.defaultShell
+      const shell = program || defaultShell
       if (shell) {
         args.push(shell)
         args.push(...programArgs)
