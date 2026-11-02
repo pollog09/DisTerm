@@ -3,7 +3,7 @@ import { readLocal, writeLocal } from '../lib/localStore'
 import { useSettings } from './settings'
 import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 
-// Which view each project shows (canvas or kanban) — PERSONAL, per machine: persisted in
+// Which view each project shows (canvas, kanban or the agent graph) — PERSONAL, per machine: persisted in
 // localStorage, deliberately never in the git-shared .nodeterm/project.json (spec rule).
 //
 // A project with an EXPLICIT entry uses it; a project with NONE follows `defaultView` (the
@@ -13,15 +13,15 @@ import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 export const PROJECT_VIEW_KEY = 'nodeterm.projectView'
 export const GLOBAL_KANBAN_KEY = 'nodeterm.globalKanban'
 
-export type ProjectView = 'canvas' | 'kanban'
+export type ProjectView = 'canvas' | 'kanban' | 'graph'
 
-/** Parses the persisted map, keeping only valid canvas/kanban entries. Exported for tests. */
+/** Parses the persisted map, keeping only valid view entries. Exported for tests. */
 export function parseViewMap(raw: string | null): Record<string, ProjectView> {
   try {
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     const out: Record<string, ProjectView> = {}
-    for (const [id, v] of Object.entries(parsed)) if (v === 'kanban' || v === 'canvas') out[id] = v
+    for (const [id, v] of Object.entries(parsed)) if (v === 'kanban' || v === 'canvas' || v === 'graph') out[id] = v
     return out
   } catch {
     return {}
@@ -142,10 +142,41 @@ export const useViewMode = create<ViewModeState>((set) => ({
     })
 }))
 
-/** True when the given project currently shows the kanban board (read outside React —
- *  keydown handlers use this so they need no store subscription/deps). */
+/**
+ * True when a full-page view COVERS this project's canvas (read outside React — keydown handlers use
+ * this so they need no store subscription/deps). The board and the agent graph answer alike: every
+ * caller is asking "is the canvas hidden, so a canvas gesture would act on something nobody can see",
+ * and "go to node" asks for a card, which the graph view consumes the same way the board does.
+ *
+ * The name predates the graph. It is kept because the callers live in `Canvas.tsx` and renaming them
+ * would be a merge conflict with upstream on every one. Ask `isBoardView` for the board itself.
+ */
 export function isKanbanOpen(projectId: string): boolean {
+  return !!projectId && viewFor(useViewMode.getState(), projectId) !== 'canvas'
+}
+
+/** True when this project shows the board specifically: what the view toggle and its labels flip. */
+export function isBoardView(projectId: string): boolean {
   return !!projectId && viewFor(useViewMode.getState(), projectId) === 'kanban'
+}
+
+/** True when this project shows the agent graph. */
+export function isGraphView(projectId: string): boolean {
+  return !!projectId && viewFor(useViewMode.getState(), projectId) === 'graph'
+}
+
+/** The graph's own control, separate from the canvas ⇄ board toggle, which stays that pair: from the
+ *  graph back to the canvas, from anywhere else (Omni included) into the graph. */
+export function toggleGraphView(projectId: string): boolean {
+  if (!projectId) return false
+  const vm = useViewMode.getState()
+  if (isGraphView(projectId) && !isGlobalKanbanOpen()) {
+    vm.setView(projectId, 'canvas')
+    return true
+  }
+  vm.setGlobalKanban(false)
+  vm.setView(projectId, 'graph')
+  return true
 }
 
 /**
@@ -211,7 +242,7 @@ export function showCanvas(projectId: string): void {
  * to toggle (no project and no Omni).
  */
 export function toggleBoardView(projectId: string): boolean {
-  if (isGlobalKanbanOpen() || (projectId && isKanbanOpen(projectId))) {
+  if (isGlobalKanbanOpen() || (projectId && isBoardView(projectId))) {
     showCanvas(projectId)
     return true
   }

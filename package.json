@@ -30,6 +30,7 @@
     "make-icon": "node scripts/make-icon.mjs",
     "make-social": "node scripts/make-social.mjs",
     "dist": "npm run make-icon && npm run build && electron-builder --mac --arm64 --publish never -c.mac.identity=null -c.mac.notarize=false -c.extraMetadata.nodeTermUpdates=disabled",
+    "dist:mac:x64": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --x64 --publish never -c.mac.identity=null -c.mac.notarize=false -c.extraMetadata.nodeTermUpdates=disabled; s=$?; npm run rebuild; exit $s'",
     "dist:linux": "npm run make-icon && npm run build && electron-builder --linux --publish never -c.extraMetadata.nodeTermUpdates=disabled",
     "dist:win": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=disabled",
     "dist:win:release": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=manual",
@@ -203,6 +204,7 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@dagrejs/dagre": "^3.1.3",
     "@electron/rebuild": "^4.2.1",
     "@excalidraw/excalidraw": "^0.18.1",
     "@tailwindcss/vite": "^4.3.3",

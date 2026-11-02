@@ -1,3 +1,5 @@
+import type { AgentGraphSnapshot } from '../../shared/agent-graph'
+import { holdShipConfigLease, type ShipConfigResult, type ShipGraphCreateResult } from '../../shared/ship-config'
 import type { ChatCatalog } from '@shared/chat-catalog'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import type { AgentStatusSnapshotEntry } from '../../shared/agent-status-snapshot'
@@ -853,8 +855,29 @@ export function buildAgentApi(
   | 'onRemoteViewers'
   | 'onAgentRefreshNode'
   | 'onAgentRenameNode'
+  | 'agentGraph'
 > {
   return {
+    // REAL over the bridge: both shells register the handlers, and a relay tab reaches the host's
+    // core through the same builder (the relay guards decide each of these channels).
+    agentGraph: {
+      snapshot: (projectId) => client.request(IPC.agentGraphSnapshot, projectId) as Promise<AgentGraphSnapshot>,
+      onEvent: (listener) => client.subscribe(IPC.agentGraphEvent, listener as Listener),
+      readShipConfig: (projectId) => client.request(IPC.shipConfigRead, projectId) as Promise<ShipConfigResult>,
+      createShipGraph: (projectId, scope) =>
+        client.request(IPC.shipGraphCreate, projectId, scope) as Promise<ShipGraphCreateResult>,
+      onShipConfigChanged: (projectId, cb) => {
+        const unsub = client.subscribe(IPC.shipConfigChanged(projectId), cb as Listener)
+        const release = holdShipConfigLease({
+          subscribe: (leaseId) => client.cast(IPC.shipConfigSubscribe, projectId, leaseId),
+          unsubscribe: (leaseId) => client.cast(IPC.shipConfigUnsubscribe, projectId, leaseId)
+        })
+        return () => {
+          unsub()
+          release()
+        }
+      }
+    },
     onAgentStatus: (listener) => subscribeAgentReplay(
       (cb) => client.subscribe(IPC.agentStatus, cb as Listener),
       () => client.request(IPC.agentSubagentSnapshot) as Promise<NormalizedAgentEvent[]>, listener

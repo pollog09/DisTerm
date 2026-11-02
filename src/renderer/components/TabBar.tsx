@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useProjects } from '../state/projects'
-import { isOmniKanbanEnabled, toggleBoardView, useViewMode, viewFor } from '../state/viewMode'
+import { isOmniKanbanEnabled, toggleBoardView, toggleGraphView, useViewMode, viewFor } from '../state/viewMode'
 import { useAgentStatusSig, type AgentStatusLookup } from '../session/agent-status-lookup'
 import { usePauseCounts } from '../state/pauseCounts'
 import { useSettings } from '../state/settings'
@@ -13,7 +13,7 @@ import { sessionCount, sessionForProject, useProjectSession } from '../session/s
 import { tabClickAction } from '../session/relay-tab'
 import { useMenuFlip } from '../ui/useMenuFlip'
 import { commandTooltip } from '../lib/keybindingOverrides'
-import { IconCanvasView, IconKanban, IconMoreVertical, IconPlus, IconUpdate } from './icons'
+import { IconCanvasView, IconGraph, IconKanban, IconMoreVertical, IconPlus, IconUpdate } from './icons'
 import { runPendingUpdate, usePendingUpdate } from '../state/pendingUpdate'
 import { ProjectGlyph } from './ProjectGlyph'
 import { useTooltip } from './Tooltip'
@@ -161,6 +161,7 @@ export function TabBar({
   const isGlobal = omniEnabled && globalKanban
   const perProjectKanban = useViewMode((s) => !!activeId && viewFor(s, activeId) === 'kanban')
   const kanbanActive = isGlobal || perProjectKanban
+  const graphActive = useViewMode((s) => !isGlobal && !!activeId && viewFor(s, activeId) === 'graph')
   const highlightedId = useViewMode((s) => s.highlightedSwimlaneId)
   // Unread dots need only each tab's unread count — subscribing to the whole status map re-rendered
   // the TabBar on every working/waiting flip of any agent. Primitive signature → rare updates. Each
@@ -551,6 +552,21 @@ export function TabBar({
                         }}
                       >
                         {kanbanActive ? <IconCanvasView /> : <IconKanban />}
+                      </button>
+                    )}
+                    {active && (
+                      // Its own control: the toggle above stays canvas ⇄ board, whatever this does.
+                      <button
+                        className="tab__board-toggle"
+                        title={commandTooltip(graphActive ? 'Canvas view' : 'Agent graph', 'view.graphToggle')}
+                        aria-label={graphActive ? 'Canvas view' : 'Agent graph'}
+                        aria-pressed={graphActive}
+                        onClick={(e) => {
+                          e.stopPropagation() // a tab click switches projects, this flips the view
+                          toggleGraphView(p.id)
+                        }}
+                      >
+                        {graphActive ? <IconCanvasView /> : <IconGraph />}
                       </button>
                     )}
                     <button

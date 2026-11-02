@@ -39,7 +39,8 @@ export const HOSTED_VIEW_METHODS: readonly string[] = Object.freeze([
   IPC.presenceProject,
   IPC.boardLogRead,
   IPC.boardLogSubscribe,
-  IPC.boardLogUnsubscribe
+  IPC.boardLogUnsubscribe,
+  IPC.agentGraphSnapshot
 ])
 
 /** What a Commenter may call on top of a Viewer's (its `COMMENT` table's keys). */
