@@ -406,6 +406,15 @@ export const IconPhone = () => (
   </svg>
 )
 
+export const IconGraph = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="3.5" cy="8" r="2" />
+    <circle cx="12.5" cy="3.5" r="2" />
+    <circle cx="12.5" cy="12.5" r="2" />
+    <path d="M5.3 7.1 10.7 4.4M5.3 8.9l5.4 2.7" />
+  </svg>
+)
+
 export const IconKanban = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
     <rect x="1.5" y="2.5" width="3.6" height="11" rx="1" />

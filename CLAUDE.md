@@ -8021,6 +8021,73 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     focused on its terminal strands mirror and main out of sync with no event that can reconcile
     them, and the policy is dead until the user clicks away and back.
 
+## Agent graph view and the ship process
+
+A third per-project view beside the canvas and the board (`ProjectView` = `'graph'`): sessions as a
+graph, with what passes between them and how work moved through the machine's ship process. It
+observes and writes nothing to the canvas. User-facing format and limits: `docs/ship-graph.md`.
+
+- **Where things are.** Stream and history: `core/agent-graph/` (`event-log.ts`, `handlers.ts`). Machine
+  discovery: `core/ship-config/` (`discover.ts`, `sanitize.ts`, `handlers.ts`). Wire shapes:
+  `shared/agent-graph.ts`, `shared/ship-config.ts`. The picture: `renderer/lib/agentGraphModel.ts`
+  (pure: every counting rule), `renderer/lib/agentGraphLayout.ts` (pure: the only file that knows
+  dagre), `renderer/components/graph/`. `Canvas.tsx` holds only the mount, the view flag and the
+  palette row, so a merge from upstream stays cheap.
+- **`isKanbanOpen` means "the canvas is covered", not "the board is up".** Its ~20 callers in
+  `Canvas.tsx` all ask whether a canvas gesture would act on something nobody can see, so the graph
+  answers true and none of them had to change. Code that means the board itself asks `isBoardView`
+  (`toggleBoardView`, the palette's label). "Go to node" still asks for a card
+  (`requestedCardNodeId`), and the graph consumes that request by opening the terminal in its modal;
+  without that, every notification click and notch Go would read as dead over this view.
+  `TerminalNode`'s board render pause and `boardCoversCanvas` read the view directly and test
+  `!== 'canvas'`, so terminals under the graph stop drawing as they do under the board.
+- **Its own `ReactFlowProvider`.** The canvas's store has an owner (`flowStoreOwner.ts`), read to decide
+  which project a mounting node belongs to. Sharing it would feed that decision boxes from no project.
+  It also mounts under `ProjectSessionScope`: Canvas's context is the LOCAL session, so a team tab's
+  graph would otherwise ask this machine's core about the host's nodes.
+- **Layout is keyed on structure, not content** (`agentGraphStructureKey`). Status and counts change a
+  box, never its place; re-laying out on each hook event would be unreadable. A reject or re-entry is
+  fed to dagre forwards and its route reversed afterwards. Left to dagre's cycle breaking (`greedy`
+  measured it), the reviewer landed to the LEFT of what it reviews.
+- **Re-entry means moving BACKWARDS against the order the `next` edges declare**, not "ran again" and
+  not first-seen order. With "ran again", one rejection paints every forward edge of the second pass;
+  with first-seen order, review, impl, docs, review paints the declared docs -> review. A reset or a new
+  user prompt (`turn-start`) starts a new run, so predecessors never cross one. Inside a turn a declared
+  move is taken as declared, and an undeclared last-to-first move is a new run. `docs/ship-graph.md`
+  states this for users.
+- **`now` is only sampled on a rebuild**, and a killed subagent sends nothing, so while a run is open one
+  timer waits for `nextStaleAt`. With none open there is no timer.
+- **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
+  `registerShipConfigHandlers`). A crashed renderer or a dropped relay peer sends no unsubscribe, and an
+  SSH project's route changes when its master connects. Both shapes leaked real work before.
+- **Activity is a finite pulse, and its CSS must not read `--nt-anim-state`.** The covered-canvas gate
+  overrides that variable on `.react-flow`, and this view is a `.react-flow` too, so a gated pulse would
+  freeze at full opacity. Finite animations need no gate; `pulseKey` remounts the element, and only an
+  event newer than the view's mount pulses, so opening the view does not flash the past.
+- **Status reaches the model as one string** (`statusSig`, the `teamProgressSig` discipline), never the
+  whole `byId` map, which changes on every hook of every node.
+- **A delivery buffer spanning every project is why narrowing exists.** `AgentGraphLog` is per process.
+  The renderer keeps what touches its nodes, and a non-editor's response and live events are cut to
+  events whose EVERY named node is shared (`agentGraphEventShared`): the far end of a message into
+  another project is that project's activity. The ship channels are Editor-only and `SCOPED_REFUSED`:
+  global agents belong to the host's user, and those peers get the observed graph.
+- **Discovery runs where the agents run.** An SSH project reads the host through one `sh -s` script fed
+  on stdin (not `sh -c`: the login shell may not be POSIX), with a per-call nonce on its record markers
+  so a hostile agent file cannot fake a record. A disconnected SSH project answers `unsupported`, and
+  the Server Edition answers the same for any SSH project: describing this machine's agents as the
+  host's is the failure to avoid. Output with no end marker is a failed read, not an empty machine.
+- **Symlinks are followed, and that is why this polls.** Installed agents are usually symlinks, and
+  `fs.watch` on the folder never fires for an edit of a link's target. A subscribed view re-reads (5 s
+  local, 20 s remote), ref-counted per project like the board log, and pushes only on a real change.
+  A link in a cloned repo can point anywhere, so the target must be a regular file (a FIFO would hang
+  the open), only its head is read, and only parsed frontmatter leaves: an "agent" linked to a private
+  key yields a card with the link's name.
+- **`ship-graph.json` is hostile display data.** Read field by field in `sanitize.ts`, so unknown keys
+  and `__proto__` never reach the output; ids must be plain tokens; `trigger.command` is shown, never
+  run. A malformed project file warns and falls back to the global one, and the row still offers Open,
+  because Create would refuse. Create never overwrites (`wx` locally; remotely a checked temp published with `ln`, since the script
+  itself crosses the ssh channel and `remote-write.guard.test.ts` forbids a bare `cat >`).
+
 ## Canvas interaction & panels (`Canvas.tsx` is the hub)
 
 - **Context menus** (`components/ContextMenu.tsx`, portal, icons from `components/icons.tsx`):
@@ -10667,7 +10734,7 @@ node-pty, output `dist/`). The app icon is generated from the nodeterm mark by
 `scripts/make-icon.mjs` (sharp → `build/icon.png` 1024² + multi-resolution `build/icon.ico`
 for Windows, both gitignored — regenerated by `make-icon`, which every dist script runs first);
 the same script hand-packs `build/icon.icns` (size-checked frames — issue #369) and `build/icon.ico`, which electron-builder embeds as-is. Scripts: `npm run make-icon`, `npm run dist`
-(local **unsigned** arm64 `.dmg` smoke test), `npm run dist:win` (unsigned x64 NSIS installer +
+(local **unsigned** arm64 `.dmg` smoke test; `npm run dist:mac:x64` is the same for Intel, and `release` already builds both), `npm run dist:win` (unsigned x64 NSIS installer +
 zip, `--publish never`). Production release signing/notarization and the update-feed hosting are
 handled outside this repo.
 

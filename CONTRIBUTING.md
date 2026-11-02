@@ -285,6 +285,24 @@ distribution from `useWslTerminalsFor` / `wslTerminalsForProject` (`state/wslTer
 passes the row's `shell` to the node. That list is already empty off Windows and for SSH and relay
 projects, so do not add a platform check, and do not list distributions yourself: that starts
 `wsl.exe`. No test can catch a new menu that forgets this.
+## The agent graph view
+
+The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
+Three things to know before touching a view:
+
+- **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
+  the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
+  views consume it. A new full-page view must mark the canvas covered and consume that request.
+- **The graph's model and layout are pure** (`lib/agentGraphModel.ts`, `lib/agentGraphLayout.ts`). A
+  new kind of line or badge goes in the model with a test, not in a component.
+- **A new graph channel is a relay decision.** The core's event buffer spans every project, so anything
+  a peer can read from it must be narrowed to its shared nodes, and machine config stays Editor-only.
+  `.claude/ship-graph.json` arrives in a clone: display only, never executed, and every field read
+  one by one in `core/ship-config/sanitize.ts`.
+
+Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
+and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
+work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
 
 ## House rules
 

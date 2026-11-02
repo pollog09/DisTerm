@@ -470,6 +470,8 @@ export const SCOPED: Readonly<Record<string, Check>> = Object.freeze({
   [IPC.boardLogRead]: pass,
   [IPC.boardLogSubscribe]: projectArg0,
   [IPC.boardLogUnsubscribe]: projectArg0,
+  // The shared project's message and subagent history. The response is narrowed to its nodes.
+  [IPC.agentGraphSnapshot]: projectArg0,
   [IPC.githubIssuesSubscribe]: projectField0,
   [IPC.githubIssuesQuery]: projectField0,
   [IPC.githubIssuesMove]: projectField0,
@@ -510,6 +512,12 @@ export const SCOPED: Readonly<Record<string, Check>> = Object.freeze({
  * sends one is not a relay tab doing its job.
  */
 export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
+  // The host's Claude config is not the shared project: it names every agent the host's user has,
+  // and the invite never granted it. A guest's graph is observation only.
+  IPC.shipConfigRead,
+  IPC.shipGraphCreate,
+  IPC.shipConfigSubscribe,
+  IPC.shipConfigUnsubscribe,
   // A whole-workspace write from a peer would replace the host's other projects.
   IPC.workspaceSave,
   // Moving a project's storage writes and deletes host files (issue #1145); host-only.
@@ -579,6 +587,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.agentStatus,
   IPC.agentUnreadClear,
   IPC.agentSubagentActivity,
+  IPC.agentGraphEvent,
   IPC.presenceSync,
   IPC.presencePeer,
   // Hosted-team verbs: answered by the Server Edition's hosted service only, never on Team Access.

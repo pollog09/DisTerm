@@ -166,6 +166,7 @@ import {
   IconLineage,
   IconGroup,
   IconJump,
+  IconGraph,
   IconKanban,
   IconLock,
   IconMinus,
@@ -843,7 +844,9 @@ import {
   isOmniKanbanEnabled,
   showCanvas,
   toggleAllProjectsBoard,
+  isBoardView,
   toggleBoardView,
+  toggleGraphView,
   useViewMode,
   viewFor
 } from '../state/viewMode'
@@ -855,6 +858,7 @@ import {
   useWslTerminalsFor,
   wslTerminalsForProject
 } from '../state/wslTerminals'
+import { AgentGraphView } from '../components/graph/AgentGraphView'
 import { useFocusNode, FOCUS_SURFACE_ID } from '../state/focusNode'
 import { focusTargetId } from '../lib/focusTarget'
 import {
@@ -3619,6 +3623,7 @@ export function Canvas() {
   useEffect(() => registerWorkspaceDirty(markDirty), [markDirty])
 
   const perProjectKanbanOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'kanban')
+  const graphOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'graph')
   const rawGlobalKanban = useViewMode((s) => s.globalKanban)
   const omniEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
   const globalKanbanOpen = rawGlobalKanban && omniEnabled
@@ -10878,6 +10883,7 @@ export function Canvas() {
       'app.shortcutsPanel': () => { setShortcutsOpen((v) => !v); return true },
       'view.kanbanToggle': () => performKanbanToggle(),
       'view.globalKanbanToggle': () => performGlobalKanbanToggle(),
+      'view.graphToggle': () => toggleGraphView(useProjects.getState().activeProjectId),
       'view.focusMode': () => { toggleFocusMode(); return true },
       'panel.explorer': () => { showExplorer('toggle'); return true },
       'panel.sourceControl': () => { setScOpen((v) => !v); return true },
@@ -13012,6 +13018,15 @@ export function Canvas() {
     (nodeId: string) => {
       const id = useProjects.getState().activeProjectId
       if (id) useViewMode.getState().toggle(id) // board → canvas
+      focusNodeById(nodeId)
+    },
+    [focusNodeById]
+  )
+
+  // The graph's "Show on canvas". `toggle` would flip it to the board, so this names the canvas.
+  const openNodeFromGraph = useCallback(
+    (nodeId: string) => {
+      showCanvas(useProjects.getState().activeProjectId)
       focusNodeById(nodeId)
     },
     [focusNodeById]
@@ -19492,7 +19507,7 @@ export function Canvas() {
       })
     const kanbanId = useProjects.getState().activeProjectId
     if (kanbanId) {
-      const kb = isKanbanOpen(kanbanId)
+      const kb = isBoardView(kanbanId)
       cmds.push({
         id: 'toggle-kanban',
         label: kb ? 'Canvas view' : 'Kanban view',
@@ -19500,6 +19515,14 @@ export function Canvas() {
         section: 'View',
         icon: kb ? <IconCanvasView /> : <IconKanban />,
         run: () => useViewMode.getState().toggle(kanbanId)
+      })
+      cmds.push({
+        id: 'toggle-graph',
+        label: viewFor(useViewMode.getState(), kanbanId) === 'graph' ? 'Leave agent graph' : 'Agent graph',
+        hint: chipFor('view.graphToggle') || undefined,
+        section: 'View',
+        icon: <IconGraph />,
+        run: () => toggleGraphView(kanbanId)
       })
     }
     cmds.push({
@@ -19875,6 +19898,17 @@ export function Canvas() {
           onIssueMoved={dispatchOnUserMove}
         />
       )}
+      {graphOpen && !globalKanbanOpen && activeProjectId && (
+        <AgentGraphView
+          key={activeProjectId}
+          projectId={activeProjectId}
+          nodes={nodes}
+          linkEdges={linkEdges}
+          controlEdges={controlEdges}
+          onShowOnCanvas={openNodeFromGraph}
+          onModalNodeChange={setKanbanModalNode}
+        />
+      )}
       <UpdateCard />
 
       <div
@@ -20156,7 +20190,7 @@ export function Canvas() {
               too (their tmux sessions keep running), and reaching one means reopening its tab
               first — the same path a notification click and a peer jump take. */}
           <SystemResourcePill
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
             onGoToNode={travelToNode}
             onKillSession={killSessionById}
             pauseOfferFor={sessionPauseOfferFor}
@@ -20166,7 +20200,7 @@ export function Canvas() {
           {/* Same write path as the TabBar caret menu (project.defaultAccountId + persist) — the
               popover row is a second, better-placed entrance to the same action (issue #142). */}
           <UsageIndicator
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
             onSetDefaultAccount={setProjectDefaultAccount}
             countAccountSessions={countAccountSessions}
             onMoveSessions={(from, to, label) => void moveAccountSessions(from, to, label)}
@@ -20224,7 +20258,7 @@ export function Canvas() {
             recentActionFor={recentActionFor}
             onResumeRecent={resumeRecentConversation}
             onClose={hasProjects ? () => setWelcomeOpen(false) : undefined}
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
           />
         )}
 
