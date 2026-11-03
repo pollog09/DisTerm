@@ -291,6 +291,7 @@ import { LiveLinkChip } from '../components/LiveLinkChip'
 import { useAgentNodes } from '../state/agentNodes'
 import { useTerminalFocus } from '../state/terminalFocus'
 import { useProjects } from '../state/projects'
+import { wslTerminalsForProject } from '../state/wslTerminals'
 import { markWorkspaceDirty } from '../state/workspaceDirty'
 import { isGlobalKanbanOpen, isKanbanOpen, isOmniKanbanEnabled, openIssueOnBoard, useViewMode, viewFor } from '../state/viewMode'
 import { useSshConn } from '../state/sshConn'
@@ -1539,6 +1540,7 @@ export function TerminalNode({
         // The Explorer drawer's own root (ExplorerPanel: `ssh ? ssh.remoteCwd : project.cwd`).
         explorerRoot: project?.ssh ? project.ssh.remoteCwd : project?.cwd,
         terminals: session.source !== 'relay',
+        wslTerminals: session.source === 'relay' ? [] : wslTerminalsForProject(project?.id),
         downloading: (p) => linkDownloads.rowDl[p] === 'running'
       },
       {
@@ -1556,8 +1558,8 @@ export function TerminalNode({
         revealInExplorer: (abs) =>
           send(new CustomEvent('nodeterm:reveal-file', { detail: { path: abs } })),
         revealInOs: (abs) => window.nodeTerminal.shell.reveal(abs),
-        openTerminal: (dir) =>
-          send(new CustomEvent('nodeterm:open-terminal', { detail: { cwd: dir } })),
+        openTerminal: (dir, shell) =>
+          send(new CustomEvent('nodeterm:open-terminal', { detail: { cwd: dir, shell } })),
         download: (abs, dir, pickFolder) =>
           void (pickFolder ? linkDownloads.downloadTo(abs, dir) : linkDownloads.download(abs, dir))
       }

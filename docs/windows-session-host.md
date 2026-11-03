@@ -93,7 +93,7 @@ path; a bundle being present is not proof an individual session attached success
 
 ## Windows profile resolution
 
-The picker (Settings → Shell, and a `New terminal: WSL: <distro>` row in the add menu) comes from
+The picker (Settings → Shell, and a WSL row wherever the UI can start a terminal) comes from
 `pty:terminal-profiles`, which lists system default, PowerShell 7, Windows PowerShell, Command Prompt
 and one row per installed WSL distribution. It is a host-only channel. A free-text custom shell is
 still accepted.

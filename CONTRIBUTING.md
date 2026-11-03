@@ -275,6 +275,12 @@ Do not add a field inside `ProjectKanban.meta[]` entries: every card-meta setter
 priority, labels, the phone's label verb) rebuilds the entry from a fixed list and silently drops
 anything else. Board-level fields survive every transform — `pullLinks` is one.
 
+**A new way to start a terminal owes the WSL rows.** A menu that creates a terminal offers each
+distribution from `useWslTerminalsFor` / `wslTerminalsForProject` (`state/wslTerminals.ts`), and
+passes the row's `shell` to the node. That list is already empty off Windows and for SSH and relay
+projects, so do not add a platform check, and do not list distributions yourself: that starts
+`wsl.exe`. No test can catch a new menu that forgets this.
+
 ## The agent graph view
 
 The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.

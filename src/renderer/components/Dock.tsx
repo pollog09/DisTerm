@@ -14,6 +14,7 @@ import { CONTENT_ADD_ITEMS, contentAddItemsToDockRows, type AddHandlers } from '
 import { layoutSubtitle, sortedLayouts } from '../lib/canvasLayoutView'
 import { ZOOM_PRESETS, activeZoomPreset } from '../lib/zoomPresets'
 import { useCoreIsWindows } from '../terminal/use-core-platform'
+import { useWslTerminalsFor } from '../state/wslTerminals'
 import { Tooltip } from './Tooltip'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
@@ -29,6 +30,8 @@ interface DockProps {
   canGoBack: boolean
   canGoForward: boolean
   onAddTerminal: () => void
+  /** A terminal in this WSL distribution (a `wsl:<distro>` shell value). */
+  onAddWslTerminal: (shell: string) => void
   onAddSticky: () => void
   /** Opens the Spawn-a-team dialog (issue #78) — the conductor lands at the Dock's default spot. */
   onSpawnTeam: () => void
@@ -85,6 +88,7 @@ export function Dock({
   canGoBack,
   canGoForward,
   onAddTerminal,
+  onAddWslTerminal,
   onAddSticky,
   onSpawnTeam,
   onAddDino,
@@ -223,6 +227,7 @@ export function Dock({
   const hasCwd = !!(activeProject?.ssh?.remoteCwd ?? activeProject?.cwd)
   const isSshProject = !!activeProject?.ssh
   const isWindowsCore = useCoreIsWindows()
+  const wslTerminals = useWslTerminalsFor(activeProjectId)
   const dockAddHandlers: AddHandlers = {
     terminal: onAddTerminal,
     remote: onAddRemote,
@@ -274,6 +279,12 @@ export function Dock({
                 <TerminalIcon />
                 <span>Terminal</span>
               </button>
+              {wslTerminals.map((wsl) => (
+                <button key={wsl.shell} onClick={pick(() => onAddWslTerminal(wsl.shell))}>
+                  <TerminalIcon />
+                  <span>{wsl.label}</span>
+                </button>
+              ))}
               <button onClick={pick(onAddRemote)}>
                 <TerminalIcon />
                 <span>Remote…</span>
