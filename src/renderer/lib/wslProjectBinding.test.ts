@@ -118,12 +118,16 @@ describe('closing a WSL project keeps its master down', () => {
     expect(respawn).not.toHaveBeenCalled()
   })
 
-  it('a backoff waiting when the project closes some other way stops at its next step', async () => {
+  it('a backoff waiting when the project closes some other way stops at its next step, keeping its nodes', async () => {
     const id = open(wsl)
     exit255(id)
     useProjects.getState().closeProject(id)
     await vi.advanceTimersByTimeAsync(120_000)
     expect(dial).not.toHaveBeenCalled()
+    useProjects.getState().reopenProject(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(dial).toHaveBeenCalledTimes(1)
+    expect(respawn).toHaveBeenCalledWith(id, [NODE])
   })
 
   it('an explicit retry on a closed project dials nothing either', async () => {
@@ -135,15 +139,246 @@ describe('closing a WSL project keeps its master down', () => {
     expect(dial).not.toHaveBeenCalled()
   })
 
-  it('a loop cancelled by the close does not come back when the tab reopens', async () => {
+  it('nodes dropped before the close come back on reopen: their backoff was cancelled, not their claim', async () => {
     const id = open(wsl)
     exit255(id)
     close(id)
-    await vi.advanceTimersByTimeAsync(0)
-    useProjects.getState().reopenProject(id)
-    await vi.advanceTimersByTimeAsync(120_000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(dial).not.toHaveBeenCalled()
-    expect(respawn).not.toHaveBeenCalled()
+    useProjects.getState().reopenProject(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(dial).toHaveBeenCalledTimes(1)
+    expect(respawn).toHaveBeenCalledWith(id, [NODE])
+  })
+
+  describe('what the close’s cancel keeps', () => {
+    beforeEach(() => {
+      // This close's own disconnect reports nothing, so only what was queued before it is in play.
+      disconnect.mockImplementation(async () => {})
+    })
+
+    it('a node queued before the close, which its own disconnect never reports again', async () => {
+      const id = open(wsl)
+      reportSshExit(255, id, true, 'term-queued')
+      close(id)
+      await vi.advanceTimersByTimeAsync(5000)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledWith(id, ['term-queued'])
+    })
+
+    it('the old backoff timer does not also fire after a quick reopen: one dial, not two', async () => {
+      const id = open(wsl)
+      exit255(id)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('reopening starts a full backoff: first dial after the first delay, and it retries a failure', async () => {
+      dial.mockImplementation(async () => false)
+      const id = open(wsl)
+      exit255(id)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(999)
+      expect(dial).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(dial).toHaveBeenCalledTimes(1)
+      dial.mockImplementation(async () => true)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(dial).toHaveBeenCalledTimes(2)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a store change while it is still closed schedules nothing', async () => {
+      const id = open(wsl)
+      exit255(id)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.setState({ activeProjectId: '' } as never)
+      expect(vi.getTimerCount()).toBe(0)
+      expect(useProjects.getState().getProject(id)?.closed).toBe(true)
+    })
+
+    it('a retry with no nodes, while closed, leaves nothing to dial after the reopen', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      rec.retryNow(id)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(dial).not.toHaveBeenCalled()
+    })
+
+    it('a dial that SUCCEEDS after the close respawns nothing while it is closed', async () => {
+      let answer: (ok: boolean) => void = () => {}
+      dial.mockImplementation(() => new Promise<boolean>((r) => (answer = r)))
+      const id = open(wsl)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      answer(true)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(respawn).not.toHaveBeenCalled()
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+  })
+
+  describe('closing the LAST open tab, whose terminals stay mounted', () => {
+    it('leaves no active project, as the bug needs', () => {
+      const id = open(wsl)
+      close(id)
+      expect(useProjects.getState().activeProjectId).toBe('')
+    })
+
+    it('the terminal its disconnect killed is respawned on reopen, by the connected status', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(disconnect).toHaveBeenCalled()
+      expect(dial).not.toHaveBeenCalled()
+      expect(respawn).not.toHaveBeenCalled()
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+      // The status flushed it, so the timer has nothing left to do.
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(dial).not.toHaveBeenCalled()
+      expect(respawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('it is respawned without any status too: a connect reusing a live master reports none', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(5000)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('every terminal of the project comes back, once', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      reportSshExit(255, id, true, 'term-2')
+      reportSshExit(255, id, true, NODE)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledTimes(1)
+      expect([...respawn.mock.calls[0][1]].sort()).toEqual([NODE, 'term-2'])
+    })
+
+    it('a quick reopen: exit already reported, back within a millisecond', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(disconnect).toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a quick reopen: the exit only lands after it, and takes the ordinary path', async () => {
+      const id = open(wsl)
+      disconnect.mockImplementation(async () => {})
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a reopen in the same tick as the close: nothing was disconnected, so nothing is touched', async () => {
+      const id = open(wsl)
+      close(id)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(disconnect).not.toHaveBeenCalled()
+      expect(dial).not.toHaveBeenCalled()
+      expect(respawn).not.toHaveBeenCalled()
+    })
+
+    it('a terminal respawned just before the close is not lost to the refuse window', async () => {
+      const id = open(wsl)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledTimes(1)
+      respawn.mockClear()
+      dial.mockClear()
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('that respawn does not start the window: if a late exit kills it, it is reported again', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      respawn.mockClear()
+      dial.mockClear()
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a connect landing while it is closed does not spend the held terminals', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      rec.onConnected(id)
+      expect(respawn).not.toHaveBeenCalled()
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a dial in flight when it closes retries nothing, and its nodes wait for the reopen', async () => {
+      let answer: (ok: boolean) => void = () => {}
+      dial.mockImplementation(() => new Promise<boolean>((r) => (answer = r)))
+      const id = open(wsl)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      answer(false)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      dial.mockImplementation(async () => true)
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(2)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('stops listening to the store when disposed', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      rec.dispose()
+      useProjects.getState().reopenProject(id)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(dial).not.toHaveBeenCalled()
+    })
   })
 
   it('reopening reconnects: a later drop dials and respawns as usual', async () => {

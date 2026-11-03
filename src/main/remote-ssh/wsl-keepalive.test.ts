@@ -3,9 +3,10 @@
 // real processes this file owns and stops by PID.
 
 import { spawn, type ChildProcess } from 'child_process'
+import { randomUUID } from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { testTmpDir } from '../../core/test-tmp'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { remoteAtomicWrite } from '../remote-atomic-write'
@@ -31,6 +32,45 @@ import {
 } from '../../core/remote-ssh/native/wsl-endpoint'
 
 const WIN_ENV = { SystemRoot: 'C:\\Windows' }
+
+// Everything this file starts inherits this, children and grandchildren too, so whatever is still
+// running when the file ends can be found exactly, by PID, and nothing of anyone else's is ever touched.
+// /proc shows a process's environment from when it started, so this worker itself never matches.
+const RUN_VAR = 'NT_WSL_KEEPALIVE_TEST_RUN'
+const RUN_ID = randomUUID()
+process.env[RUN_VAR] = RUN_ID
+
+function processesFromThisRun(): { pid: number; cmd: string }[] {
+  const found: { pid: number; cmd: string }[] = []
+  for (const name of fs.readdirSync('/proc')) {
+    if (!/^[0-9]+$/.test(name) || Number(name) === process.pid) continue
+    try {
+      if (!fs.readFileSync(`/proc/${name}/environ`, 'latin1').includes(`${RUN_VAR}=${RUN_ID}`)) continue
+      found.push({ pid: Number(name), cmd: fs.readFileSync(`/proc/${name}/cmdline`, 'latin1').replace(/\0/g, ' ').trim() })
+    } catch {
+      // Gone already, or not ours to read.
+    }
+  }
+  return found
+}
+
+function signalPid(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal)
+  } catch {
+    // Already gone.
+  }
+}
+
+// Failing here is the leak check, and it holds on a failed run too. Whatever is left is stopped first,
+// so a failure cannot itself leave anything behind.
+afterAll(async () => {
+  if (process.platform === 'win32') return
+  const left = processesFromThisRun()
+  for (const p of left) signalPid(p.pid, 'SIGKILL')
+  await vi.waitFor(() => expect(processesFromThisRun()).toEqual([]), { timeout: 1500 })
+  expect(left.filter((p) => p.cmd === 'sleep 86400')).toEqual([])
+})
 const BROWSE = 'ssh-browse-test'
 const CP = '/cm/project.sock'
 
@@ -496,36 +536,101 @@ describe('starting the keepalive process', () => {
 
 // The real scripts, against real processes. A real distro is the measurement this file cannot make.
 describe.skipIf(process.platform === 'win32')('the keepalive scripts under a real /bin/sh', () => {
+  // These scan every process of this user, and `stop` kills what matches. Run inside WSL, the production
+  // prefix would match a REAL keepalive, so every op here uses one no real keepalive can have.
+  const TEST_PREFIX = `nt-test-keepalive-${RUN_ID.replace(/-/g, '')}-`
+  const testMarker = (handle: string): string => `${TEST_PREFIX}${handle}`
+  const MARKER = testMarker('0123456789abcdef')
+  const OTHER = testMarker('fedcba9876543210')
+
   const own: ChildProcess[] = []
-  afterEach(() => {
-    for (const c of own.splice(0)) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL')
+  const alive = (c: ChildProcess): boolean => c.exitCode === null && c.signalCode === null
+
+  function childrenOf(pid: number): number[] {
+    try {
+      return fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'latin1').trim().split(/\s+/).filter(Boolean).map(Number)
+    } catch {
+      return []
+    }
+  }
+
+  function exited(c: ChildProcess, ms: number): Promise<boolean> {
+    if (!alive(c)) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), ms)
+      c.once('exit', () => {
+        clearTimeout(timer)
+        resolve(true)
+      })
+    })
+  }
+
+  /** TERM, never KILL first: the keepalive's trap is what stops its `sleep 86400`, and a killed shell
+   *  would orphan it. Anything that outlasts that is stopped by its exact PID. */
+  async function stopOwn(c: ChildProcess): Promise<void> {
+    if (!alive(c)) return
+    const kids = childrenOf(c.pid as number)
+    c.kill('SIGTERM')
+    const gone = await exited(c, 3000)
+    if (!gone) c.kill('SIGKILL')
+    for (const k of kids) signalPid(k, 'SIGTERM')
+    await exited(c, 1000)
+  }
+
+  afterEach(async () => {
+    await Promise.all(own.splice(0).map(stopOwn))
   })
-  const MARKER = wslKeepaliveMarker('0123456789abcdef')
 
   function start(args: string[]): ChildProcess {
     const c = spawn('/bin/sh', args, { stdio: 'ignore' })
     own.push(c)
     return c
   }
-  const alive = (c: ChildProcess): boolean => c.exitCode === null && c.signalCode === null
 
-  async function op(name: 'find' | 'stop' | 'trim'): Promise<string> {
-    const r = await wslRunner('/bin/sh')(['-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', name, WSL_KEEPALIVE_MARKER_PREFIX, WSL_KEEPALIVE_SCRIPT], {
+  async function opWith(prefix: string, name: 'find' | 'stop' | 'trim'): Promise<string> {
+    const r = await wslRunner('/bin/sh')(['-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', name, prefix, WSL_KEEPALIVE_SCRIPT], {
       timeoutMs: 10_000
     })
     expect(r.code).toBe(0)
     return r.stdout.toString()
   }
+  const op = (name: 'find' | 'stop' | 'trim'): Promise<string> => opWith(TEST_PREFIX, name)
   async function appears(c: ChildProcess): Promise<void> {
     await vi.waitFor(async () => expect(await op('find')).toContain(`keepalive=${c.pid}\n`), { timeout: 5000 })
   }
 
+  // A stand-in for a REAL keepalive, alive across every test here. `find` with the production prefix only
+  // reads, so it is safe to prove this is one the production match would really take.
+  let realLooking: ChildProcess
+  beforeAll(async () => {
+    realLooking = spawn('/bin/sh', ['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('abcdefabcdefabcd')], { stdio: 'ignore' })
+    await vi.waitFor(
+      async () => expect(await opWith(WSL_KEEPALIVE_MARKER_PREFIX, 'find')).toContain(`keepalive=${realLooking.pid}\n`),
+      { timeout: 5000 }
+    )
+  })
+  afterAll(async () => {
+    const survived = alive(realLooking)
+    await stopOwn(realLooking)
+    expect(survived).toBe(true)
+  })
+
+  it('never sees a keepalive with the production prefix, so `stop` cannot reach one', async () => {
+    expect(await op('find')).not.toContain(`keepalive=${realLooking.pid}\n`)
+    expect(await op('stop')).toBe('')
+    expect(await op('trim')).toBe('')
+    expect(alive(realLooking)).toBe(true)
+  })
+
   it('finds the keepalive and stops it, with its sleep', async () => {
     const k = start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER])
     await appears(k)
+    const sleeps = childrenOf(k.pid as number)
+    expect(sleeps).toHaveLength(1)
     expect(await op('stop')).toBe(`NTWSL stopped=${k.pid}\n`)
     await vi.waitFor(() => expect(alive(k)).toBe(false), { timeout: 5000 })
     expect(await op('find')).toBe('')
+    await vi.waitFor(() => expect(fs.existsSync(`/proc/${sleeps[0]}`)).toBe(false), { timeout: 5000 })
   })
 
   it('is not fooled: a process that only mentions the marker or the script is neither found nor stopped', async () => {
@@ -540,13 +645,13 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
       // One extra argument after a true copy.
       start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER, 'extra']),
       // The prefix without a real handle: too short, too long, not hex, or none.
-      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123')]),
-      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123456789abcdef0')]),
-      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123456789ABCDEF')]),
-      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('zzzzzzzzzzzzzzzz')]),
-      start(['-c', WSL_KEEPALIVE_SCRIPT, WSL_KEEPALIVE_MARKER_PREFIX]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, testMarker('0123')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, testMarker('0123456789abcdef0')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, testMarker('0123456789ABCDEF')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, testMarker('zzzzzzzzzzzzzzzz')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, TEST_PREFIX]),
       // The right prefix on another script.
-      start(['-c', 'sleep 30', wslKeepaliveMarker('fedcba9876543210')])
+      start(['-c', 'sleep 30', OTHER])
     ]
     await new Promise((r) => setTimeout(r, 150))
     expect(await op('find')).toBe(`NTWSL keepalive=${k.pid}\n`)
@@ -556,17 +661,24 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
   })
 
   it('finds and stops a keepalive under any handle, which a lost record leaves behind', async () => {
-    const other = start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('fedcba9876543210')])
+    const other = start(['-c', WSL_KEEPALIVE_SCRIPT, OTHER])
     await appears(other)
     await op('stop')
     await vi.waitFor(() => expect(alive(other)).toBe(false), { timeout: 5000 })
   })
 
   it('trim keeps one and stops the rest, across handles', async () => {
-    const third = start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('fedcba9876543210')])
-    await appears(third)
-    await op('trim')
-    await op('stop')
+    const a = start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER])
+    const b = start(['-c', WSL_KEEPALIVE_SCRIPT, OTHER])
+    await appears(a)
+    await appears(b)
+    const out = await op('trim')
+    expect(out.match(/keepalive=\d+/g)).toHaveLength(1)
+    expect(out.match(/stopped=\d+/g)).toHaveLength(1)
+    await vi.waitFor(() => expect([a, b].filter(alive)).toHaveLength(1), { timeout: 5000 })
+    const kept = [a, b].find(alive) as ChildProcess
+    expect(out).toContain(`keepalive=${kept.pid}\n`)
+    expect(await op('find')).toBe(`NTWSL keepalive=${kept.pid}\n`)
   })
 
   it('trim keeps one and stops the rest', async () => {
@@ -582,17 +694,18 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
   it('ends if its sleep is killed, rather than spinning or restarting', async () => {
     const k = start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER])
     await appears(k)
-    const kids = await wslRunner('/bin/sh')(['-c', `cat /proc/${k.pid}/task/${k.pid}/children`], { timeoutMs: 5000 })
-    const sleepPid = Number(kids.stdout.toString().trim().split(/\s+/)[0])
+    const [sleepPid] = childrenOf(k.pid as number)
     expect(sleepPid).toBeGreaterThan(0)
+    // SIGKILL on purpose: this is the case under test, and it goes to the sleep, so nothing is orphaned.
     process.kill(sleepPid, 'SIGKILL')
     await vi.waitFor(() => expect(alive(k)).toBe(false), { timeout: 5000 })
+    expect(fs.existsSync(`/proc/${sleepPid}`)).toBe(false)
   })
 })
 
 describe('wslRunner: the timeout is a hard limit', () => {
   it('answers on time even when another process still holds the pipe', async () => {
-    // A child that leaves a grandchild holding stdout, then ignores SIGTERM. Both end by themselves.
+    // A child that leaves a grandchild holding stdout, then ignores SIGTERM. The file's own sweep ends both.
     const script =
       `require('child_process').spawn(process.execPath,['-e','setTimeout(()=>{},4000)'],{stdio:'inherit',detached:true}).unref();` +
       `process.on('SIGTERM',()=>{});setTimeout(()=>{},4000)`

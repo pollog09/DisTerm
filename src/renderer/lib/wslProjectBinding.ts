@@ -26,13 +26,18 @@ export function isClosedWslProject(project: Pick<Project, 'closed' | 'ssh'> | un
 
 /**
  * The reconnect coordinator Canvas runs. A closed WSL project stays down: without this, the master its
- * close ended would end its parked terminal with exit 255, which reports a drop, which dials a second
- * later, which registers the project with the watchdog again, and that boots a distro the user stopped.
+ * close ended would end its terminal with exit 255, which reports a drop, which dials a second later,
+ * which registers the project with the watchdog again, and that boots a distro the user stopped.
+ *
+ * But the drop is still remembered. Closing the LAST open tab leaves its nodes mounted (the load effect
+ * bails with no active project), so reopening keeps the same ids and nothing remounts. Those terminals
+ * come back only through a respawn, so the coordinator holds them and resumes when the project reopens.
  */
-export function createProjectReconnector(deps: Omit<SshReconnectorDeps, 'mayDial'>): SshReconnector {
+export function createProjectReconnector(deps: Omit<SshReconnectorDeps, 'mayDial' | 'onMayDialChange'>): SshReconnector {
   return new SshReconnector({
     ...deps,
-    mayDial: (id) => !isClosedWslProject(useProjects.getState().getProject(id))
+    mayDial: (id) => !isClosedWslProject(useProjects.getState().getProject(id)),
+    onMayDialChange: (changed) => useProjects.subscribe(changed)
   })
 }
 

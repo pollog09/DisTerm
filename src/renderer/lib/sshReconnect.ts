@@ -25,6 +25,11 @@ interface ProjectLoop {
   timer: ReturnType<typeof setTimeout> | null
   /** Index into RECONNECT_DELAYS_MS for the NEXT attempt; delays.length ⇒ gave up. */
   attempt: number
+  /** The project may not be dialed right now: the nodes wait, and nothing is scheduled. */
+  held?: boolean
+  /** These nodes died because the project closed, not because a spawn is broken, so their respawn
+   *  does not start the refuse window: a late exit from that close must still be reported. */
+  fromClose?: boolean
 }
 
 export interface SshReconnectorDeps {
@@ -35,6 +40,8 @@ export interface SshReconnectorDeps {
   /** May this project be dialed at all right now? Asked at every step that would lead to a dial,
    *  because the answer can change while a backoff is waiting. Absent = yes. */
   mayDial?: (projectId: string) => boolean
+  /** Call back when `mayDial` may have changed, so held nodes can resume. Returns the unsubscribe. */
+  onMayDialChange?: (changed: () => void) => () => void
 }
 
 export class SshReconnector {
@@ -42,14 +49,23 @@ export class SshReconnector {
   private readonly loops = new Map<string, ProjectLoop>()
   private readonly lastRespawn = new Map<string, number>()
   private disposed = false
+  private readonly unsubscribe: (() => void) | undefined
 
   constructor(deps: SshReconnectorDeps) {
     this.deps = deps
+    this.unsubscribe = deps.onMayDialChange?.(() => this.resumeHeld())
   }
 
   /** A remote terminal's ssh died with exit 255: queue it and (re)start the project's loop. */
   reportDrop(projectId: string, nodeId: string): void {
-    if (this.disposed || !this.mayDial(projectId)) return
+    if (this.disposed) return
+    // Remembered, never dialed. The terminal is dead and may stay mounted (closing the last tab leaves
+    // its nodes on the canvas), so without this nothing would ever bring it back. Ahead of the refuse
+    // window, because that window is about broken spawns and this death is the close's own.
+    if (!this.mayDial(projectId)) {
+      this.hold(projectId).pending.add(nodeId)
+      return
+    }
     const respawnedAt = this.lastRespawn.get(nodeId)
     if (respawnedAt !== undefined && Date.now() - respawnedAt < RESPAWN_REFUSE_MS) return
     let loop = this.loops.get(projectId)
@@ -96,17 +112,43 @@ export class SshReconnector {
     if (this.disposed) return
     const loop = this.loops.get(projectId)
     if (!loop) return
+    // A connect that landed after its project closed: nothing is up, so the nodes keep waiting.
+    if (!this.mayDial(projectId)) return
     if (loop.timer !== null) clearTimeout(loop.timer)
     this.loops.delete(projectId)
     this.flush(projectId, loop)
   }
 
-  /** Stop reconnecting this project: a pending backoff is cancelled and its queued nodes dropped. */
+  /** Stop dialing this project: a pending backoff is cancelled. Its queued nodes are kept, because
+   *  they still need a respawn when the project is back. */
   forget(projectId: string): void {
-    const loop = this.loops.get(projectId)
-    if (!loop) return
+    if (this.loops.has(projectId)) this.hold(projectId)
+  }
+
+  private hold(projectId: string): ProjectLoop {
+    let loop = this.loops.get(projectId)
+    if (!loop) {
+      loop = { pending: new Set(), timer: null, attempt: 0 }
+      this.loops.set(projectId, loop)
+    }
     if (loop.timer !== null) clearTimeout(loop.timer)
-    this.loops.delete(projectId)
+    loop.timer = null
+    loop.attempt = 0
+    loop.held = true
+    loop.fromClose = true
+    return loop
+  }
+
+  /** Projects that may be dialed again go back to the ordinary loop. On a timer rather than at once,
+   *  and not only from `onConnected`: a connect that reuses a live master reports no status at all. */
+  private resumeHeld(): void {
+    if (this.disposed) return
+    for (const [projectId, loop] of this.loops) {
+      if (!loop.held || !this.mayDial(projectId)) continue
+      loop.held = false
+      if (loop.pending.size === 0) this.loops.delete(projectId)
+      else this.schedule(projectId, loop)
+    }
   }
 
   private mayDial(projectId: string): boolean {
@@ -115,6 +157,7 @@ export class SshReconnector {
 
   dispose(): void {
     this.disposed = true
+    this.unsubscribe?.()
     for (const loop of this.loops.values()) {
       if (loop.timer !== null) clearTimeout(loop.timer)
     }
@@ -131,7 +174,7 @@ export class SshReconnector {
 
   private async tryConnect(projectId: string, loop: ProjectLoop): Promise<void> {
     if (!this.mayDial(projectId)) {
-      if (this.loops.get(projectId) === loop) this.loops.delete(projectId)
+      if (this.loops.get(projectId) === loop) this.hold(projectId)
       return
     }
     let ok = false
@@ -143,6 +186,8 @@ export class SshReconnector {
     if (this.disposed) return
     // onConnected may have flushed (and deleted) the loop while connect was in flight.
     if (this.loops.get(projectId) !== loop) return
+    // Closed while that was in flight: the nodes wait for the reopen, with no retry scheduled.
+    if (loop.held) return
     if (ok) {
       this.loops.delete(projectId)
       this.flush(projectId, loop)
@@ -156,7 +201,7 @@ export class SshReconnector {
     if (loop.pending.size === 0) return
     const nodeIds = [...loop.pending]
     const now = Date.now()
-    for (const id of nodeIds) this.lastRespawn.set(id, now)
+    if (!loop.fromClose) for (const id of nodeIds) this.lastRespawn.set(id, now)
     this.deps.respawn(projectId, nodeIds)
   }
 }
