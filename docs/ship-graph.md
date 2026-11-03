@@ -67,10 +67,22 @@ decides. If that is still a tie between pipelines sharing agents, the run is dra
 notice, and nothing is called a rejection. A session can run several pipelines, and a pipeline whose
 agents ran is never shown as unrun.
 
-An agent used by several stages is placed by position: the stage declared next after the one before it,
-then a retry of the same stage, then one reachable from there. If nothing declares a route to it, it goes
-on the earliest stage, with a notice, and draws no move.
- A move backwards along the
+An agent used by several stages is placed by position, in this order: the stage declared next after the
+one before it, a declared reject from there, a retry of the same stage (or a stage fanning out beside it
+that has not run yet), then the nearest one reachable from there. If nothing declares a route to it, it
+goes on the earliest stage by the declared order, with a notice, draws no move, and is never called a loop.
+
+When a stage has both a `next` and a `reject` edge to stages of the same agent, hooks cannot tell which
+happened: with impl, r1, fix, r2, an implementer after r1 is either a passed review or a failed one. The
+run is counted on neither stage, both edges are marked "maybe", each stage gets a "maybe" badge, and a
+notice names them. What follows stays uncertain, placed from both positions, until a stage only one route
+reaches or an agent only one stage uses.
+
+Choosing a pipeline has limits. A clean run of one pipeline hides another that shares an agent with it,
+since its agents ran, until those events age out. The fit ignores reject edges, and it is judged on what
+has run so far, so a run's pipeline can change as more of it arrives.
+
+A move backwards along the
 order your `next` edges declare is highlighted as a loop, and a stage it returns to is marked
 re-entered. A move the file does not declare is still drawn, marked "not declared". A pipeline nothing
 has run yet is shown unattached, so you can see the process before using it. A stage whose agent has no

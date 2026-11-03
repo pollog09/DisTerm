@@ -342,6 +342,29 @@ describe('switching between two projects that both show the graph', () => {
   })
 })
 
+describe('an uncertain stage', () => {
+  it('shows a maybe badge and does not count the run', async () => {
+    const pipeline: ShipPipeline = {
+      id: 'q', name: 'Q',
+      stages: [{ id: 'impl', agent: 'I' }, { id: 'r1', agent: 'R' }, { id: 'fix', agent: 'I' }],
+      edges: [{ from: 'impl', to: 'r1', kind: 'next' }, { from: 'r1', to: 'fix', kind: 'next' }, { from: 'r1', to: 'impl', kind: 'reject' }]
+    }
+    shipResult.current = configWith({ pipelines: [pipeline], graphSource: 'project' })
+    const run = (id: string, type: string, ts: number): AgentGraphEvent[] => [
+      { kind: 'subagent-start', id: `s${id}`, ts, nodeId: 'a', subId: id, subagentType: type },
+      { kind: 'subagent-end', id: `e${id}`, ts: ts + 1, nodeId: 'a', subId: id }
+    ]
+    snapshotResult.current.events = [...run('1', 'I', 10), ...run('2', 'R', 20), ...run('3', 'I', 30)]
+    await mount()
+    const stages = [...document.querySelectorAll('.agent-graph-node--stage')]
+    const fix = stages.find((n) => n.querySelector('.agent-graph-node__subtitle') && n.textContent!.includes('maybe') && !n.querySelector('.agent-graph-node__runs'))!
+    expect(fix.textContent).toContain('maybe ×1')
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toMatch(/could be the next stage fix or a rejection back to impl/)
+    const keys = [...document.querySelectorAll('.agent-graph__notices li')].map((l) => l.textContent)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
 describe('the file-mode notice', () => {
   it('names the inference and both limits whenever a file routes the graph', async () => {
     shipResult.current = configWith({ pipelines: [PIPELINE], graphSource: 'project' })
@@ -350,6 +373,7 @@ describe('the file-mode notice', () => {
     expect(hint).toContain('inferred from hook order')
     expect(hint).toContain('clean second run in one turn')
     expect(hint).toContain('from the last stage to the first')
+    expect(hint).toContain('marked maybe')
   })
 
   it('is absent with no file, where the line itself says it cannot tell', async () => {

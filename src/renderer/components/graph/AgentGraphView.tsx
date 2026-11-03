@@ -36,6 +36,7 @@ import {
   type GraphRopeInput,
   type GraphSessionInput
 } from '../../lib/agentGraphModel'
+import { DELIVERY_COLOR, graphEdgeColor, graphEdgeLabel, graphEdgeTitle } from '../../lib/agentGraphEdgeText'
 import { agentGraphNodeSize, layoutAgentGraph, routeMidpoint, routeToPath, type GraphPoint } from '../../lib/agentGraphLayout'
 import { kanbanSessionsFrom } from '../../canvas/toKanbanSession'
 import { ProjectSessionScope } from '../../session/owning-project'
@@ -69,42 +70,6 @@ const STATE_LABEL: Readonly<Record<string, string>> = {
   waiting: 'needs you',
   blocked: 'needs you',
   done: 'idle'
-}
-
-const DELIVERY_COLOR: Readonly<Record<DeliveryClass, string>> = {
-  delivered: 'var(--state-success)',
-  queued: 'var(--state-queued)',
-  failed: 'var(--state-warning)',
-  refused: 'var(--state-error)'
-}
-
-/** The line's colour, as a role token (a var on a DOM style, per CLAUDE.md "Semantic colours"). */
-export function graphEdgeColor(edge: GraphEdge): string {
-  if (edge.kind === 'message') return DELIVERY_COLOR[edge.latest ?? 'delivered']
-  if (edge.loop || edge.kind === 'ship-reject') return 'var(--state-attention)'
-  if (edge.undeclared) return 'var(--state-warning)'
-  if (edge.kind === 'context') return 'var(--state-automation)'
-  return 'rgba(var(--tint-rgb), 0.45)'
-}
-
-/** The words on a line. A refusal is spelled out, because a colour alone is not a refusal. */
-export function graphEdgeLabel(edge: GraphEdge): string {
-  if (edge.kind === 'message' && edge.counts) {
-    const parts = (Object.keys(edge.counts) as DeliveryClass[])
-      .filter((k) => edge.counts![k] > 0)
-      .map((k) => `${edge.counts![k]} ${k}`)
-    return parts.join(' · ')
-  }
-  const times = edge.traversals ? ` ×${edge.traversals}` : ''
-  // With no file there is no order to have gone against: this could be a rejection or a second run.
-  if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return `went back${times}`
-  if (edge.loop) return `re-entered${times}`
-  if (edge.undeclared) return `not declared${times}`
-  if (edge.kind === 'ship-reject') return `reject${times}`
-  if (edge.kind === 'context') return 'context'
-  if (edge.kind === 'dependency') return 'then' // the rope runs from the awaited node to the waiter
-  if (edge.kind === 'opened') return 'opened'
-  return times.trim()
 }
 
 /** The room a label needs. A message line gets its largest size up front: its words change as counts
@@ -151,6 +116,7 @@ const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNod
         {node.outcome && <span className="agent-graph-badge" data-outcome={node.outcome}>{node.outcome}</span>}
         {node.activity === 'stale' && <span className="agent-graph-badge">no recent signal</span>}
         {node.reentered && <span className="agent-graph-badge" data-role="loop">re-entered</span>}
+        {node.maybeRuns ? <span className="agent-graph-badge" data-role="warning" title="Hooks cannot tell whether this run was this stage or another, so it is not counted.">maybe ×{node.maybeRuns}</span> : null}
         {node.missingAgent && <span className="agent-graph-badge" data-role="warning" title="Built-in and plugin agents have no file, so this does not mean it cannot run.">no agent file found</span>}
       </div>
     </div>
@@ -180,7 +146,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
   const mid = routeMidpoint(route)
   const color = graphEdgeColor(edge)
   const label = graphEdgeLabel(edge)
-  const dashed = edge.kind === 'dependency' || edge.kind === 'context' || edge.kind === 'ship-reject' || edge.undeclared || edge.loop
+  const dashed = edge.kind === 'dependency' || edge.kind === 'context' || edge.kind === 'ship-reject' || edge.undeclared || edge.loop || !!edge.maybe
   return (
     <>
       <BaseEdge
@@ -195,7 +161,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
           <div
             className="agent-graph-edge__label nodrag nopan"
             data-kind={edge.kind}
-            title={edge.reason ? `Refused: ${edge.reason}` : edge.loop && edge.kind === 'observed' && !edge.undeclared ? OBSERVED_LOOP_HINT : undefined}
+            title={graphEdgeTitle(edge)}
             style={{ transform: `translate(-50%, -50%) translate(${mid.x}px, ${mid.y}px)`, color }}
           >
             {edge.kind === 'message' && edge.counts ? <MessageCounts counts={edge.counts} /> : label}
@@ -208,9 +174,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
 
 /** Shown whenever a file routes the graph: what its loops are, and the two cases hooks cannot tell. */
 export const SHIP_LOOP_HINT =
-  'Loops are inferred from hook order. A clean second run in one turn reads as a rejection if a reject edge is declared, and a rejection from the last stage to the first is not drawn if only next edges are.'
-const OBSERVED_LOOP_HINT = 'With no routing file, a rejection and a second run in the same turn look the same.'
-
+  'Loops are inferred from hook order. A clean second run in one turn reads as a rejection if a reject edge is declared, and a rejection from the last stage to the first is not drawn if only next edges are. Where a stage has a next and a reject edge to the same agent, hooks cannot tell which ran, so both are marked maybe.'
 const FIT_OPTIONS = { maxZoom: 1, padding: 0.12 }
 
 const NODE_TYPES: NodeTypes = { graphNode: GraphNodeBox as NodeTypes[string] }
@@ -226,7 +190,8 @@ const LEGEND: ReadonlyArray<{ label: string; color: string; dashed?: boolean }> 
   { label: 'not confirmed', color: DELIVERY_COLOR.failed },
   { label: 'refused', color: DELIVERY_COLOR.refused },
   { label: 'context link', color: 'var(--state-automation)', dashed: true },
-  { label: 'reject or went back', color: 'var(--state-attention)', dashed: true },
+  { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
+  { label: 'maybe, went back or not declared', color: 'var(--state-warning)', dashed: true },
   { label: 'opened, then, spawned, next', color: 'rgba(var(--tint-rgb), 0.45)' }
 ]
 
@@ -498,6 +463,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
  * The view renders under Canvas, whose context is the LOCAL session, so a team tab's graph has to be
  * scoped to its project or it would read this machine's core about the host's nodes.
  */
+export { graphEdgeColor, graphEdgeLabel, graphEdgeTitle }
+
 export const AgentGraphView = memo(function AgentGraphView(props: AgentGraphViewProps) {
   return (
     <ProjectSessionScope projectId={props.projectId}>
