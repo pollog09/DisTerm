@@ -1,4 +1,4 @@
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
   Background,
   BaseEdge,
@@ -20,7 +20,7 @@ import {
 import { useStore as useZustandStore } from 'zustand'
 import type { DeliveryClass } from '@shared/agent-graph'
 import { AGENT_CONFIG, type BuiltinAgentId } from '@shared/agents/config'
-import { IconCanvasView } from '../icons'
+import { IconCanvasView, IconGraph } from '../icons'
 import { isWaitRope } from '../../lib/edgeModel'
 import { edgeToBridge } from '../../lib/noteLink'
 import { markCanvasCovered } from '../../lib/canvasCovered'
@@ -36,7 +36,7 @@ import {
   type GraphRopeInput,
   type GraphSessionInput
 } from '../../lib/agentGraphModel'
-import { DELIVERY_COLOR, graphEdgeColor, graphEdgeLabel, graphEdgeTitle } from '../../lib/agentGraphEdgeText'
+import { DELIVERY_COLOR, graphEdgeColor, graphEdgeLabel, graphEdgeTitle, graphLegend } from '../../lib/agentGraphEdgeText'
 import { agentGraphNodeSize, layoutAgentGraph, routeMidpoint, routeToPath, type GraphPoint } from '../../lib/agentGraphLayout'
 import { kanbanSessionsFrom } from '../../canvas/toKanbanSession'
 import { ProjectSessionScope } from '../../session/owning-project'
@@ -80,7 +80,7 @@ function graphEdgeLabelWidth(edge: GraphEdge): number {
   return label ? label.length * 6 + 16 : 0
 }
 
-type GraphFlowNode = Node<{ node: GraphNode; pulseKey: number }, 'graphNode'>
+type GraphFlowNode = Node<{ node: GraphNode; pulseKey: number; showMachine: boolean }, 'graphNode'>
 type GraphFlowEdge = Edge<{ edge: GraphEdge; route: GraphPoint[]; pulseKey: number }, 'graphEdge'>
 
 function agentLabel(agentId: string): string {
@@ -88,7 +88,7 @@ function agentLabel(agentId: string): string {
 }
 
 const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNode>) {
-  const { node, pulseKey } = data
+  const { node, pulseKey, showMachine } = data
   const activity = node.state === 'working' ? 'running' : node.activity
   return (
     <div
@@ -110,7 +110,7 @@ const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNod
       {node.subtitle && <div className="agent-graph-node__subtitle">{node.subtitle}</div>}
       <div className="agent-graph-node__badges">
         {node.agentId && <span className="agent-graph-badge">{agentLabel(node.agentId)}</span>}
-        {node.machine && <span className="agent-graph-badge" data-machine={node.machine.kind}>{node.machine.label}</span>}
+        {showMachine && node.machine && <span className="agent-graph-badge" data-machine={node.machine.kind}>{node.machine.label}</span>}
         {node.state && <span className="agent-graph-badge" data-role="state">{STATE_LABEL[node.state] ?? node.state}</span>}
         {node.handedOver && <span className="agent-graph-badge">handed work</span>}
         {node.outcome && <span className="agent-graph-badge" data-outcome={node.outcome}>{node.outcome}</span>}
@@ -184,16 +184,23 @@ function stickyTitle(text: unknown): string {
   return String(text ?? '').trim().split('\n')[0].replace(/^#{1,6}\s+/, '').trim().slice(0, 60) || 'Note'
 }
 
-const LEGEND: ReadonlyArray<{ label: string; color: string; dashed?: boolean }> = [
-  { label: 'delivered', color: DELIVERY_COLOR.delivered },
-  { label: 'queued', color: DELIVERY_COLOR.queued },
-  { label: 'not confirmed', color: DELIVERY_COLOR.failed },
-  { label: 'refused', color: DELIVERY_COLOR.refused },
-  { label: 'context link', color: 'var(--state-automation)', dashed: true },
-  { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
-  { label: 'maybe, went back or not declared', color: 'var(--state-warning)', dashed: true },
-  { label: 'opened, then, spawned, next', color: 'rgba(var(--tint-rgb), 0.45)' }
-]
+/** The header's right padding follows the floating controls cluster, whose width changes with the
+ *  presence faces. The cluster itself stays put: maximized nodes measure their free area from it. */
+function useControlsClearance(ref: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const header = ref.current
+    const cluster = document.querySelector('.controls-cluster')
+    if (!header || !cluster) return
+    const apply = (): void => {
+      header.style.setProperty('--agent-graph-clear', `${Math.ceil(window.innerWidth - cluster.getBoundingClientRect().left)}px`)
+    }
+    apply()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(apply)
+    observer.observe(cluster)
+    return () => observer.disconnect()
+  }, [ref])
+}
 
 export interface AgentGraphViewProps {
   projectId: string
@@ -312,6 +319,11 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
     return () => cancelAnimationFrame(frame)
   }, [structureKey, fitView])
 
+  // One machine is a fact about the whole view, so it is said once in the header, not on every box.
+  const machines = useMemo(() => new Map(model.nodes.flatMap((n) => (n.machine ? [[n.machine.label, n.machine] as const] : []))), [model.nodes])
+  const showMachine = machines.size > 1
+  const onlyMachine = machines.size === 1 ? [...machines.values()][0] : undefined
+
   const pulseOf = useCallback((ts: number | undefined): number => (ts !== undefined && ts > mountedAt ? ts : 0), [mountedAt])
 
   const flowNodes = useMemo(
@@ -323,9 +335,9 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
       draggable: false,
       connectable: false,
       deletable: false,
-      data: { node, pulseKey: pulseOf(node.lastEventTs) }
+      data: { node, pulseKey: pulseOf(node.lastEventTs), showMachine }
     })),
-    [model.nodes, layout, pulseOf]
+    [model.nodes, layout, pulseOf, showMachine]
   )
   const flowEdges = useMemo(
     (): GraphFlowEdge[] => model.edges.map((edge) => ({
@@ -377,17 +389,32 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
 
   const warnings = shipResult?.ok ? shipResult.config.warnings.length : 0
   const shipNotice = shipResult && !shipResult.ok ? `Ship config: ${shipResult.reason}` : null
-  const notices = shipNotice ? [shipNotice, ...model.notices] : model.notices
+  const isEmpty = model.nodes.length === 0
+  // What the model notes is about what is drawn, so with nothing drawn only a config failure is left.
+  const notices = [...(shipNotice ? [shipNotice] : []), ...(isEmpty ? [] : model.notices)]
+  const legend = useMemo(() => graphLegend(model.edges), [model.edges])
+  const headerRef = useRef<HTMLDivElement>(null)
+  useControlsClearance(headerRef)
 
   return (
     <div className="agent-graph" role="region" aria-label="Agent graph">
-      <div className="agent-graph__header">
-        <span className="agent-graph__title">Agent graph</span>
-        {ship && (
-          <span className="agent-graph__source">
-            {ship.graphSource ? `Routing: ${ship.graphSource} ship-graph.json` : 'Routing: observed only'}
-          </span>
-        )}
+      <div className="agent-graph__header" ref={headerRef}>
+        <div className="agent-graph__heading">
+          <span className="agent-graph__title">Agent graph</span>
+          {(ship || (onlyMachine && onlyMachine.kind !== 'local')) && (
+            <span className="agent-graph__meta">
+              {onlyMachine && onlyMachine.kind !== 'local' && <span className="agent-graph__machine">{onlyMachine.label}</span>}
+              {ship && (
+                <span
+                  className="agent-graph__source"
+                  title={ship.graphSource ? undefined : 'No ship-graph.json declares an order, so lines come only from what the agents did.'}
+                >
+                  {ship.graphSource ? `Routing: ${ship.graphSource} ship-graph.json` : 'Routing: observed only'}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
         <span className="agent-graph__spacer" />
         <button className="agent-graph__button" aria-pressed={panelOpen} onClick={() => setPanelOpen((v) => !v)}>
           Ship process{warnings ? ` (${warnings} warning${warnings === 1 ? '' : 's'})` : ''}
@@ -404,10 +431,14 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
       )}
       <div className="agent-graph__body">
         <div className="agent-graph__flow">
-          {model.nodes.length === 0 ? (
+          {isEmpty ? (
             <div className="agent-graph__empty">
-              <p>No agents on this canvas yet.</p>
+              <span className="agent-graph__empty-icon"><IconGraph /></span>
+              <p className="agent-graph__empty-title">No agents on this canvas yet</p>
               <p>Start one and it appears here, with its messages, its subagents and how it moves through your ship process.</p>
+              <button className="agent-graph__button" onClick={() => showCanvas(projectId)}>
+                <IconCanvasView /> Go to canvas
+              </button>
             </div>
           ) : (
             <ReactFlow
@@ -429,14 +460,16 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
               <Controls showInteractive={false} position="top-left" fitViewOptions={FIT_OPTIONS} />
             </ReactFlow>
           )}
-          <ul className="agent-graph__legend" aria-label="Legend">
-            {LEGEND.map((l) => (
-              <li key={l.label}>
-                <span className="agent-graph__swatch" data-dashed={l.dashed || undefined} style={{ borderColor: l.color }} />
-                {l.label}
-              </li>
-            ))}
-          </ul>
+          {legend.length > 0 && (
+            <ul className="agent-graph__legend" aria-label="Legend">
+              {legend.map((l) => (
+                <li key={l.label}>
+                  <span className="agent-graph__swatch" data-dashed={l.dashed || undefined} style={{ borderColor: l.color }} />
+                  {l.label}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {panelOpen && (
           <aside className="agent-graph__panel">
