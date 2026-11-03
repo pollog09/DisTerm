@@ -51,6 +51,7 @@ import { ancestorDirs, createTargetDir, newEntryPath } from '../lib/explorerCrea
 import { sshFs } from '../terminal/ssh-fs'
 import { useSession } from '../session/session'
 import { useProjects } from '../state/projects'
+import { wslTerminalsForProject } from '../state/wslTerminals'
 import { promptDialog } from '../components/promptDialog'
 import { ContextMenu, type MenuItem } from '../components/ContextMenu'
 import { isBrowserRuntime } from '../bridge/runtime'
@@ -344,6 +345,17 @@ export function FilesNode({ id, data, selected }: NodeProps<CanvasNode>) {
               new CustomEvent('nodeterm:open-terminal', { detail: { cwd: entry ? path : cwd } })
             )
         })
+        for (const wsl of wslTerminalsForProject(useProjects.getState().activeProjectId)) {
+          items.push({
+            label: `New terminal here: ${wsl.label}`,
+            onClick: () =>
+              window.dispatchEvent(
+                new CustomEvent('nodeterm:open-terminal', {
+                  detail: { cwd: entry ? path : cwd, shell: wsl.shell }
+                })
+              )
+          })
+        }
       }
       items.push({ type: 'separator' })
       items.push({ label: 'New file…', onClick: () => void create(dir, 'file') })
