@@ -75,12 +75,12 @@ const onModalNodeChange = vi.fn()
 
 const defaultNodes = (): unknown[] => [node('a', 'Orchestrator', 'claude'), node('b', 'Worker', 'claude')]
 
-function view(nodes: unknown[], projectId = 'P') {
+function view(nodes: unknown[], projectId = 'P', linkEdges: Edge[] = noEdges) {
   return (
     <AgentGraphView
       projectId={projectId}
       nodes={nodes as never}
-      linkEdges={noEdges}
+      linkEdges={linkEdges}
       controlEdges={noEdges}
       onShowOnCanvas={onShowOnCanvas}
       onModalNodeChange={onModalNodeChange}
@@ -163,6 +163,40 @@ describe('AgentGraphView', () => {
     await mount([])
     expect(document.querySelector('.agent-graph__empty')?.textContent).toMatch(/No agents on this canvas yet/)
     expect(document.querySelector('.react-flow')).toBeNull()
+  })
+
+  it('an empty canvas offers the way back and shows nothing about lines or runs', async () => {
+    snapshotResult.current = { events: [], dropped: 7, capacity: 2000, history: 'memory', historyTruncated: false }
+    shipResult.current = configWith()
+    await mount([])
+    expect(document.querySelector('.agent-graph__legend')).toBeNull()
+    expect(document.querySelector('.agent-graph__notices')).toBeNull()
+    await act(async () => (document.querySelector('.agent-graph__empty button') as HTMLButtonElement).click())
+    expect(useViewMode.getState().viewByProject.P).toBe('canvas')
+  })
+
+  it('an empty canvas still names a config failure', async () => {
+    shipResult.current = { ok: false, reason: 'This SSH project is not connected.' }
+    await mount([])
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('This SSH project is not connected.')
+  })
+
+  it('the legend lists only the kinds of line on screen', async () => {
+    await mount(defaultNodes())
+    expect(document.querySelector('.agent-graph__legend')).toBeNull()
+    const lines = [{ id: 'l', source: 'a', target: 'b', data: {} }] as unknown as Edge[]
+    await act(async () => root.render(view(defaultNodes(), 'P', lines)))
+    const legend = document.querySelector('.agent-graph__legend')?.textContent ?? ''
+    expect(legend).toContain('context link')
+    expect(legend).not.toContain('refused')
+  })
+
+  it('names the machine on each box only when the boxes differ', async () => {
+    await mount(defaultNodes())
+    expect(document.querySelector('[data-machine]')).toBeNull()
+    const mixed = defaultNodes().map((n, i) => (i === 0 ? { ...(n as { data: object }), data: { ...(n as { data: object }).data, ssh: { host: 'box' } } } : n))
+    await act(async () => root.render(view(mixed)))
+    expect([...document.querySelectorAll('[data-machine]')].map((b) => b.getAttribute('data-machine')).sort()).toEqual(['local', 'ssh'])
   })
 
   it('a config failure is named and the graph still draws', async () => {
