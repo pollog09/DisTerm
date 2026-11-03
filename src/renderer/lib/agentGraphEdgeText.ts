@@ -22,7 +22,44 @@ export function graphEdgeColor(edge: GraphEdge): string {
   if (edge.loop || edge.kind === 'ship-reject') return 'var(--state-attention)'
   if (edge.undeclared) return 'var(--state-warning)'
   if (edge.kind === 'context') return 'var(--state-automation)'
-  return 'rgba(var(--tint-rgb), 0.45)'
+  return OTHER_LINE
+}
+
+export interface GraphLegendEntry {
+  label: string
+  color: string
+  dashed?: boolean
+}
+
+const OTHER_LINE = 'rgba(var(--tint-rgb), 0.45)'
+const LINE_LEGEND: readonly GraphLegendEntry[] = [
+  { label: 'context link', color: 'var(--state-automation)', dashed: true },
+  { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
+  { label: 'maybe, went back or not declared', color: 'var(--state-warning)', dashed: true },
+  { label: 'opened, then, spawned, next', color: OTHER_LINE }
+]
+
+/** The legend for the lines actually drawn, read through `graphEdgeColor` so it cannot disagree with
+ *  them. A message line can hold several outcomes, so each one it counted gets its entry. */
+export function graphLegend(edges: readonly GraphEdge[]): GraphLegendEntry[] {
+  const outcomes = new Set<DeliveryClass>()
+  const lineColors = new Set<string>()
+  for (const edge of edges) {
+    if (edge.kind !== 'message') {
+      lineColors.add(graphEdgeColor(edge))
+      continue
+    }
+    if (edge.latest) outcomes.add(edge.latest)
+    if (edge.counts) for (const k of Object.keys(edge.counts) as DeliveryClass[]) if (edge.counts[k] > 0) outcomes.add(k)
+    if (!edge.latest && !edge.counts) outcomes.add('delivered')
+  }
+  const messageLabels: Readonly<Record<DeliveryClass, string>> = { delivered: 'delivered', queued: 'queued', failed: 'not confirmed', refused: 'refused' }
+  return [
+    ...(Object.keys(DELIVERY_COLOR) as DeliveryClass[])
+      .filter((k) => outcomes.has(k))
+      .map((k) => ({ label: messageLabels[k], color: DELIVERY_COLOR[k] })),
+    ...LINE_LEGEND.filter((l) => lineColors.has(l.color))
+  ]
 }
 
 /** The words on a line. A refusal is spelled out, because a colour alone is not a refusal. */
