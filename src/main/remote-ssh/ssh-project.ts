@@ -1,6 +1,9 @@
 import { findSshBinary, nativeMux, setNativePassphrasePrompt, useNativeSsh } from '../../core/remote-ssh/native/native-runtime'
+import { WslEndpoints, setWslEndpoints } from '../../core/remote-ssh/native/wsl-endpoint'
+import { isWslHost, type WslWarning } from '../../shared/wsl-project'
 import { runScpArgv, runSshArgv, startNativeMaster } from '../../core/remote-ssh/native/native-invoke'
 import { promises as fs } from 'fs'
+import os from 'os'
 import path from 'path'
 import { createHash, randomUUID } from 'crypto'
 import { spawn, execFile, execFileSync } from 'child_process'
@@ -91,6 +94,13 @@ import {
 
 interface Runners {
   userDataDir: string
+  /** Refuses (throws) a connection this project may not make. Runs before anything is started, and
+   *  only WSL hosts are subject to it. Absent = no such hosts here. */
+  authorizeEndpoint?: (projectId: string, conn: SshConnection, controlPath: string) => Promise<void>
+  /** What the last check of this endpoint found missing; only a WSL host has any. */
+  endpointWarnings?: (conn: SshConnection) => WslWarning[]
+  /** A WSL project finished connecting: the keepalive decision. Must not reject the connect. */
+  endpointConnected?: (projectId: string, conn: SshConnection) => Promise<void>
   /** Spawn the long-lived master; returns a handle we can kill. `stderr()` (when the spawner wires
    *  it) returns the master's captured stderr so a failed connect can surface the REAL ssh error
    *  (auth denied, host unreachable, host-key mismatch) instead of a generic timeout. `env` (when
@@ -814,6 +824,15 @@ export class SshProjectManager {
     remoteCwd?: string,
     ticket?: symbol
   ): Promise<ConnectResult> {
+    if (isWslHost(conn.host)) {
+      try {
+        if (!this.r.authorizeEndpoint) throw new Error('WSL projects are only available on Windows.')
+        await this.r.authorizeEndpoint(projectId, conn, controlPathFor(projectId))
+      } catch (e) {
+        this.emitStatus({ projectId, status: 'error', error: (e as Error).message })
+        throw e
+      }
+    }
     // Re-derive the login-agent pin for THIS endpoint (issue #427) — a config-level `IdentityAgent
     // SSH_AUTH_SOCK` must reach the user's login agent despite the app-agent env override. The
     // inbound value is unconditionally overwritten: `conn` arrives over IPC (and its ancestors from
@@ -1126,6 +1145,13 @@ export class SshProjectManager {
           entry.setupDone = true
           this.emitStatus({ projectId, status: 'connected' })
           if (hookEndpointPath) this.hookTunnelHealth(projectId, true)
+          // Sent even when empty: that is what clears a warning the user has since fixed. Not awaited:
+          // the keepalive check takes wsl.exe round trips and the project is already usable.
+          if (isWslHost(conn.host)) {
+            const report = (): void =>
+              this.emitStatus({ projectId, status: 'connected', endpointWarnings: this.r.endpointWarnings?.(conn) ?? [] })
+            void Promise.resolve(this.r.endpointConnected?.(projectId, conn)).catch(() => {}).then(report)
+          }
           // The tunnel is live again on a master we just established (the reuse branch returned long
           // before this line), so this is exactly the moment the hook events lost while it was down
           // can be reconstructed from the host.
@@ -2874,7 +2900,9 @@ export function initSshProject(
    *  for the same reason: the settings store lives in main/index.ts. */
   claudeAccountIdsForHost?: (hostKey: string) => string[],
   /** Agent-integration consent per host (see Runners.integrationsForHost / integrationReceipts). */
-  integrations?: Pick<Runners, 'integrationsForHost' | 'integrationReceipts'>
+  integrations?: Pick<Runners, 'integrationsForHost' | 'integrationReceipts'>,
+  /** `settings.wslKeepDistroRunning`. The settings store lives in main/index.ts. */
+  wslKeepDistroRunning?: () => boolean
 ): SshProjectManager {
   const ssh = sshBin()
   const scp = scpBin()
@@ -2889,6 +2917,17 @@ export function initSshProject(
   // know: it still builds OpenSSH argv and reads OpenSSH-shaped answers. Decided ONCE here, at
   // boot, so a single app run never mixes the two transports for one ControlPath.
   const native = useNativeSsh()
+  const wsl = new WslEndpoints({
+    dir: path.join(os.homedir(), '.nodeterm', 'wsl-projects'),
+    atomicWrite: remoteAtomicWrite,
+    keepaliveEnabled: wslKeepDistroRunning,
+    log: (line) => console.warn(line)
+  })
+  setWslEndpoints(wsl)
+  ipcMain.handle(IPC.wslProjectList, () => wsl.list())
+  ipcMain.handle(IPC.wslProjectPrepare, (_e, distro: unknown, browseId: unknown) => wsl.prepare(distro, browseId))
+  ipcMain.handle(IPC.wslProjectBind, (_e, projectId: unknown, host: unknown) => wsl.bind(projectId, host))
+  ipcMain.handle(IPC.wslProjectUnbind, (_e, projectId: unknown, host: unknown) => wsl.unbind(projectId, host))
   if (native) {
     setNativePassphrasePrompt(async (identityFile, req) =>
       (await promptForPassphrase({ identityFile, retry: req.retry, target: req.target })) ?? null
@@ -2896,6 +2935,9 @@ export function initSshProject(
   }
   const mgr = new SshProjectManager({
     userDataDir: app.getPath('userData'),
+    authorizeEndpoint: (projectId, conn, controlPath) => wsl.authorize(projectId, conn.host, controlPath),
+    endpointWarnings: (conn) => wsl.warningsFor(conn.host),
+    endpointConnected: (projectId, conn) => wsl.connected(projectId, conn.host),
     spawnMaster: native ? (args) => startNativeMaster(nativeMux(), args) : (args, env) => {
       // Capture the master's stderr (stdin/stdout stay ignored) so a failed connect can report the
       // real ssh error instead of a generic timeout. Buffer is capped so a chatty host can't grow it

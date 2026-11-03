@@ -15,6 +15,8 @@ import { defaultHostFromQuery, parseSshG, sshGArgs, type HostQuery, type Resolve
 import { WINDOWS_OPENSSH_AGENT_PIPE, pickWindowsAgent } from './windows-agent-discovery'
 import { runSshArgv, useNativeSsh } from './native-invoke'
 import { decideAgentAdd } from './agent-add'
+import { isWslHost } from '../../../shared/wsl-project'
+import { wslEndpoints } from './wsl-endpoint'
 
 export { useNativeSsh }
 
@@ -169,8 +171,16 @@ function defaultAgent(): string | undefined {
 
 export function nativeMux(): NativeMux {
   if (!instance) {
+    const resolveConfigured = makeResolveHost()
     instance = new NativeMux({
-      resolveHost: makeResolveHost(),
+      // A WSL host never reaches `ssh -G`: its transport is not the ssh_config's to describe.
+      resolveHost: (t, ctx) => {
+        if (!isWslHost(t.host)) return resolveConfigured(t)
+        const wsl = wslEndpoints()
+        return wsl
+          ? wsl.resolve(t, ctx)
+          : Promise.reject(new Error('This WSL connection was not set up on this computer. Nothing was started.'))
+      },
       defaultAgent,
       listWindowsPipes,
       askPassphrase: (f, req) => (passphrasePrompt ? passphrasePrompt(f, req) : Promise.resolve(null)),

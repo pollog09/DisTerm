@@ -2,7 +2,7 @@ import { execFile } from 'child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import os from 'os'
 import path from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   agentSockToPin,
   clearAgentProbeCache,
@@ -80,6 +80,13 @@ describe('probeArgs', () => {
 })
 
 describe('probeAgentSockToPin', () => {
+  it('never asks ssh about a WSL host, and pins nothing for it', async () => {
+    const run = vi.fn(async () => 'identityagent SSH_AUTH_SOCK\n')
+    const wsl = { ...conn, host: 'ubuntu-0123456789abcdef.wsl.nodeterm.invalid' }
+    expect(await probeAgentSockToPin(wsl, { run, env: { SSH_AUTH_SOCK: AMBIENT } })).toBeUndefined()
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('answers from the injected runner and memoizes per endpoint', async () => {
     let calls = 0
     const run = async (): Promise<string> => {

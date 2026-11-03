@@ -176,6 +176,21 @@ describe('buildRelayApi', () => {
     expect(t.sent).toEqual([]) // nothing crossed the relay
   })
 
+  it('WSL projects: a relay tab offers none of this machine’s distros and sends nothing', async () => {
+    const { local } = fakeLocalApi()
+    const localWsl = { list: vi.fn(async () => ({ available: true, distros: ['Ubuntu'] })), prepare: vi.fn(), bind: vi.fn() }
+    ;(local as unknown as { wslProject: unknown }).wslProject = localWsl
+    ;(globalThis as Record<string, unknown>).window = { nodeTerminal: local }
+    const t = new FakeTransport()
+    const { api } = buildRelayApi('conn-1', t)
+    await expect(api.wslProject.list()).resolves.toEqual({ available: false, distros: [] })
+    await expect(api.wslProject.prepare('Ubuntu', 'ssh-browse-x')).resolves.toMatchObject({ ok: false, code: 'unavailable' })
+    await expect(api.wslProject.bind('p', 'h')).resolves.toBe(false)
+    expect(localWsl.list).not.toHaveBeenCalled()
+    expect(localWsl.prepare).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([])
+  })
+
   it('share with team: a relay tab takes the E_UNSUPPORTED stub, never the LOCAL preload member', async () => {
     const { local } = fakeLocalApi()
     const localShareTeam = { probe: vi.fn() }

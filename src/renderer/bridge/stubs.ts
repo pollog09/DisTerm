@@ -169,6 +169,18 @@ export function buildStubApi(): Omit<
       onPassphraseRequest: noopUnsub,
       onPassphraseDismiss: noopUnsub
     },
+    // Desktop only, like `sshProject`. A relay tab and the Server Edition offer no WSL rows, and a
+    // relay peer's own request is refused at the host (shared/host-control.ts).
+    wslProject: {
+      list: async () => ({ available: false, distros: [] }),
+      prepare: async () => ({
+        ok: false as const,
+        code: 'unavailable' as const,
+        error: 'WSL projects are only available in the desktop app on Windows.'
+      }),
+      bind: async () => false,
+      unbind: async () => false
+    },
     // Desktop only: the Server Edition has no SSH projects, and a relay tab must never drive the
     // host's ssh (relay-api.ts takes this stub rather than the local preload's member).
     shareTeam: {

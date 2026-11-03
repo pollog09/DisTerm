@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import net, { type AddressInfo } from 'net'
 import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
-import { expandProxyTokens, proxyCommandArgv, proxyCommandSocket, windowsCmdExePath, type ProxySpawn } from './proxy-command'
+import { expandProxyTokens, proxyCommandArgv, proxyCommandSocket, trustedProxySocket, windowsCmdExePath, type ProxySpawn } from './proxy-command'
 
 const T = { hostname: '10.0.0.5', port: 2222, user: 'dev', originalHost: 'box', hostKeyAlias: undefined }
 
@@ -38,6 +38,55 @@ describe('expandProxyTokens', () => {
   it('an unknown token is an error by name, never passed through', () => {
     expect(() => expandProxyTokens('nc %h %C', T)).toThrow(/unknown token %C/)
     expect(() => expandProxyTokens('trailing %', T)).toThrow(/unknown token %/)
+  })
+})
+
+describe('a proxy that dies after the connection was up', () => {
+  it('closes the stream, which is what tells ssh2 the connection is gone', async () => {
+    const script = `process.stdout.write('SSH-2.0-x\\r\\n',()=>setTimeout(()=>process.exit(1),50))`
+    const sock = proxyCommandSocket('x', {
+      timeoutMs: 5000,
+      platform: 'linux',
+      spawn: () => spawn(process.execPath, ['-e', script], { stdio: ['pipe', 'pipe', 'pipe'] })
+    })
+    const got: string[] = []
+    sock.on('data', (d: Buffer) => got.push(d.toString()))
+    sock.on('error', () => {})
+    await new Promise<void>((r) => sock.once('close', () => r()))
+    expect(got.join('')).toBe('SSH-2.0-x\r\n')
+    expect(sock.destroyed).toBe(true)
+  })
+})
+
+describe('trustedProxySocket', () => {
+  it('spawns the argv as given on Windows: no cmd.exe, no verbatim command line', async () => {
+    const seen: { file: string; args: string[]; verbatim: boolean }[] = []
+    const killTree = vi.fn()
+    const sock = trustedProxySocket({ file: 'C:\\Windows\\System32\\wsl.exe', args: ['-d', 'My %PATH% & Distro', '--exec', 'sh'] }, 'WSL x', {
+      timeoutMs: 1000,
+      platform: 'win32',
+      killTree,
+      spawn: (file, args, opts) => {
+        seen.push({ file, args, verbatim: opts.verbatim })
+        return spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: ['pipe', 'pipe', 'pipe'] })
+      }
+    })
+    sock.on('error', () => {})
+    expect(seen).toEqual([
+      { file: 'C:\\Windows\\System32\\wsl.exe', args: ['-d', 'My %PATH% & Distro', '--exec', 'sh'], verbatim: false }
+    ])
+    sock.destroy()
+    expect(killTree).toHaveBeenCalledTimes(1)
+  })
+
+  it('names its own connection in an error', async () => {
+    const sock = trustedProxySocket({ file: 'x', args: [] }, 'WSL Ubuntu', {
+      timeoutMs: 5000,
+      platform: 'linux',
+      spawn: () => spawn(process.execPath, ['-e', `process.stderr.write('boom\\n');process.exit(3)`], { stdio: ['pipe', 'pipe', 'pipe'] })
+    })
+    const err = await new Promise<Error>((r) => sock.on('error', r))
+    expect(err.message).toBe('WSL Ubuntu exited (code 3) before the connection was up: boom')
   })
 })
 

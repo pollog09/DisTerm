@@ -87,6 +87,10 @@ An installer is offered only from a local project, so it cannot run on the selec
 host by mistake. Runtime session-host attach failures still use the terminal's existing error
 path; a bundle being present is not proof an individual session attached successfully.
 
+> A `wsl:<distro>` profile below gives a plain shell in a distribution. For agents running in WSL with
+> status, hooks, messaging and tmux persistence, use a WSL project (CLAUDE.md, "WSL projects"), which
+> treats the distribution as an SSH project.
+
 ## Windows profile resolution
 
 The picker (Settings → Shell, and a `New terminal: WSL: <distro>` row in the add menu) comes from

@@ -20,6 +20,7 @@
 // Editors and owners pass untouched: Editor is shell access by definition, so gating them would be
 // theatre.
 import { isWslShellValue } from '../../shared/terminal-profiles'
+import { isWslHost } from '../../shared/wsl-project'
 import path from 'node:path'
 import { IPC } from '../../shared/ipc'
 import { decodePtyDataSessionId } from '../../shared/rpc'
@@ -372,6 +373,10 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.projectSettingsUpdateLocal,
   IPC.projectSettingsLaunchInfo,
   IPC.ptyTerminalProfiles,
+  IPC.wslProjectList,
+  IPC.wslProjectPrepare,
+  IPC.wslProjectBind,
+  IPC.wslProjectUnbind,
   IPC.projectSetupRun,
   IPC.projectSetupCancel,
   IPC.projectSetupConsentSubmit,
@@ -512,9 +517,18 @@ export function decideAccess(_kind: 'req' | 'cast', method: string, args: unknow
   if (isEditor(ctx.role)) {
     // Editors may start shells on the host, but a WSL distribution is the host user's own choice.
     const create = method === IPC.ptyCreate && Array.isArray(args) ? args[0] : undefined
-    if (create && typeof create === 'object' && isWslShellValue((create as { shell?: unknown }).shell)) {
-      const { shell: _shell, ...rest } = create as Record<string, unknown>
-      return { allow: true, args: [rest, ...args.slice(1)] }
+    if (create && typeof create === 'object') {
+      const c = create as { shell?: unknown; sshRemote?: { conn?: { host?: unknown } } }
+      const wslShell = isWslShellValue(c.shell)
+      // The same choice by route: a peer attaches to a WSL project's session through the host's own
+      // connection (core/relay-attach-plan.ts), never by naming that connection.
+      const wslRoute = isWslHost(c.sshRemote?.conn?.host)
+      if (wslShell || wslRoute) {
+        const rest = { ...(create as Record<string, unknown>) }
+        if (wslShell) delete rest.shell
+        if (wslRoute) delete rest.sshRemote
+        return { allow: true, args: [rest, ...args.slice(1)] }
+      }
     }
     // The same choice stored instead of used: a project's local shell applies to the host's own
     // terminals, so this one is refused rather than quietly dropped from a settings save.

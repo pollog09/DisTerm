@@ -120,6 +120,8 @@ export const SETTINGS_VERB_KEY_LIST = Object.keys(SETTINGS_VERB_KEYS) as Setting
  * `SETTINGS_VERB_FORBIDDEN_PATTERN`, so the list below is the named core, not the whole fence.
  */
 export const SETTINGS_VERB_FORBIDDEN = new Set<keyof Settings | keyof Project>([
+  // Whether a process outlives the app and a VM keeps using memory: the machine owner's call.
+  'wslKeepDistroRunning',
   // Permission mode — global and per project (bypassPermissions travels with a clone).
   'claudePermissionMode',
   'defaultPermissionMode',

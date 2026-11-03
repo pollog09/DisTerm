@@ -20,6 +20,11 @@ const project = (over: Partial<SettingsProjectView> = {}): SettingsProjectView =
 })
 
 describe('the allowlist is the gate, and the forbidden set outranks it', () => {
+  it('an agent can never touch the WSL keepalive: a process that outlives the app is the owner’s call', () => {
+    expect(SETTINGS_VERB_FORBIDDEN.has('wslKeepDistroRunning')).toBe(true)
+    expect((SETTINGS_VERB_KEY_LIST as readonly string[]).includes('wslKeepDistroRunning')).toBe(false)
+  })
+
   it('no allowlisted key is forbidden — by name or by name class', () => {
     for (const key of SETTINGS_VERB_KEY_LIST) {
       expect((SETTINGS_VERB_FORBIDDEN as ReadonlySet<string>).has(key), key).toBe(false)
@@ -77,7 +82,8 @@ describe('the allowlist is the gate, and the forbidden set outranks it', () => {
       'phoneAccessEnabled',
       'telemetryEnabled',
       'terminalShortcutPolicy',
-      'vanillaLaunchDefault'
+      'vanillaLaunchDefault',
+      'wslKeepDistroRunning'
     ])
   })
 
@@ -86,7 +92,7 @@ describe('the allowlist is the gate, and the forbidden set outranks it', () => {
     // adding it here is the correct response — it records that the set is that key's only fence.
     expect(
       [...SETTINGS_VERB_FORBIDDEN].filter((k) => !SETTINGS_VERB_FORBIDDEN_PATTERN.test(k)).sort()
-    ).toEqual(['agentIssueReporting', 'agentMessagingDefault', 'boardDispatch', 'customAgents'])
+    ).toEqual(['agentIssueReporting', 'agentMessagingDefault', 'boardDispatch', 'customAgents', 'wslKeepDistroRunning'])
     for (const key of SETTINGS_VERB_KEY_LIST) expect(SETTINGS_VERB_FORBIDDEN_PATTERN.test(key), key).toBe(false)
   })
 

@@ -2144,6 +2144,15 @@ export interface Settings {
    * asked OpenSSH for exactly this. Logic: `core/remote-ssh/native/agent-add.ts`.
    */
   windowsSshAgentAddKeys: boolean
+  /**
+   * Keep a WSL project's distribution running after the app quits, so its agents and tmux sessions
+   * survive: WSL stops a distribution with no client attached, and tmux does not count. On, one hidden
+   * `wsl.exe` per distribution in use outlives the app and the WSL VM keeps using memory. Off, nothing
+   * outlives the app. Machine-local: settings.json only, never in a project file. A relay peer cannot
+   * set it (`settings:save` is host-only) and neither can an agent (`SETTINGS_VERB_FORBIDDEN`).
+   * Logic: core/remote-ssh/native/wsl-endpoint.ts.
+   */
+  wslKeepDistroRunning: boolean
   /** Plain mouse wheel zooms the canvas (no Cmd/Ctrl needed). On macOS a two-finger trackpad
    *  scroll keeps panning independently (see canvas/wheel-gesture.ts), so mouse and trackpad
    *  coexist; elsewhere this still trades away scroll-to-pan, so it stays opt-in. */
@@ -2556,6 +2565,7 @@ export const DEFAULT_SETTINGS: Settings = {
   copyOnSelect: false,
   terminalFontZoomKeys: false,
   windowsSshAgentAddKeys: false,
+  wslKeepDistroRunning: true,
   wheelZoom: false,
   wheelZoomSpeed: 1,
   trackpadPan: true,
@@ -2724,6 +2734,9 @@ export type SshProjectStatus = 'connecting' | 'connected' | 'disconnected' | 're
 export interface SshProjectStatusEvent {
   /** Hook-only health update; it does not imply an SSH reconnect or terminal restart. */
   hookTunnelVerified?: boolean
+  /** A WSL project's named warnings (a missing tool, a restarted distro). Same kind of update: it
+   *  says nothing about the connection. */
+  endpointWarnings?: import('./wsl-project').WslWarning[]
   projectId: string
   status: SshProjectStatus
   error?: string
@@ -4661,6 +4674,7 @@ export interface NodeTerminalApi {
   speech: SpeechApi
   ssh: SshApi
   sshProject: SshProjectApi
+  wslProject: import('./wsl-project').WslProjectApi
   sshFs: SshFsApi
   git: GitApi
   clipboard: ClipboardApi

@@ -465,6 +465,8 @@ import { followSharedProject, shareCanvas, shareProjectDeps } from '../lib/share
 import { handedOffWarning } from '../lib/handedOff'
 import { skipNextColdResumeFor } from '../terminal/handed-off-resume'
 import { SshProjectDialog } from '../components/SshProjectDialog'
+import type { WslWarning } from '@shared/wsl-project'
+import { bindOpenedWslProject, dropClosedWslConnection, unbindDeletedWslProject } from '../lib/wslProjectBinding'
 import { SshPassphrasePrompt } from '../components/SshPassphrasePrompt'
 import { transport } from '../terminal/local-transport'
 import { sshFs } from '../terminal/ssh-fs'
@@ -1772,6 +1774,7 @@ export function Canvas() {
   // Live SSH ControlMaster status per project id (drives the thin connection banner).
   const [sshStatus, setSshStatus] = useState<Record<string, SshProjectStatus>>({})
   const [lostHookTunnels, setLostHookTunnels] = useState<Record<string, boolean>>({})
+  const [endpointWarnings, setEndpointWarnings] = useState<Record<string, WslWarning[]>>({})
   // The cause that came with an `error` status. Kept beside the status because the banner used to
   // render a bare "SSH connection error", throwing away the one line ssh gave us (permission
   // denied, host unreachable, host key mismatch) that tells the user what to actually fix.
@@ -17677,6 +17680,10 @@ export function Canvas() {
         setLostHookTunnels((prev) => ({ ...prev, [e.projectId]: !e.hookTunnelVerified }))
         return // A health probe must never trigger terminal reconnection.
       }
+      if (e.endpointWarnings) {
+        setEndpointWarnings((prev) => ({ ...prev, [e.projectId]: e.endpointWarnings as WslWarning[] }))
+        return // Same: it says nothing about the connection.
+      }
       setSshStatus((prev) => ({ ...prev, [e.projectId]: e.status }))
       // Keep the cause for the banner. Cleared on any non-error status so a stale reason can
       // never be shown next to a healthy connection.
@@ -17755,14 +17762,15 @@ export function Canvas() {
         if (g !== true && !(await g)) return
         takeBack?.()
         commitActiveToStore()
-        useProjects.getState().openSshProject(input.label, ssh)
+        const opened = useProjects.getState().openSshProject(input.label, ssh)
+        bindOpenedWslProject(opened, ssh, api?.wslProject)
         // Same contract as onRepoCloned: the welcome screen waits behind the SSH dialog and
         // dismisses only once the project is created (cancel returns to the welcome screen).
         setWelcomeOpen(false)
         void writeDisk()
       })()
     },
-    [commitActiveToStore, writeDisk, confirmHandedOffReopen]
+    [commitActiveToStore, writeDisk, confirmHandedOffReopen, api]
   )
 
   // Synchronous end to end while the project limit allows (its gate answers `true` in the same
@@ -17973,10 +17981,11 @@ export function Canvas() {
   // differences: agent status is KEPT (the persisted sessionId is what lets a later reopen
   // cold-restore `claude --resume` the conversation — ending the process is a reboot, not an
   // amnesia), and SSH masters are NOT disconnected (close never managed the connection before,
-  // and a reopen expects it exactly as a project switch left it).
-  const endProjectSessions = useCallback((id: string) => {
+  // and a reopen expects it exactly as a project switch left it). Resolves once the project's own
+  // remote kill has been answered, for the one caller that must not cut across it.
+  const endProjectSessions = useCallback((id: string): Promise<unknown> | undefined => {
     const project = useProjects.getState().getProject(id)
-    if (!project) return
+    if (!project) return undefined
     project.nodes.forEach((n) => {
       if ((n.kind ?? 'terminal') === 'terminal') {
         disposeTerminalOnUnmount(sessionForProject(id).id, n.id) // may be parked from a recent switch away
@@ -17990,9 +17999,7 @@ export function Canvas() {
     const terminalIds = project.nodes
       .filter((n) => (n.kind ?? 'terminal') === 'terminal')
       .map((n) => n.id)
-    if (project.ssh) {
-      void window.nodeTerminal.sshProject.killSessions(id, terminalIds).catch(() => {})
-    }
+    const killed = project.ssh ? window.nodeTerminal.sshProject.killSessions(id, terminalIds).catch(() => {}) : undefined
     for (const scopeId of useSshConn.getState().attachmentScopesOf(id)) {
       const nodeIds =
         hostAttachmentsFor(id, project.nodes, project.ssh?.server).find(
@@ -18000,6 +18007,7 @@ export function Canvas() {
         )?.nodeIds ?? []
       void window.nodeTerminal.sshProject.killSessions(scopeId, nodeIds).catch(() => {})
     }
+    return killed
   }, [])
 
   // Close a project: hide it from the tab bar but keep it (and, by default, its tmux/agent
@@ -18013,7 +18021,10 @@ export function Canvas() {
     (id: string, endSessions = false) => {
       const store = useProjects.getState()
       if (id === store.activeProjectId) commitActiveToStore()
-      if (endSessions) endProjectSessions(id)
+      const ended = endSessions ? endProjectSessions(id) : undefined
+      // A closed WSL project gives up its connection, so the watchdog cannot boot a distro the user
+      // stopped. See `dropClosedWslConnection`.
+      dropClosedWslConnection(store.getProject(id), ended, sshDisconnect, (p) => useSshConn.getState().clear(p))
       // A relay tab is never reopened from the history (`planReopen` skips it too): its nodes are
       // the host's sessions.
       if (!store.getProject(id)?.remote) {
@@ -18965,6 +18976,7 @@ export function Canvas() {
           .finally(() => void window.nodeTerminal.sshProject.disconnect(scopeId))
         useSshConn.getState().clearAttachment(scopeId)
       }
+      unbindDeletedWslProject(project, window.nodeTerminal.wslProject)
       disposeRelayTabForProject(id)
       store.deleteProject(id)
       void writeDisk()
@@ -19602,7 +19614,8 @@ export function Canvas() {
             setSettingsOpen(true)
           }}
         />
-        <HostIntegrationBanner hostKey={activeSshHostKey} />
+        <HostIntegrationBanner
+          hostLabel={activeSshServer?.wslDistro ? activeSshServer.label : undefined} hostKey={activeSshHostKey} />
         {/* Discovery belongs to the local core; never run its installer on an SSH/relay host. */}
         <TmuxBanner
           onInstall={!isSshProject && session.id === localSession.id ? runInTerminal : undefined}
@@ -19734,6 +19747,23 @@ export function Canvas() {
             }}
           />
         )}
+        {activeSshServer &&
+          endpointWarnings[activeProjectId]?.map((w) => (
+            <div
+              key={w.kind}
+              role="status"
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                color: 'var(--text)',
+                background: 'color-mix(in srgb, var(--state-warning) 22%, var(--surface-overlay))',
+                border: '1px solid var(--border)',
+                borderRadius: 8
+              }}
+            >
+              {w.message}
+            </div>
+          ))}
         {activeSshServer &&
           sshStatus[activeProjectId] &&
           (sshStatus[activeProjectId] !== 'connected' || lostHookTunnels[activeProjectId]) &&

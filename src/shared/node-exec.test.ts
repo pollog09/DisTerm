@@ -66,6 +66,12 @@ describe('stripSharedNodeExec', () => {
     expect(JSON.stringify(n)).not.toContain('ProxyCommand')
   })
 
+  it('removes a WSL project’s distro before a project file is written, and from a peer’s node', () => {
+    const ssh = { host: 'ubuntu-0123456789abcdef.wsl.nodeterm.invalid', user: 'u', wslDistro: 'Ubuntu' }
+    expect(stripSharedNodeExec([node({ ssh })])[0].ssh).toEqual({ host: ssh.host, user: 'u' })
+    expect(sanitizeInboundNode(node({ ssh })).ssh).toEqual({ host: ssh.host, user: 'u' })
+  })
+
   it('leaves nodes with no exec fields untouched (same object)', () => {
     const nodes = [node({ cwd: '/a' })]
     expect(stripSharedNodeExec(nodes)[0]).toBe(nodes[0])

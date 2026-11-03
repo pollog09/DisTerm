@@ -39,6 +39,12 @@ export interface SshConnection {
   identityAgentSock?: string
   /** Display label, copied from the saved server when the node is created. */
   label?: string
+  /**
+   * The WSL distribution a WSL project runs in, for display and matching. It selects nothing: the
+   * distro that gets started is read from machine-local storage, by the host handle
+   * (core/remote-ssh/native/wsl-endpoint.ts). Never written to a project file (`stripSharedNodeExec`).
+   */
+  wslDistro?: string
 }
 
 /**

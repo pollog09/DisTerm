@@ -113,7 +113,14 @@ export function IntegrationGrandfatherNotice({ onOpenSettings }: { onOpenSetting
 
 /** The per-host question: the active project's SSH host has no answer yet, so nothing was
  *  installed there. Shown only once the first-run question is answered. */
-export function HostIntegrationBanner({ hostKey }: { hostKey: string | null }): React.JSX.Element | null {
+export function HostIntegrationBanner({
+  hostKey,
+  hostLabel
+}: {
+  hostKey: string | null
+  /** What to call the host when its key is not a name anyone would recognize (a WSL project). */
+  hostLabel?: string
+}): React.JSX.Element | null {
   const settings = useSettings((s) => s.settings)
   const hydrated = useSettings((s) => s.hydrated)
   const save = useSave()
@@ -124,7 +131,7 @@ export function HostIntegrationBanner({ hostKey }: { hostKey: string | null }): 
     <div className="announce-banner announce-banner--info" role="status" data-testid="host-integration-prompt">
       <span className="announce-banner__dot" />
       <div className="announce-banner__content">
-        <span className="announce-banner__title">Integrate with the agents on {hostKey}?</span>
+        <span className="announce-banner__title">Integrate with the agents on {hostLabel ?? hostKey}?</span>
         <span className="announce-banner__body">
           nodeterm writes the same hooks and skills into your agent config on that host. Nothing is
           installed there until you say. {INTEGRATION_UNAVAILABLE}
