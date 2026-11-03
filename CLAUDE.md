@@ -8066,6 +8066,11 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `<task-notification>` is not a turn; SendMessage fires a second `SubagentStart` under the same agent id;
   a child's `SubagentStop` fires twice around its hand-back; side agents stop with no type. Not captured:
   a subagent open through `SessionStart(compact)` itself (it ended between `PreCompact` and that).
+- **A `next` and a `reject` to the same agent are not told apart, and no run is counted for it**
+  (`placeRuns`). Picking `next` always stated a passed review as fact, and a declared reject could never
+  light up. Both edges read "maybe" in the warning colour, never the reject one, the run is a `maybeRuns`
+  on each stage, and later runs are placed from every position it could have been until only one route
+  is left. A pipeline with no such pair takes the fast path and is unaffected.
 - **A run's first end stands, and a re-start is a new pass.** The tool path can report a child's end
   again after its native stop, and a rejection can resume the same `agent_id`; rewriting `endedAt` in
   either case moves the run past whatever started in between, which erased the forward edge and invented

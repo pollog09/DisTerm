@@ -16,6 +16,7 @@ import { WORKING_STALE_MS } from '../../src/shared/agents/stale'
 import { normalizeClaude } from '../../src/shared/agents/normalize'
 import type { ShipConfig, ShipEdge, ShipPipeline } from '../../src/shared/ship-config'
 import { buildAgentGraphModel, type GraphEdge } from '../../src/renderer/lib/agentGraphModel'
+import { graphEdgeColor, graphEdgeLabel, graphEdgeTitle } from '../../src/renderer/lib/agentGraphEdgeText'
 
 const NODE = 'orch'
 const SESSION = '11111111-1111-4111-8111-000000000001'
@@ -35,6 +36,16 @@ const compact = (): void => hook({ hook_event_name: 'SessionStart', source: 'com
 const resume = (): void => hook({ hook_event_name: 'SessionStart', source: 'resume' })
 const start = (agent_id: string, agent_type: string): void => hook({ hook_event_name: 'SubagentStart', agent_id, agent_type })
 const stop = (agent_id: string, agent_type: string): void => hook({ hook_event_name: 'SubagentStop', agent_id, agent_type })
+/** One subagent run in a second session, through the same path. */
+function hook2(agent_type: string): void {
+  const agent_id = newId()
+  for (const hook_event_name of ['SubagentStart', 'SubagentStop']) {
+    clock += 10
+    vi.setSystemTime(clock)
+    const ev = normalizeClaude({ nodeId: 'second', agentId: 'claude', payload: { session_id: '11111111-1111-4111-8111-000000000002', hook_event_name, agent_id, agent_type } })
+    if (ev) for (const out of lifecycle.apply(ev)) recordAgentEvent(out)
+  }
+}
 const newId = (): string => `a${(++agentSeq).toString(16).padStart(16, '0')}`
 function run(...types: string[]): void {
   for (const agent_type of types) {
@@ -372,6 +383,173 @@ describe('an agent used by more than one stage', () => {
   })
 })
 
+describe('next and reject to the same agent', () => {
+  const STEPS = [{ id: 'impl', agent: 'implementer' }, { id: 'r1', agent: 'change-reviewer' }, { id: 'fix', agent: 'implementer' }, { id: 'r2', agent: 'change-reviewer' }]
+  const CHAIN: ShipEdge[] = [
+    { from: 'impl', to: 'r1', kind: 'next' }, { from: 'r1', to: 'fix', kind: 'next' }, { from: 'fix', to: 'r2', kind: 'next' },
+    { from: 'r1', to: 'impl', kind: 'reject' }
+  ]
+  const stage = (m: Awaited<ReturnType<typeof model>>, id: string) => m.nodes.find((n) => n.id === `stage:orch:ship-change:${id}`)!
+  const toFix = 'ship:orch:ship-change:r1:fix:next'
+  const toImpl = 'ship:orch:ship-change:r1:impl:reject'
+
+  it('asserts neither forward progress nor a rejection: both edges are maybe, and a notice names them', async () => {
+    run('implementer', 'change-reviewer', 'implementer')
+    const m = await model(CHAIN, STEPS)
+    for (const id of [toFix, toImpl]) {
+      expect(edge(m.edges, id)).toMatchObject({ maybe: 1 })
+      expect(edge(m.edges, id)!.traversals).toBeUndefined()
+      expect(edge(m.edges, id)!.loop).toBeUndefined()
+      expect(graphEdgeLabel(edge(m.edges, id)!)).toBe('maybe ×1')
+      expect(graphEdgeColor(edge(m.edges, id)!)).toBe('var(--state-warning)')
+    }
+    expect(stage(m, 'impl')).toMatchObject({ runs: 1, maybeRuns: 1 })
+    expect(stage(m, 'fix')).toMatchObject({ runs: 0, maybeRuns: 1 })
+    expect(stage(m, 'impl').reentered).toBeUndefined()
+    expect(m.notices.join()).toMatch(/after r1, implementer could be the next stage fix or a rejection back to impl/)
+  })
+
+  it('what follows stays uncertain: a reviewer after it may be either stage, with no false entry', async () => {
+    run('implementer', 'change-reviewer', 'implementer', 'change-reviewer')
+    const m = await model(CHAIN, STEPS)
+    expect(stage(m, 'r1')).toMatchObject({ runs: 1, maybeRuns: 1 })
+    expect(stage(m, 'r2')).toMatchObject({ runs: 0, maybeRuns: 1 })
+    expect(edge(m.edges, 'ship:orch:ship-change:fix:r2:next')).toMatchObject({ maybe: 1 })
+    expect(edge(m.edges, 'ship:orch:ship-change:impl:r1:next')).toMatchObject({ traversals: 1, maybe: 1 })
+    expect(graphEdgeLabel(edge(m.edges, 'ship:orch:ship-change:impl:r1:next')!)).toBe('×1 + maybe ×1')
+    expect(edge(m.edges, 'spawned:orch:ship-change:r2')).toBeUndefined()
+    expect(m.edges.some((e) => e.loop)).toBe(false)
+  })
+
+  it('it settles at a stage only one route reaches', async () => {
+    const stages = [...STEPS, { id: 'done', agent: 'releaser' }]
+    run('implementer', 'change-reviewer', 'implementer', 'releaser')
+    const m = await model([...CHAIN, { from: 'fix', to: 'done', kind: 'next' }], stages)
+    expect(stage(m, 'done')).toMatchObject({ runs: 1 })
+    expect(stage(m, 'done').maybeRuns).toBeUndefined()
+    expect(edge(m.edges, 'ship:orch:ship-change:fix:done:next')).toMatchObject({ maybe: 1 })
+    expect(edge(m.edges, 'spawned:orch:ship-change:done')).toBeUndefined() // it did not start the run
+  })
+
+  it('a new prompt ends the uncertainty', async () => {
+    run('implementer', 'change-reviewer', 'implementer')
+    userPrompt()
+    run('implementer')
+    const m = await model(CHAIN, STEPS)
+    expect(stage(m, 'impl')).toMatchObject({ runs: 2, maybeRuns: 1 })
+  })
+
+  it("the real /ship-change shape is untouched: reject edges, no repeated agents, nothing maybe", async () => {
+    const shape: ShipEdge[] = [...NEXT, REJECT, { from: 'review', to: 'docs', kind: 'reject' }]
+    run('implementer', 'doc-writer', 'change-reviewer', 'implementer')
+    const m = await model(shape)
+    expect(m.edges.some((e) => e.maybe)).toBe(false)
+    expect(m.nodes.some((n) => n.maybeRuns)).toBe(false)
+    expect(m.notices.join()).not.toMatch(/could/)
+    expect(edge(m.edges, REVIEW_TO_IMPL)).toMatchObject({ traversals: 1, loop: true })
+  })
+
+  it('a next chain with no reject between them is untouched too', async () => {
+    run('implementer', 'change-reviewer', 'implementer', 'change-reviewer')
+    const m = await model(CHAIN.filter((e) => e.kind === 'next'), STEPS)
+    expect(m.edges.some((e) => e.maybe)).toBe(false)
+    for (const id of ['impl', 'r1', 'fix', 'r2']) expect(stage(m, id).runs, id).toBe(1)
+  })
+})
+
+describe('an unplaced run', () => {
+  const LISTED = [{ id: 'x1', agent: 'X' }, { id: 'y', agent: 'Y' }, { id: 'x2', agent: 'X' }, { id: 'z', agent: 'Z' }]
+  const CHAIN: ShipEdge[] = [{ from: 'x1', to: 'y', kind: 'next' }, { from: 'y', to: 'x2', kind: 'next' }]
+
+  it('goes on the earliest by declared order, however the stages are listed, and invents no loop', async () => {
+    const shuffled = [LISTED[2], LISTED[1], LISTED[0], LISTED[3]]
+    for (const stages of [LISTED, shuffled]) {
+      _resetForTest()
+      lifecycle = new ClaudeSubagentLifecycle()
+      run('Z', 'X', 'Y')
+      const m = await model(CHAIN, stages)
+      expect(edge(m.edges, 'ship:orch:ship-change:x1:y:next')).toMatchObject({ traversals: 1 })
+      expect(m.edges.some((e) => e.loop || e.undeclared)).toBe(false)
+      expect(m.nodes.find((n) => n.id === 'stage:orch:ship-change:x1')).toMatchObject({ runs: 1 })
+    }
+  })
+
+  it('a tie is by id, not list order', async () => {
+    const stages = [{ id: 'b', agent: 'X' }, { id: 'a', agent: 'X' }]
+    run('X')
+    const m = await model([], stages)
+    expect(m.nodes.find((n) => n.id === 'stage:orch:ship-change:a')).toMatchObject({ runs: 1 })
+    expect(m.notices.join()).toMatch(/could not be placed/)
+  })
+
+  it('a move out of a guess never reads as a rejection or a loop, even along a declared edge', async () => {
+    const stages = [{ id: 'w', agent: 'W' }, { id: 'x1', agent: 'X' }, { id: 'x2', agent: 'X' }, { id: 'z', agent: 'Z' }]
+    const declared = async (kind: 'next' | 'reject') => {
+      _resetForTest()
+      lifecycle = new ClaudeSubagentLifecycle()
+      run('Z', 'X', 'W')
+      return model([{ from: 'w', to: 'x1', kind: 'next' }, { from: 'x1', to: 'x2', kind: 'next' }, { from: 'x1', to: 'w', kind }], stages)
+    }
+    const viaReject = await declared('reject')
+    expect(edge(viaReject.edges, 'ship:orch:ship-change:x1:w:reject')!.traversals).toBeUndefined()
+    const viaCycle = await declared('next') // closes a cycle, so the order says w comes first
+    expect(viaCycle.edges.some((e) => e.loop)).toBe(false)
+    expect(viaCycle.nodes.some((n) => n.reentered)).toBe(false)
+  })
+
+  it('nothing is judged backwards from a guess', async () => {
+    const stages = [{ id: 'w', agent: 'W' }, { id: 'x1', agent: 'X' }, { id: 'x2', agent: 'X' }, { id: 'z', agent: 'Z' }]
+    const edges: ShipEdge[] = [{ from: 'w', to: 'x1', kind: 'next' }, { from: 'x1', to: 'x2', kind: 'next' }]
+    run('Z', 'X', 'W')
+    const m = await model(edges, stages)
+    expect(m.edges.some((e) => e.loop)).toBe(false)
+    expect(m.nodes.some((n) => n.reentered)).toBe(false)
+  })
+})
+
+describe('stages of one agent that fan out', () => {
+  const STAGES_FAN = [{ id: 'impl', agent: 'implementer' }, { id: 'a', agent: 'reviewer' }, { id: 'b', agent: 'reviewer' }]
+  const FAN: ShipEdge[] = [{ from: 'impl', to: 'a', kind: 'next' }, { from: 'impl', to: 'b', kind: 'next' }]
+  const runsOf = (m: Awaited<ReturnType<typeof model>>, id: string) => m.nodes.find((n) => n.id === `stage:orch:ship-change:${id}`)!.runs
+
+  it('one after the other, the second goes on the sibling that has not run', async () => {
+    run('implementer', 'reviewer', 'reviewer')
+    const m = await model(FAN, STAGES_FAN)
+    expect([runsOf(m, 'a'), runsOf(m, 'b')]).toEqual([1, 1])
+  })
+
+  it('in parallel, too', async () => {
+    run('implementer')
+    const [x, y] = [newId(), newId()]
+    start(x, 'reviewer')
+    start(y, 'reviewer')
+    stop(x, 'reviewer')
+    stop(y, 'reviewer')
+    const m = await model(FAN, STAGES_FAN)
+    expect([runsOf(m, 'a'), runsOf(m, 'b')]).toEqual([1, 1])
+  })
+
+  it('a third run is then a retry, not a third stage', async () => {
+    run('implementer', 'reviewer', 'reviewer', 'reviewer')
+    const m = await model(FAN, STAGES_FAN)
+    expect(runsOf(m, 'a')! + runsOf(m, 'b')!).toBe(3)
+    expect(m.edges.some((e) => e.loop)).toBe(false)
+  })
+})
+
+describe('notices', () => {
+  it('two sessions hitting the same one show it once', async () => {
+    const stages = [{ id: 'a', agent: 'X' }, { id: 'b', agent: 'X' }]
+    run('X')
+    hook2('X')
+    const snapshot = await readAgentGraphSnapshot('P', { route: () => ({ kind: 'unsupported' }) })
+    const session = (id: string) => ({ id, kind: 'terminal' as const, title: id, agentId: 'claude', machine: { kind: 'local' as const, label: 'x' } })
+    const m = buildAgentGraphModel({ sessions: [session(NODE), session('second')], links: [], ropes: [], snapshot, ship: ship([], stages), now: clock })
+    expect(m.notices.filter((n) => n.includes('could not be placed'))).toHaveLength(1)
+    expect(new Set(m.nodes.map((n) => n.id)).size).toBe(m.nodes.length)
+  })
+})
+
 describe('which pipeline a run was', () => {
   const pipelineConfig = (pipelines: ShipPipeline[]): ShipConfig => ({ ...ship([]), pipelines })
   const SHIP: ShipPipeline = { id: 'ship', name: 'Ship', stages: STAGES, edges: [...NEXT, REJECT] }
@@ -418,6 +596,12 @@ describe('which pipeline a run was', () => {
     expect(m.notices.join()).toMatch(/fit Ship or Twin equally/)
     expect(m.nodes.some((n) => n.kind === 'stage')).toBe(false)
     expect(m.edges.some((e) => e.kind === 'ship-reject')).toBe(false)
+    expect(m.nodes.some((n) => n.reentered)).toBe(false)
+    // The way back is on the line, in words and a colour that do not say rejection or "no file".
+    const back = edge(m.edges, 'seq:orch:change-reviewer:implementer')!
+    expect(graphEdgeLabel(back)).toBe('went back ×1')
+    expect(graphEdgeColor(back)).toBe('var(--state-warning)')
+    expect(graphEdgeTitle(back)).not.toMatch(/no routing file/i)
   })
 
   it('a pipeline nothing ran stays a template', async () => {

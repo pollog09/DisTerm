@@ -87,6 +87,8 @@ export interface GraphNode {
   activity?: GraphActivity
   /** Runs of this agent or stage so far. */
   runs?: number
+  /** Runs that may have been this stage or another: not counted in `runs`. */
+  maybeRuns?: number
   /** A stage started again after a later stage had run. */
   reentered?: boolean
   /** No agent file names this stage's agent. Built-in and plugin agents have none, so this is not
@@ -123,6 +125,8 @@ export interface GraphEdge {
   reason?: string
   /** How many times work moved along this edge. */
   traversals?: number
+  /** Moves that may have taken this edge or another: hooks cannot tell which. Not traversals. */
+  maybe?: number
   /** It re-entered a stage that had already run. */
   loop?: boolean
   /** Work moved along a route the ship-graph file does not declare. */
@@ -330,58 +334,132 @@ function declaredOrder(pipeline: ShipPipeline): DeclaredOrder {
   }
 }
 
+interface RunPlacement {
+  /** The stage each run filled, where that is known or guessed. Absent for an uncertain run. */
+  certain: Map<SubRun, ShipStage>
+  /** The stages an uncertain run may have filled: none is counted as fact. */
+  maybe: Map<SubRun, ShipStage[]>
+  /** Placed with no declared route to go on. Its position is a guess, so nothing is judged from it. */
+  guessed: Set<SubRun>
+  /** Declared routes an uncertain run may have taken. */
+  maybeMoves: Array<{ from: string; to: string; ts: number }>
+}
+
+const stageName = (st: ShipStage): string => st.label ?? st.id
+
 /**
  * Which stage each run filled. An agent used by one stage is that stage. An agent used by several is
- * placed by position: the stage the file says comes next after the run it followed, then the stage it
- * is already in (a retry), then one it can reach from there. With no declared route to any of them it
- * could be any of them, so it goes on the earliest and a notice says so; it never draws a move, because
- * a guess would read as a rejection.
+ * placed by position, in this order: the stage declared next after the run it followed, a declared
+ * reject from there, the stage it is already in (a retry, or an unvisited sibling of it when stages fan
+ * out), and the nearest stage reachable from there.
+ *
+ * NEXT AND REJECT TO THE SAME AGENT CANNOT BE TOLD APART. Stages impl, r1, fix, r2 with `r1 -> fix` and a
+ * reject `r1 -> impl`: an implementer after r1 is either, and hooks carry nothing that says which.
+ * Choosing would state a passed review or a failed one as fact, so the run is counted on neither. Both
+ * edges are marked maybe, and a notice names them.
+ *
+ * WHAT FOLLOWS AN UNCERTAIN RUN stays uncertain, because its position is what placed the next one: a run
+ * is placed from every stage the last could have been. It settles at the first stage only one route
+ * reaches, or an agent only one stage uses.
+ *
+ * NO ROUTE AT ALL: it goes on the earliest candidate by the declared order (by id on a tie, never list
+ * order), with a notice, and draws no move, and nothing is judged backwards from it: a guess must never
+ * read as a rejection.
  */
 function placeRuns(
   pipeline: ShipPipeline,
   runs: readonly SubRun[],
   preds: ReadonlyArray<SubRun | null>,
   order: DeclaredOrder,
-  notices: string[],
-  ambiguousRuns: Set<SubRun>
-): Map<SubRun, ShipStage> {
-  const placed = new Map<SubRun, ShipStage>()
+  notices: string[]
+): RunPlacement {
+  const placement: RunPlacement = { certain: new Map(), maybe: new Map(), guessed: new Set(), maybeMoves: [] }
+  const declared = (from: string, to: string): boolean => pipeline.edges.some((e) => e.from === from && e.to === to)
   const edge = (from: string, to: string, kind: 'next' | 'reject'): boolean =>
     pipeline.edges.some((e) => e.from === from && e.to === to && e.kind === kind)
+  const byId = (a: ShipStage, b: ShipStage): number => a.id.localeCompare(b.id)
+  const earliestOf = (stages: readonly ShipStage[]): ShipStage[] =>
+    stages.filter((c) => !stages.some((o) => order.precedes(o.id, c.id))).sort(byId)
+  let visited = new Set<string>()
+  let epoch: number | undefined
   let unsure = false
+
+  /** Where a run of these candidates goes from `from`: one stage, two when hooks cannot say, or none. */
+  const resolve = (from: ShipStage, candidates: readonly ShipStage[]): ShipStage[] => {
+    const nexts = candidates.filter((c) => edge(from.id, c.id, 'next'))
+    const rejects = candidates.filter((c) => edge(from.id, c.id, 'reject'))
+    const nextOne = nexts.find((c) => !visited.has(c.id)) ?? nexts[0]
+    if (nextOne && rejects.length) {
+      const other = rejects.filter((c) => c.id !== nextOne.id)
+      if (other.length) {
+        notices.push(`${pipeline.name}: after ${stageName(from)}, ${candidates[0].agent} could be the next stage ${stageName(nextOne)} or a rejection back to ${other.map(stageName).join(' or ')}. Hooks cannot tell, so neither is counted, and what follows stays uncertain until one route is left.`)
+        return [nextOne, ...other]
+      }
+    }
+    if (nextOne) return [nextOne]
+    if (rejects[0]) return [rejects[0]]
+    if (candidates.some((c) => c.id === from.id)) {
+      // Another run of this agent: a retry, unless a stage fanning out beside this one has not run yet.
+      const sibling = candidates.find(
+        (c) => c.id !== from.id && !visited.has(c.id) &&
+          pipeline.edges.some((e) => e.kind === 'next' && e.to === c.id && edge(e.from, from.id, 'next'))
+      )
+      return [sibling ?? from]
+    }
+    const nearest = earliestOf(candidates.filter((c) => order.precedes(from.id, c.id)))
+    return nearest.length ? [nearest[0]] : []
+  }
+
   runs.forEach((run, i) => {
+    if (run.epoch !== epoch) {
+      epoch = run.epoch
+      visited = new Set()
+    }
     const candidates = pipeline.stages.filter((st) => st.agent === run.type)
     if (candidates.length === 0) return
+    const pred = preds[i]
+    const fromStages = pred
+      ? placement.maybe.get(pred) ?? (placement.certain.has(pred) ? [placement.certain.get(pred)!] : [])
+      : []
+    let places: ShipStage[]
     if (candidates.length === 1) {
-      placed.set(run, candidates[0])
-      return
-    }
-    const from = preds[i] ? placed.get(preds[i]!) : undefined
-    if (!from) {
+      places = candidates
+    } else if (fromStages.length === 0) {
       // Nothing before it in this run: the one no other candidate comes before.
-      const earliest = candidates.filter((c) => !candidates.some((o) => order.precedes(o.id, c.id)))
-      if (earliest.length !== 1) unsure = true
-      placed.set(run, earliest[0] ?? candidates[0])
-      return
+      const earliest = earliestOf(candidates)
+      if (earliest.length !== 1) {
+        unsure = true
+        placement.guessed.add(run)
+      }
+      places = [earliest[0]]
+    } else {
+      places = [...new Map(fromStages.flatMap((f) => resolve(f, candidates)).map((st) => [st.id, st])).values()]
+      if (places.length === 0) {
+        unsure = true
+        placement.guessed.add(run)
+        places = [earliestOf(candidates)[0]]
+      }
     }
-    const nearest = (ofKind: 'next' | 'reject'): ShipStage | undefined => candidates.find((c) => edge(from.id, c.id, ofKind))
-    const ahead = candidates.filter((c) => order.precedes(from.id, c.id))
-    const stage =
-      nearest('next') ??
-      nearest('reject') ??
-      candidates.find((c) => c.id === from.id) ??
-      // The first reachable that no other reachable candidate comes before: the nearest along the way.
-      ahead.find((c) => !ahead.some((o) => order.precedes(o.id, c.id)))
-    if (stage) {
-      placed.set(run, stage)
-      return
+    if (places.length === 1 && !placement.guessed.has(run) && fromStages.length > 1) {
+      // Settled, but it may have arrived by either route.
+      for (const f of fromStages) {
+        if (f.id !== places[0].id && declared(f.id, places[0].id)) placement.maybeMoves.push({ from: f.id, to: places[0].id, ts: run.startedAt })
+      }
     }
-    unsure = true
-    placed.set(run, candidates[0])
-    ambiguousRuns.add(run)
+    if (places.length > 1) {
+      placement.maybe.set(run, places)
+      for (const f of fromStages) {
+        for (const to of places) {
+          if (f.id !== to.id && declared(f.id, to.id)) placement.maybeMoves.push({ from: f.id, to: to.id, ts: run.startedAt })
+        }
+      }
+    } else {
+      placement.certain.set(run, places[0])
+      visited.add(places[0].id)
+    }
   })
   if (unsure) notices.push(`${pipeline.name}: an agent used by more than one stage could not be placed, so its runs may be on the wrong stage.`)
-  return placed
+  return placement
 }
 
 const stageNodeId = (scope: string, pipelineId: string, stageId: string): string =>
@@ -401,8 +479,8 @@ function addPipeline(
   const preds = predecessors(runs)
   const order = declaredOrder(pipeline)
   const declared = new Set(pipeline.edges.map((e) => `${e.from}>${e.to}`))
-  const unplaced = new Set<SubRun>()
-  const stageOfRun = placeRuns(pipeline, runs, preds, order, out.notices, unplaced)
+  const placement = placeRuns(pipeline, runs, preds, order, out.notices)
+  const stageOfRun = placement.certain
 
   // Walk the runs: which stage followed which, and whether a move went backwards.
   const traversals = new Map<string, { from: string; to: string; count: number; loop: boolean; ts: number }>()
@@ -417,13 +495,24 @@ function addPipeline(
       epoch = run.epoch
       seen = new Set()
     }
+    // After an uncertain run the route here is one of the maybe moves, and it is no entry either.
+    if (preds[i] && placement.maybe.has(preds[i]!)) {
+      seen.add(stage.id)
+      return
+    }
     const pred = preds[i] ? stageOfRun.get(preds[i]!) : undefined
     const startsOver = !!pred && !declared.has(`${pred.id}>${stage.id}`) && order.isLast(pred.id) && order.isFirst(stage.id)
     if (!pred || startsOver) {
       if (startsOver) seen = new Set()
       entries.set(stage.id, (entries.get(stage.id) ?? 0) + 1)
-    } else if (pred.id !== stage.id && !unplaced.has(run)) {
-      const back = order.precedes(stage.id, pred.id)
+    } else if (
+      placement.guessed.has(run) ||
+      (placement.guessed.has(preds[i]!) && !pipeline.edges.some((e) => e.from === pred.id && e.to === stage.id && e.kind === 'next'))
+    ) {
+      // Only a declared next move may leave a guess: anything else on a line here, and above all a
+      // reject, would be the guess talking.
+    } else if (pred.id !== stage.id) {
+      const back = !placement.guessed.has(preds[i]!) && order.precedes(stage.id, pred.id)
       if (back && seen.has(stage.id)) reentered.add(stage.id)
       const key = `${pred.id}>${stage.id}`
       const t = traversals.get(key) ?? { from: pred.id, to: stage.id, count: 0, loop: false, ts: 0 }
@@ -437,6 +526,7 @@ function addPipeline(
 
   for (const stage of pipeline.stages) {
     const stageRuns = runs.filter((r) => stageOfRun.get(r)?.id === stage.id)
+    const maybeRuns = runs.filter((r) => placement.maybe.get(r)?.some((st) => st.id === stage.id))
     const agent = agents.get(stage.agent)
     out.nodes.push({
       id: stageNodeId(scope, pipeline.id, stage.id),
@@ -444,8 +534,10 @@ function addPipeline(
       title: stage.label ?? stage.agent,
       subtitle: pipeline.triggerCommand ? `${pipeline.name} · /${pipeline.triggerCommand}` : pipeline.name,
       ...(sessionId ? { sessionId } : {}),
-      activity: activityOf(stageRuns, now),
+      // An open run that may be here keeps the stage lit. A finished one proves nothing.
+      activity: activityOf([...stageRuns, ...maybeRuns.filter((r) => r.endedAt === undefined)], now),
       runs: stageRuns.length,
+      ...(maybeRuns.length ? { maybeRuns: maybeRuns.length } : {}),
       ...(reentered.has(stage.id) ? { reentered: true } : {}),
       ...(agent ? {} : { missingAgent: true }),
       ...(agent?.color ? { color: agent.color } : {}),
@@ -454,6 +546,10 @@ function addPipeline(
     })
   }
 
+  const maybeOn = (from: string, to: string): Pick<GraphEdge, 'maybe' | 'lastEventTs'> => {
+    const moves = placement.maybeMoves.filter((m) => m.from === from && m.to === to)
+    return moves.length ? { maybe: moves.length, lastEventTs: Math.max(...moves.map((m) => m.ts)) } : {}
+  }
   for (const edge of pipeline.edges) {
     const key = `${edge.from}>${edge.to}`
     const t = traversals.get(key)
@@ -463,7 +559,8 @@ function addPipeline(
       source: stageNodeId(scope, pipeline.id, edge.from),
       target: stageNodeId(scope, pipeline.id, edge.to),
       kind: edge.kind === 'reject' ? 'ship-reject' : 'ship-next',
-      ...(t ? { traversals: t.count, lastEventTs: t.ts, ...(t.loop ? { loop: true } : {}) } : {})
+      ...(t ? { traversals: t.count, lastEventTs: t.ts, ...(t.loop ? { loop: true } : {}) } : {}),
+      ...(maybeOn(edge.from, edge.to))
     })
   }
   // Work that moved along a route the file does not declare still happened, so it is drawn.
@@ -710,7 +807,9 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
     .filter(([parent]) => known.has(parent))
     .flatMap(([, runs]) => runs.filter((r) => r.endedAt === undefined).map((r) => r.lastSignalTs + WORKING_STALE_MS))
     .filter((at) => at > now)
-  return staleAt.length ? { ...out, nextStaleAt: Math.min(...staleAt) } : out
+  // One notice however many sessions hit it, and React keys the list on the text.
+  const notices = [...new Set(out.notices)]
+  return staleAt.length ? { ...out, notices, nextStaleAt: Math.min(...staleAt) } : { ...out, notices }
 }
 
 /**
