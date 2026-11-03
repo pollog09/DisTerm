@@ -25,7 +25,7 @@
  *
  * WHAT BACKWARDS MEANS. With a pipeline, returning to a stage its `next` edges declare as coming before
  * this one, so review, impl, docs, review does not paint docs -> review, and a stage they say nothing
- * about is never "behind" anything. With no file there is no declared order, only the order things were
+ * about is never "behind" anything. With no `next` edges nothing is. With no file there is no declared order, only the order things were
  * first seen, and then a rejection and a clean second run in one turn look the same: the line says it
  * went back, not that anything was rejected.
  */
@@ -255,18 +255,47 @@ function newestTs(runs: readonly SubRun[]): number | undefined {
   return runs.length ? Math.max(...runs.map((r) => r.lastEventTs)) : undefined
 }
 
-function bestPipeline(pipelines: readonly ShipPipeline[], runs: readonly SubRun[]): ShipPipeline | null {
-  const types = new Set(runs.map((r) => r.type))
-  let best: ShipPipeline | null = null
-  let bestScore = 0
+interface PipelineChoice {
+  /** The one that fits best; null = none fits, or `tied` does. */
+  pipeline: ShipPipeline | null
+  /** More than one fits equally and they share these runs' agents, so nothing can say which ran. */
+  tied: ShipPipeline[]
+}
+
+/** How well a pipeline explains these runs: stages it can name, then moves its `next` edges declare. */
+function fitOf(pipeline: ShipPipeline, runs: readonly SubRun[]): [number, number] {
+  const agents = new Set(pipeline.stages.map((s) => s.agent))
+  const mine = runs.filter((r) => agents.has(r.type))
+  const named = new Set(mine.map((r) => r.type)).size
+  const agentOf = new Map(pipeline.stages.map((s) => [s.id, s.agent]))
+  const moves = new Set(pipeline.edges.filter((e) => e.kind === 'next').map((e) => `${agentOf.get(e.from)}>${agentOf.get(e.to)}`))
+  const preds = predecessors(mine)
+  const inOrder = mine.filter((r, i) => preds[i] && moves.has(`${preds[i]!.type}>${r.type}`)).length
+  return [named, inOrder]
+}
+
+/** Which pipeline these runs were: most stages named, then the observed order, never the file's list
+ *  order, which would call a clean `hotfix` a rejected `ship`. A true tie picks nothing. */
+function choosePipeline(pipelines: readonly ShipPipeline[], runs: readonly SubRun[]): PipelineChoice {
+  let best: ShipPipeline[] = []
+  let bestFit: [number, number] = [0, 0]
   for (const p of pipelines) {
-    const score = p.stages.filter((s) => types.has(s.agent)).length
-    if (score > bestScore) {
-      best = p
-      bestScore = score
+    const fit = fitOf(p, runs)
+    if (fit[0] === 0) continue
+    if (fit[0] > bestFit[0] || (fit[0] === bestFit[0] && fit[1] > bestFit[1])) {
+      best = [p]
+      bestFit = fit
+    } else if (fit[0] === bestFit[0] && fit[1] === bestFit[1]) {
+      best.push(p)
     }
   }
-  return best
+  if (best.length <= 1) return { pipeline: best[0] ?? null, tied: [] }
+  // Equal fit on different agents is two pipelines, each to be taken in turn, not a doubt about one.
+  const ran = new Set(runs.map((r) => r.type))
+  const agentsOf = (p: ShipPipeline): string[] => p.stages.map((st) => st.agent).filter((agent) => ran.has(agent))
+  const first = new Set(agentsOf(best[0]))
+  const rivals = best.slice(1).filter((p) => agentsOf(p).some((agent) => first.has(agent)))
+  return rivals.length ? { pipeline: null, tied: [best[0], ...rivals] } : { pipeline: best[0], tied: [] }
 }
 
 interface DeclaredOrder {
@@ -276,19 +305,11 @@ interface DeclaredOrder {
   isLast(id: string): boolean
 }
 
-/** What the file says about order: reachability along its `next` edges (a cycle does not count), or
- *  the list itself when there are no `next` edges at all. */
+/** What the file says about order: reachability along its `next` edges, where a cycle does not count.
+ *  A file with no `next` edges declares no order, and the order stages are listed in is not one. */
 function declaredOrder(pipeline: ShipPipeline): DeclaredOrder {
   const ids = pipeline.stages.map((s) => s.id)
   const { order } = splitNextCycle(ids, pipeline.edges)
-  if (order.length === 0) {
-    const index = new Map(ids.map((id, i) => [id, i]))
-    return {
-      precedes: (a, b) => index.get(a)! < index.get(b)!,
-      isFirst: (id) => index.get(id) === 0,
-      isLast: (id) => index.get(id) === ids.length - 1
-    }
-  }
   const after = new Map<string, string[]>()
   for (const e of order) after.set(e.from, [...(after.get(e.from) ?? []), e.to])
   const reach = (from: string, seen = new Set<string>()): Set<string> => {
@@ -309,13 +330,67 @@ function declaredOrder(pipeline: ShipPipeline): DeclaredOrder {
   }
 }
 
+/**
+ * Which stage each run filled. An agent used by one stage is that stage. An agent used by several is
+ * placed by position: the stage the file says comes next after the run it followed, then the stage it
+ * is already in (a retry), then one it can reach from there. With no declared route to any of them it
+ * could be any of them, so it goes on the earliest and a notice says so; it never draws a move, because
+ * a guess would read as a rejection.
+ */
+function placeRuns(
+  pipeline: ShipPipeline,
+  runs: readonly SubRun[],
+  preds: ReadonlyArray<SubRun | null>,
+  order: DeclaredOrder,
+  notices: string[],
+  ambiguousRuns: Set<SubRun>
+): Map<SubRun, ShipStage> {
+  const placed = new Map<SubRun, ShipStage>()
+  const edge = (from: string, to: string, kind: 'next' | 'reject'): boolean =>
+    pipeline.edges.some((e) => e.from === from && e.to === to && e.kind === kind)
+  let unsure = false
+  runs.forEach((run, i) => {
+    const candidates = pipeline.stages.filter((st) => st.agent === run.type)
+    if (candidates.length === 0) return
+    if (candidates.length === 1) {
+      placed.set(run, candidates[0])
+      return
+    }
+    const from = preds[i] ? placed.get(preds[i]!) : undefined
+    if (!from) {
+      // Nothing before it in this run: the one no other candidate comes before.
+      const earliest = candidates.filter((c) => !candidates.some((o) => order.precedes(o.id, c.id)))
+      if (earliest.length !== 1) unsure = true
+      placed.set(run, earliest[0] ?? candidates[0])
+      return
+    }
+    const nearest = (ofKind: 'next' | 'reject'): ShipStage | undefined => candidates.find((c) => edge(from.id, c.id, ofKind))
+    const ahead = candidates.filter((c) => order.precedes(from.id, c.id))
+    const stage =
+      nearest('next') ??
+      nearest('reject') ??
+      candidates.find((c) => c.id === from.id) ??
+      // The first reachable that no other reachable candidate comes before: the nearest along the way.
+      ahead.find((c) => !ahead.some((o) => order.precedes(o.id, c.id)))
+    if (stage) {
+      placed.set(run, stage)
+      return
+    }
+    unsure = true
+    placed.set(run, candidates[0])
+    ambiguousRuns.add(run)
+  })
+  if (unsure) notices.push(`${pipeline.name}: an agent used by more than one stage could not be placed, so its runs may be on the wrong stage.`)
+  return placed
+}
+
 const stageNodeId = (scope: string, pipelineId: string, stageId: string): string =>
   `stage:${scope}:${pipelineId}:${stageId}`
 
 /** One pipeline as boxes and declared edges, lit by the runs a session made of it (none = a template
  *  showing the configured process before anything has run). */
 function addPipeline(
-  out: { nodes: GraphNode[]; edges: GraphEdge[] },
+  out: { nodes: GraphNode[]; edges: GraphEdge[]; notices: string[] },
   pipeline: ShipPipeline,
   scope: string,
   sessionId: string | null,
@@ -323,12 +398,11 @@ function addPipeline(
   agents: ReadonlyMap<string, ShipAgent>,
   now: number
 ): void {
-  const stageOfAgent = new Map<string, ShipStage>()
-  for (const s of pipeline.stages) if (!stageOfAgent.has(s.agent)) stageOfAgent.set(s.agent, s)
   const preds = predecessors(runs)
-
   const order = declaredOrder(pipeline)
   const declared = new Set(pipeline.edges.map((e) => `${e.from}>${e.to}`))
+  const unplaced = new Set<SubRun>()
+  const stageOfRun = placeRuns(pipeline, runs, preds, order, out.notices, unplaced)
 
   // Walk the runs: which stage followed which, and whether a move went backwards.
   const traversals = new Map<string, { from: string; to: string; count: number; loop: boolean; ts: number }>()
@@ -337,18 +411,18 @@ function addPipeline(
   let seen = new Set<string>()
   let epoch: number | undefined
   runs.forEach((run, i) => {
-    const stage = stageOfAgent.get(run.type)
+    const stage = stageOfRun.get(run)
     if (!stage) return
     if (run.epoch !== epoch) {
       epoch = run.epoch
       seen = new Set()
     }
-    const pred = preds[i] ? stageOfAgent.get(preds[i]!.type) : undefined
+    const pred = preds[i] ? stageOfRun.get(preds[i]!) : undefined
     const startsOver = !!pred && !declared.has(`${pred.id}>${stage.id}`) && order.isLast(pred.id) && order.isFirst(stage.id)
     if (!pred || startsOver) {
       if (startsOver) seen = new Set()
       entries.set(stage.id, (entries.get(stage.id) ?? 0) + 1)
-    } else if (pred.id !== stage.id) {
+    } else if (pred.id !== stage.id && !unplaced.has(run)) {
       const back = order.precedes(stage.id, pred.id)
       if (back && seen.has(stage.id)) reentered.add(stage.id)
       const key = `${pred.id}>${stage.id}`
@@ -362,7 +436,7 @@ function addPipeline(
   })
 
   for (const stage of pipeline.stages) {
-    const stageRuns = runs.filter((r) => stageOfAgent.get(r.type)?.id === stage.id)
+    const stageRuns = runs.filter((r) => stageOfRun.get(r)?.id === stage.id)
     const agent = agents.get(stage.agent)
     out.nodes.push({
       id: stageNodeId(scope, pipeline.id, stage.id),
@@ -540,24 +614,47 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
   const agents = new Map((ship?.agents ?? []).map((a) => [a.name, a]))
   const pipelines = ship?.pipelines ?? []
   const runsByParent = reduceSubagents(events)
-  const usedPipelines = new Set<string>()
+  const ranTypes = new Set<string>()
+  const ambiguous = new Set<string>()
   const lastTsBySession = new Map<string, number>()
   for (const [parent, allRuns] of runsByParent) {
     if (!known.has(parent)) continue
     const ts = newestTs(allRuns)
     if (ts !== undefined) lastTsBySession.set(parent, ts)
-    const pipeline = bestPipeline(pipelines, allRuns)
-    const inPipeline = pipeline ? new Set(pipeline.stages.map((s) => s.agent)) : new Set<string>()
-    if (pipeline) {
-      usedPipelines.add(pipeline.id)
-      addPipeline(out, pipeline, parent, parent, allRuns.filter((r) => inPipeline.has(r.type)), agents, now)
+    // A run (a turn, or a reset to the next) was one pipeline or several in turn, so each is judged on
+    // its own: a session that ran `ship` and then `triage` lit both, not the first and some boxes.
+    const byPipeline = new Map<string, { pipeline: ShipPipeline; runs: SubRun[] }>()
+    const taken = new Set<SubRun>()
+    for (const epoch of new Set(allRuns.map((r) => r.epoch))) {
+      let rest = allRuns.filter((r) => r.epoch === epoch)
+      for (;;) {
+        const { pipeline, tied } = choosePipeline(pipelines, rest)
+        if (tied.length) {
+          ambiguous.add(tied.map((p) => p.name).join(' or '))
+          break
+        }
+        if (!pipeline) break
+        const agentsOfPipeline = new Set(pipeline.stages.map((st) => st.agent))
+        const mine = rest.filter((r) => agentsOfPipeline.has(r.type))
+        const entry = byPipeline.get(pipeline.id) ?? { pipeline, runs: [] }
+        entry.runs.push(...mine)
+        byPipeline.set(pipeline.id, entry)
+        for (const r of mine) taken.add(r)
+        rest = rest.filter((r) => !agentsOfPipeline.has(r.type))
+      }
     }
-    const rest = allRuns.filter((r) => !inPipeline.has(r.type))
+    for (const { pipeline, runs } of byPipeline.values()) addPipeline(out, pipeline, parent, parent, runs, agents, now)
+    const rest = allRuns.filter((r) => !taken.has(r))
     if (rest.length) addObserved(out, parent, rest, agents, now)
+    for (const r of allRuns) ranTypes.add(r.type)
   }
-  // A configured process nothing has run yet is still the machine's process: show it, unattached.
+  for (const names of ambiguous) {
+    out.notices.push(`These subagents fit ${names} equally, so they are drawn as observed, and nothing is called a rejection.`)
+  }
+  // A configured process nothing has run yet is still the machine's process: show it, unattached. One
+  // whose agents did run is not shown as unrun, even when those runs belong to another pipeline.
   for (const pipeline of pipelines) {
-    if (!usedPipelines.has(pipeline.id)) addPipeline(out, pipeline, 'template', null, [], agents, now)
+    if (!pipeline.stages.some((st) => ranTypes.has(st.agent))) addPipeline(out, pipeline, 'template', null, [], agents, now)
   }
 
   // Which sessions get a box: every agent, plus anything a line touches. A plain terminal nobody

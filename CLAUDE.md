@@ -8059,6 +8059,13 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   new run, so predecessors never cross one; `SessionStart` with `compact` or `resume` is not a reset, which
   is why the normalizer carries `sessionSource`. Inside a turn a declared move is taken as declared, and
   an undeclared last-to-first move is a new run. `docs/ship-graph.md` states this for users.
+- **What these rules rest on is recorded.** `__fixtures__/claude/session-boundary-hook-payloads.json`
+  holds live captures (2.1.317), and `test/acceptance/agent-graph-real-hooks.test.ts` drives them through
+  the real path: `/clear` is `SessionEnd(clear)` then `SessionStart(clear)` under a NEW session id;
+  `compact` and `resume` keep it; a slash command fires `UserPromptSubmit`, and an injected hand-back or
+  `<task-notification>` is not a turn; SendMessage fires a second `SubagentStart` under the same agent id;
+  a child's `SubagentStop` fires twice around its hand-back; side agents stop with no type. Not captured:
+  a subagent open through `SessionStart(compact)` itself (it ended between `PreCompact` and that).
 - **A run's first end stands, and a re-start is a new pass.** The tool path can report a child's end
   again after its native stop, and a rejection can resume the same `agent_id`; rewriting `endedAt` in
   either case moves the run past whatever started in between, which erased the forward edge and invented
@@ -8089,7 +8096,7 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   host's is the failure to avoid. Output with no end marker is a failed read, not an empty machine.
 - **Symlinks are followed, and that is why this polls.** Installed agents are usually symlinks, and
   `fs.watch` on the folder never fires for an edit of a link's target. A subscribed view re-reads (5 s
-  local, 20 s remote), ref-counted per project like the board log, and pushes only on a real change.
+  local, 20 s remote), on leases shared per project, and pushes only on a real change.
   A link in a cloned repo can point anywhere, so the target must be a regular file (a FIFO would hang
   the open), only its head is read, and only parsed frontmatter leaves: an "agent" linked to a private
   key yields a card with the link's name.

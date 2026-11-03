@@ -61,7 +61,16 @@ at that path that is not a regular file (a folder, a FIFO, a dead link): the row
 | edge `kind` | `next` (the default) or `reject`. |
 | `trigger.command` | The command's name, shown on each stage beside the pipeline's name. |
 
-A session's subagents map onto the pipeline that names the most of them. A move backwards along the
+Each run (a turn, or from one reset to the next) maps onto the pipeline that names the most of its
+subagents. On a tie, the one whose `next` edges match the order they ran in wins; list order never
+decides. If that is still a tie between pipelines sharing agents, the run is drawn as observed, with a
+notice, and nothing is called a rejection. A session can run several pipelines, and a pipeline whose
+agents ran is never shown as unrun.
+
+An agent used by several stages is placed by position: the stage declared next after the one before it,
+then a retry of the same stage, then one reachable from there. If nothing declares a route to it, it goes
+on the earliest stage, with a notice, and draws no move.
+ A move backwards along the
 order your `next` edges declare is highlighted as a loop, and a stage it returns to is marked
 re-entered. A move the file does not declare is still drawn, marked "not declared". A pipeline nothing
 has run yet is shown unattached, so you can see the process before using it. A stage whose agent has no
@@ -72,7 +81,9 @@ run.
 
 A real reset (`/clear`, or launching the CLI fresh) or a new user prompt starts a new run, so running
 `/ship-change` twice is not a loop. A compaction or a `--resume` does not start one: the same work goes
-on, and a subagent running across a compaction is still running. Inside one turn, hooks cannot tell "the reviewer rejected, go back to the first stage" from
+on, under the same session id, and a subagent still running when a compaction begins stays running
+until its own stop. A custom slash command is a new user prompt. A hand-back or task notification
+Claude injects when a background subagent finishes is not. Inside one turn, hooks cannot tell "the reviewer rejected, go back to the first stage" from
 "start over", so the file decides:
 
 - A move the file declares is taken as declared. With the example above, review to impl in one turn
@@ -83,12 +94,13 @@ So a rejection a person relays in a new prompt reads as a new run, and is not dr
 under-reports on purpose: an invented loop would say a review failed when it did not.
 
 A subagent started again under the same id after it stopped counts as another pass, with its own place
-in the order, whether a rejection resumed it or a background agent picked up after its own child. Its
-first pass keeps its first end.
+in the order, whether the parent resumed it with SendMessage, which is what a rejection does, or a
+background agent picked up after its own child. Its first pass keeps its first end, including when
+Claude reports a stop twice around a hand-back.
 
 Write a way back with `"kind": "reject"`. A `next` edge that closes a cycle gets a warning and does not
-count toward the order. A stage no `next` edge touches has no place in that order, so a move to or from
-it is never called a loop.
+count toward the order. Only `next` edges declare an order, never the order stages are listed in: with
+none, nothing is called a loop, and a stage no `next` edge touches is never behind anything.
 
 **Nothing in this file is ever executed.** It travels in git, so it is hostile input: it is sanitized
 in the core and used only to draw. `trigger.command` is a name, and a value that is not a plain name is
