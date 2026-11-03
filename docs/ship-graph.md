@@ -70,7 +70,10 @@ agents ran is never shown as unrun.
 An agent used by several stages is placed by position, in this order: the stage declared next after the
 one before it, a declared reject from there, a retry of the same stage (or a stage fanning out beside it
 that has not run yet), then the nearest one reachable from there. If nothing declares a route to it, it
-goes on the earliest stage by the declared order, with a notice, draws no move, and is never called a loop.
+goes on the earliest stage by the declared order, with a notice. That position is a guess, as is choosing
+between stages of one agent that fan out, and it stays one through later runs of agents several stages
+use, until an agent only one stage uses settles it. Only declared `next` moves are drawn into or out of a
+guess, so it is never called a loop or a rejection. A real rejection that follows one is not drawn either.
 
 When a stage has both a `next` and a `reject` edge to stages of the same agent, hooks cannot tell which
 happened: with impl, r1, fix, r2, an implementer after r1 is either a passed review or a failed one. The

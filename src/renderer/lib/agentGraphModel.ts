@@ -339,7 +339,8 @@ interface RunPlacement {
   certain: Map<SubRun, ShipStage>
   /** The stages an uncertain run may have filled: none is counted as fact. */
   maybe: Map<SubRun, ShipStage[]>
-  /** Placed with no declared route to go on. Its position is a guess, so nothing is judged from it. */
+  /** Its position is a guess: no declared route led here, or it came from a position that was one. Only
+   *  an agent one stage uses settles it, and only a declared next move is drawn into or out of it. */
   guessed: Set<SubRun>
   /** Declared routes an uncertain run may have taken. */
   maybeMoves: Array<{ from: string; to: string; ts: number }>
@@ -363,8 +364,11 @@ const stageName = (st: ShipStage): string => st.label ?? st.id
  * reaches, or an agent only one stage uses.
  *
  * NO ROUTE AT ALL: it goes on the earliest candidate by the declared order (by id on a tie, never list
- * order), with a notice, and draws no move, and nothing is judged backwards from it: a guess must never
- * read as a rejection.
+ * order), with a notice, and draws no move. Picking between siblings that fan out is a guess too. A guess
+ * stays one through every later run of a repeated agent, retries included, because each is placed from
+ * the last, and a wrong position would otherwise find a reject edge the run never took. It ends at an
+ * agent only one stage uses, whose position is fact. Nothing but a declared next move is drawn into or
+ * out of a guess, so it can never read as a loop or a rejection.
  */
 function placeRuns(
   pipeline: ShipPipeline,
@@ -383,12 +387,15 @@ function placeRuns(
   let visited = new Set<string>()
   let epoch: number | undefined
   let unsure = false
+  /** `resolve` chose between stages the file does not separate. */
+  let picked = false
 
   /** Where a run of these candidates goes from `from`: one stage, two when hooks cannot say, or none. */
   const resolve = (from: ShipStage, candidates: readonly ShipStage[]): ShipStage[] => {
     const nexts = candidates.filter((c) => edge(from.id, c.id, 'next'))
     const rejects = candidates.filter((c) => edge(from.id, c.id, 'reject'))
     const nextOne = nexts.find((c) => !visited.has(c.id)) ?? nexts[0]
+    if (nexts.length > 1) picked = true
     if (nextOne && rejects.length) {
       const other = rejects.filter((c) => c.id !== nextOne.id)
       if (other.length) {
@@ -422,6 +429,7 @@ function placeRuns(
       ? placement.maybe.get(pred) ?? (placement.certain.has(pred) ? [placement.certain.get(pred)!] : [])
       : []
     let places: ShipStage[]
+    picked = false
     if (candidates.length === 1) {
       places = candidates
     } else if (fromStages.length === 0) {
@@ -440,6 +448,7 @@ function placeRuns(
         places = [earliestOf(candidates)[0]]
       }
     }
+    if (candidates.length > 1 && (picked || (!!pred && placement.guessed.has(pred)))) placement.guessed.add(run)
     if (places.length === 1 && !placement.guessed.has(run) && fromStages.length > 1) {
       // Settled, but it may have arrived by either route.
       for (const f of fromStages) {
@@ -506,13 +515,13 @@ function addPipeline(
       if (startsOver) seen = new Set()
       entries.set(stage.id, (entries.get(stage.id) ?? 0) + 1)
     } else if (
-      placement.guessed.has(run) ||
-      (placement.guessed.has(preds[i]!) && !pipeline.edges.some((e) => e.from === pred.id && e.to === stage.id && e.kind === 'next'))
+      (placement.guessed.has(run) || placement.guessed.has(preds[i]!)) &&
+      !pipeline.edges.some((e) => e.from === pred.id && e.to === stage.id && e.kind === 'next')
     ) {
-      // Only a declared next move may leave a guess: anything else on a line here, and above all a
+      // Only a declared next move may touch a guess: anything else on a line here, and above all a
       // reject, would be the guess talking.
     } else if (pred.id !== stage.id) {
-      const back = !placement.guessed.has(preds[i]!) && order.precedes(stage.id, pred.id)
+      const back = !placement.guessed.has(run) && !placement.guessed.has(preds[i]!) && order.precedes(stage.id, pred.id)
       if (back && seen.has(stage.id)) reentered.add(stage.id)
       const key = `${pred.id}>${stage.id}`
       const t = traversals.get(key) ?? { from: pred.id, to: stage.id, count: 0, loop: false, ts: 0 }

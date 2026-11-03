@@ -507,6 +507,121 @@ describe('an unplaced run', () => {
   })
 })
 
+describe('a guess stays a guess', () => {
+  const STOPS = (m: Awaited<ReturnType<typeof model>>): GraphEdge[] =>
+    m.edges.filter((e) => e.loop || (e.kind === 'ship-reject' && e.traversals))
+
+  it('through a retry: X, X, W draws no rejection, as X, W does not', async () => {
+    const stages = [{ id: 'a', agent: 'X' }, { id: 'b', agent: 'X' }, { id: 'w', agent: 'W' }]
+    const edges: ShipEdge[] = [{ from: 'w', to: 'a', kind: 'next' }, { from: 'a', to: 'w', kind: 'reject' }]
+    for (const walk of [['X', 'W'], ['X', 'X', 'W']]) {
+      _resetForTest()
+      lifecycle = new ClaudeSubagentLifecycle()
+      run(...walk)
+      const m = await model(edges, stages)
+      expect(STOPS(m), walk.join()).toEqual([])
+      expect(m.nodes.some((n) => n.reentered)).toBe(false)
+    }
+  })
+
+  it('through a chain of them: a clean s2, s3, s4 draws no rejection', async () => {
+    const stages = [{ id: 's0', agent: 'C' }, { id: 's1', agent: 'A' }, { id: 's2', agent: 'A' }, { id: 's3', agent: 'A' }, { id: 's4', agent: 'C' }]
+    const edges: ShipEdge[] = [
+      { from: 's0', to: 's1', kind: 'next' }, { from: 's1', to: 's0', kind: 'reject' },
+      { from: 's2', to: 's1', kind: 'reject' }, { from: 's2', to: 's3', kind: 'next' }, { from: 's3', to: 's4', kind: 'next' }
+    ]
+    run('A', 'A', 'C')
+    const m = await model(edges, stages)
+    expect(STOPS(m)).toEqual([])
+    expect(m.nodes.some((n) => n.reentered)).toBe(false)
+  })
+
+  it('out of a fork, where picking the wrong sibling would find its reject', async () => {
+    const stages = [{ id: 'i', agent: 'I' }, { id: 'a', agent: 'R' }, { id: 'b', agent: 'R' }, { id: 'c', agent: 'I2' }]
+    const edges: ShipEdge[] = [
+      { from: 'i', to: 'a', kind: 'next' }, { from: 'i', to: 'b', kind: 'next' }, { from: 'b', to: 'c', kind: 'next' },
+      { from: 'a', to: 'i', kind: 'reject' }
+    ]
+    run('I', 'R', 'I') // through b would be clean, and only the file's order says a
+    const m = await model(edges, stages)
+    expect(STOPS(m)).toEqual([])
+    // The declared move into the fork is still drawn.
+    expect(edge(m.edges, 'ship:orch:ship-change:i:a:next')).toMatchObject({ traversals: 1 })
+  })
+
+  it('an agent only one stage uses settles it, and a real rejection after that still reads as one', async () => {
+    const stages = [{ id: 'a', agent: 'X' }, { id: 'b', agent: 'X' }, { id: 'w', agent: 'W' }, { id: 'y', agent: 'Y' }]
+    const edges: ShipEdge[] = [{ from: 'w', to: 'y', kind: 'next' }, { from: 'y', to: 'w', kind: 'reject' }]
+    run('X', 'W', 'Y', 'W')
+    const m = await model(edges, stages)
+    expect(edge(m.edges, 'ship:orch:ship-change:y:w:reject')).toMatchObject({ traversals: 1, loop: true })
+  })
+
+  it('the real /ship-change shape: a clean run has no loop, and a real rejection still does', async () => {
+    const shape: ShipEdge[] = [...NEXT, REJECT, { from: 'review', to: 'docs', kind: 'reject' }]
+    run('implementer', 'doc-writer', 'change-reviewer')
+    expect(STOPS(await model(shape))).toEqual([])
+    run('implementer')
+    const rejected = await model(shape)
+    expect(edge(rejected.edges, REVIEW_TO_IMPL)).toMatchObject({ traversals: 1, loop: true })
+    expect(rejected.nodes.find((n) => n.id === impl)).toMatchObject({ reentered: true })
+  })
+
+  it('no clean walk of any pipeline, however its stages repeat agents, draws a loop or a rejection', async () => {
+    // Fixed seed, so a failure is a failure every time, and the message says which pipeline.
+    let state = 0x5eed1234
+    const rand = (n: number): number => {
+      state = (state + 0x6d2b79f5) | 0
+      let t = Math.imul(state ^ (state >>> 15), 1 | state)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) % n
+    }
+    let repeated = 0
+    let guessed = 0
+    for (let c = 0; c < 400; c++) {
+      const size = 2 + rand(5)
+      const ids = Array.from({ length: size }, (_, i) => `s${i}`)
+      const stagesInOrder = ids.map((id) => ({ id, agent: 'ABC'[rand(3)] }))
+      const edges: ShipEdge[] = []
+      for (let i = 0; i < size; i++) {
+        for (let j = i + 1; j < size; j++) if (rand(3) === 0) edges.push({ from: ids[i], to: ids[j], kind: 'next' })
+      }
+      for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+          if (i !== j && rand(5) === 0 && !edges.some((e) => e.from === ids[i] && e.to === ids[j])) edges.push({ from: ids[i], to: ids[j], kind: 'reject' })
+        }
+      }
+      // A clean walk: from a stage nothing declares before it, along next edges only.
+      const nextFrom = (id: string): string[] => edges.filter((e) => e.kind === 'next' && e.from === id).map((e) => e.to)
+      const firsts = ids.filter((id) => !edges.some((e) => e.kind === 'next' && e.to === id))
+      const walk = [firsts[rand(firsts.length)]]
+      for (;;) {
+        const onward = nextFrom(walk[walk.length - 1])
+        if (onward.length === 0) break
+        walk.push(onward[rand(onward.length)])
+      }
+      const listed = [...stagesInOrder]
+      for (let i = listed.length - 1; i > 0; i--) {
+        const j = rand(i + 1)
+        ;[listed[i], listed[j]] = [listed[j], listed[i]]
+      }
+      const types = walk.map((id) => stagesInOrder.find((st) => st.id === id)!.agent)
+      _resetForTest()
+      lifecycle = new ClaudeSubagentLifecycle()
+      run(...types)
+      const m = await model(edges, listed)
+      const label = JSON.stringify({ c, stages: listed, edges, walk })
+      expect(STOPS(m).map((e) => e.id), label).toEqual([])
+      expect(m.nodes.filter((n) => n.reentered).map((n) => n.id), label).toEqual([])
+      if (new Set(types).size < types.length) repeated++
+      if (m.notices.join().includes('could not be placed')) guessed++
+    }
+    // Not vacuous: the walks did repeat agents, and did reach the guessing path.
+    expect(repeated).toBeGreaterThan(50)
+    expect(guessed).toBeGreaterThan(10)
+  })
+})
+
 describe('stages of one agent that fan out', () => {
   const STAGES_FAN = [{ id: 'impl', agent: 'implementer' }, { id: 'a', agent: 'reviewer' }, { id: 'b', agent: 'reviewer' }]
   const FAN: ShipEdge[] = [{ from: 'impl', to: 'a', kind: 'next' }, { from: 'impl', to: 'b', kind: 'next' }]
