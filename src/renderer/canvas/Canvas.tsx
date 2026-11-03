@@ -70,7 +70,7 @@ import {
 import { isBrowserRuntime } from '@renderer/bridge/runtime'
 import { WheelZoomBurstLimiter, clampWheelZoomSpeed, nextWheelZoom } from './wheel-zoom'
 import { canCopyFilesToClipboard, selectedLocalFilePaths } from './canvas-file-copy'
-import {
+import { canvasCoveredByView,
   canvasImagePasteArmedAfterKey,
   canvasImportRefusal,
   droppedDirectories,
@@ -6109,7 +6109,7 @@ export function Canvas() {
       if (projectId) void placeCanvasImages(images, center, projectId)
     }
     const onPaste = (event: ClipboardEvent) => {
-      if (!canvasImagePasteArmedRef.current || !hasProjects || welcomeOpen || kanbanOpen) return
+      if (!canvasImagePasteArmedRef.current || !hasProjects || welcomeOpen || canvasCoveredByView(kanbanOpen, graphOpen)) return
       if (document.querySelector('[role="dialog"], .usage-popover')) return
       if (editableTarget(event.target)) return
       const projectId = useProjects.getState().activeProjectId
@@ -6142,7 +6142,7 @@ export function Canvas() {
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('paste', onPaste)
     }
-  }, [hasProjects, kanbanOpen, placeCanvasImages, screenToFlowPosition, viewCenter, welcomeOpen])
+  }, [graphOpen, hasProjects, kanbanOpen, placeCanvasImages, screenToFlowPosition, viewCenter, welcomeOpen])
 
   // Load the quick-open file index when the palette opens. An SSH project indexes its remoteCwd
   // over the ControlMaster (sshFs.quickOpen); the browser client's sshFs is a stub, so the catch

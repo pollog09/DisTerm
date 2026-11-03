@@ -123,25 +123,28 @@ export async function createShipGraph(
   }
   const dir = where === 'project' ? `${quoteRemotePath(route.remoteCwd)}/.claude` : '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"'
   const nonce = newShipScriptNonce()
-  // The script reports the path it used: the host's shell is what resolves a `~` or CLAUDE_CONFIG_DIR.
-  // Never a bare `cat >` (remote-write.guard.test.ts): the script itself arrives over the ssh channel,
-  // so the body goes into a temp of ours, its size is checked, and `ln` publishes it. `ln` fails on an
-  // existing file, the shell's spelling of `wx`, which a rename would not.
-  const report = `printf '\\n${nonce} %s\\n' "$f"`
+  // The whole script is one function, called on its last line: it arrives over the ssh channel, and a
+  // cut-off script must run NOTHING. Run line by line, a cut mid-line is a different command (`mkdir -`,
+  // and `ln "$t"` with one argument links into wherever the shell is). A cut function is a syntax error.
+  // Never a bare `cat >` (remote-write.guard.test.ts): the body goes into a temp of ours, its size is
+  // checked, and `ln` publishes it, failing on an existing file as `wx` does and a rename would not.
+  // The script reports the path it used, because the host's shell resolves `~` and CLAUDE_CONFIG_DIR,
+  // and success is its done marker, because exit 0 alone can be a shell that read nothing.
   const bytes = Buffer.byteLength(EXAMPLE_TEXT, 'utf8')
   const script =
-    `dir=${dir}\nf="$dir/${GRAPH_FILE}"\n${report}\n` +
+    `nt_create_ship_graph() {\n` +
+    `dir=${dir}\nf="$dir/${GRAPH_FILE}"\nprintf '\\n${nonce} path %s\\n' "$f"\n` +
     `if [ -e "$f" ] || [ -L "$f" ]; then exit 17; fi\nmkdir -p "$dir" || exit 1\n` +
     `t="$dir/.nodeterm-${nonce}.tmp"\ntrap 'rm -f "$t"' EXIT\n` +
     `printf '%s' ${posixQuote(EXAMPLE_TEXT)} > "$t" || exit 1\n` +
-    `[ "$(wc -c < "$t")" -eq ${bytes} ] || exit 1\n` +
-    `ln "$t" "$f" 2>/dev/null && exit 0\n` +
-    `[ -e "$f" ] && exit 17\nexit 1\n`
+    `[ $(wc -c < "$t") -eq ${bytes} ] || exit 1\n` +
+    `if ln "$t" "$f" 2>/dev/null; then printf '\\n${nonce} done\\n'; exit 0; fi\n` +
+    `[ -e "$f" ] && exit 17\nexit 1\n}\nnt_create_ship_graph\n`
   try {
     const { code, stdout } = await route.runScript(script)
-    const written = new RegExp(`${nonce} (.+)`).exec(stdout)?.[1]
+    const written = new RegExp(`${nonce} path (.+)`).exec(stdout)?.[1]
     const shown = written ?? `${where === 'project' ? route.remoteCwd : '~/.claude'}/${GRAPH_FILE}`
-    if (code === 0) return { ok: true, path: shown }
+    if (code === 0 && stdout.includes(`${nonce} done`)) return { ok: true, path: shown }
     if (code === 17) return { ok: false, reason: 'exists', message: `${shown} already exists.` }
     return { ok: false, reason: 'failed', message: `Could not write ${shown} (ssh exited ${code}).` }
   } catch (err) {
@@ -158,8 +161,11 @@ export async function createShipGraph(
  * the app quits. A view renews its lease (`holdShipConfigLease`); a dead one simply stops.
  *
  * ROUTED ON EVERY TICK, because the answer changes: a persisted graph view can open an SSH project
- * before its master connects, and must not keep the local cadence once reads go over ssh. The next read
- * is scheduled after this one ends, so a slow host never gets two at once.
+ * before its master connects, and must not keep the local cadence once reads go over ssh.
+ *
+ * ONE POLL READ PER PROJECT AT A TIME. The next read is scheduled after this one ends, and a view closed
+ * and reopened on a slow host waits for the read already out rather than starting another. A stopped
+ * poll's answer is dropped. A view's own one-shot read (`shipConfigRead`) is separate from this.
  */
 export function registerShipConfigHandlers(platform: CorePlatform, router: ShipConfigRouter): void {
   platform.handle(IPC.shipConfigRead, (projectId: unknown) => readShipConfig(projectId, router))
@@ -173,6 +179,7 @@ export function registerShipConfigHandlers(platform: CorePlatform, router: ShipC
   /** Survives a lapsed subscription, so a view that lost its lease while hidden still hears of what
    *  changed in the meantime. One string per project someone looked at. */
   const lastSeen = new Map<string, string>()
+  const polling = new Map<string, Promise<unknown>>()
 
   const start = (projectId: string, sub: Pick<Sub, 'leases'>): (() => void) => {
     let alive = true
@@ -190,15 +197,23 @@ export function registerShipConfigHandlers(platform: CorePlatform, router: ShipC
         subs.delete(projectId)
         return
       }
+      for (let out = polling.get(projectId); out; out = polling.get(projectId)) {
+        await out.catch(() => {})
+        if (!alive) return
+      }
+      const read = readShipConfig(projectId, router)
+      polling.set(projectId, read)
       try {
-        const signature = JSON.stringify(await readShipConfig(projectId, router))
-        const last = lastSeen.get(projectId)
-        if (alive && last !== undefined && signature !== last) {
-          platform.broadcast(IPC.shipConfigChanged(projectId), projectId)
+        const signature = JSON.stringify(await read)
+        if (alive) {
+          const last = lastSeen.get(projectId)
+          if (last !== undefined && signature !== last) platform.broadcast(IPC.shipConfigChanged(projectId), projectId)
+          lastSeen.set(projectId, signature)
         }
-        lastSeen.set(projectId, signature)
       } catch {
         /* a transient failure keeps the last signature; the next tick retries */
+      } finally {
+        if (polling.get(projectId) === read) polling.delete(projectId)
       }
       if (!alive) return
       let remote = false

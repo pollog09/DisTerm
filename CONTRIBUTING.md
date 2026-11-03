@@ -294,6 +294,26 @@ Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for t
 and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
 work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
 
+**Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two
+things can go wrong quietly:
+
+- **`resources/bin/tmux` is gitignored**, and a missing `extraResources` source is only a WARNING to
+  electron-builder. A fresh checkout that did not run `node scripts/build-tmux.mjs` first gets a `.dmg`
+  with no bundled tmux. The release job runs it as its own step for this reason; a local `dist` does not.
+- **`sharp` is installed per architecture.** `@img/sharp-darwin-x64` is an optional dependency pinned to
+  x64, so `npm ci` on Apple silicon may leave it out, and electron-builder does not fetch it. If it is
+  missing, an x64 `.dmg` built there has a broken project icon upload. Building on an Intel Mac avoids
+  the question; on Apple silicon, check for it first with `ls node_modules/@img/`, and if it is absent
+  install it (`npm install --no-save --cpu=x64 --os=darwin sharp`) before building.
+
+On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`:
+
+1. `file <app>/Contents/MacOS/nodeterm` says x86_64, and `<app>/Contents/Resources/bin/tmux` exists and
+   runs (`--version`).
+2. `ls <app>/Contents/Resources/app.asar.unpacked/node_modules/@img/` lists `sharp-darwin-x64`.
+3. A terminal opens and survives a quit and relaunch, a project icon upload works, and dictation loads.
+4. The agent graph opens from the tab's graph icon, lists your agents and draws a ship pipeline.
+
 ## House rules
 
 - **Check `src/shared` before writing a two-line helper.** A JSON-object guard (`isRecord`), an

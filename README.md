@@ -309,7 +309,7 @@ npm start          # preview the production build
 npm run typecheck  # fastest correctness gate
 npm test           # vitest unit + integration suite
 npm run dist       # local UNSIGNED .dmg into dist/ (smoke test, Apple silicon)
-npm run dist:mac:x64 # the same for Intel Macs (build it on a Mac)
+npm run dist:mac:x64 # the same for Intel Macs (build it on a Mac; see CONTRIBUTING.md first)
 npm run dist:linux # AppImage + .deb + .rpm into dist/ (on a Linux host; .rpm needs rpmbuild)
 npm run dist:win   # unsigned NSIS installer + zip into dist/ (on a Windows host)
 npm run server:dev # build + run the browser Server Edition (needs Node 22 + tmux)

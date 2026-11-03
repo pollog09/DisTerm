@@ -1,6 +1,6 @@
 import { oneLine } from '../../shared/one-line'
 import { isRecord } from '../../shared/is-record'
-import type { ShipEdge, ShipEdgeKind, ShipPipeline, ShipStage } from '../../shared/ship-config'
+import { splitNextCycle, type ShipEdge, type ShipEdgeKind, type ShipPipeline, type ShipStage } from '../../shared/ship-config'
 
 /**
  * `.claude/ship-graph.json` arrives in a clone, so this treats it as hostile. The result is the only
@@ -78,7 +78,10 @@ function sanitizeEdges(raw: unknown, stages: readonly ShipStage[], where: string
     }
     const kind: ShipEdgeKind = e.kind === 'reject' ? 'reject' : 'next'
     const key = `${e.from}>${e.to}>${kind}`
-    if (seen.has(key)) continue
+    if (seen.has(key)) {
+      warnings.push(`${where}: skipped a repeated edge ${e.from} -> ${e.to}.`)
+      continue
+    }
     seen.add(key)
     out.push({ from: e.from, to: e.to, kind })
   }
@@ -129,12 +132,17 @@ export function sanitizeShipGraph(source: string, label: string): SanitizedShipG
     seen.add(p.id)
     const trigger = isRecord(p.trigger) ? p.trigger : undefined
     const triggerCommand = trigger && isName(trigger.command) ? trigger.command : undefined
+    if (p.trigger !== undefined && !triggerCommand) warnings.push(`${where}: "trigger.command" is not a plain command name, so it is not shown.`)
+    const edges = sanitizeEdges(p.edges, stages, where, warnings)
+    for (const e of splitNextCycle(stages.map((s) => s.id), edges).cycle) {
+      warnings.push(`${where}: the "next" edges form a cycle at ${e.from} -> ${e.to}, so that edge does not count toward the order. Mark a way back "kind": "reject".`)
+    }
     pipelines.push({
       id: p.id,
       name: text(p.name) ?? p.id,
       ...(triggerCommand ? { triggerCommand } : {}),
       stages,
-      edges: sanitizeEdges(p.edges, stages, where, warnings)
+      edges
     })
   }
   return { pipelines, warnings }

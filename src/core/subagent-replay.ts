@@ -1,5 +1,6 @@
 import type { NormalizedAgentEvent } from '../shared/agents/normalize'
 import { WORKING_STALE_MS } from '../shared/agents/stale'
+import { agentGraphLog } from './agent-graph/event-log'
 
 /** Current-host, display-only lifecycle memory. Never persisted or used as permission evidence.
  * Replays only running starts: old approvals, turn completions and alerts must not fire again. */
@@ -50,6 +51,7 @@ export class SubagentReplay {
   /** A subagent streamed transcript. Activity is keyed by tool_use_id only (that is all the tails
    *  know); an id with no running start is ignored, so this never creates or revives an entry. */
   touch(toolUseId: string, now = Date.now()): void {
+    agentGraphLog.recordActivity(toolUseId, now)
     for (const [key, e] of this.starts) if (e.toolUseId === toolUseId) this.lastActivity.set(key, now)
   }
 

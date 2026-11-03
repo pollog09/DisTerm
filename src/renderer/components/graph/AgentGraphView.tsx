@@ -96,6 +96,8 @@ export function graphEdgeLabel(edge: GraphEdge): string {
     return parts.join(' · ')
   }
   const times = edge.traversals ? ` ×${edge.traversals}` : ''
+  // With no file there is no order to have gone against: this could be a rejection or a second run.
+  if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return `went back${times}`
   if (edge.loop) return `re-entered${times}`
   if (edge.undeclared) return `not declared${times}`
   if (edge.kind === 'ship-reject') return `reject${times}`
@@ -193,7 +195,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
           <div
             className="agent-graph-edge__label nodrag nopan"
             data-kind={edge.kind}
-            title={edge.reason ? `Refused: ${edge.reason}` : undefined}
+            title={edge.reason ? `Refused: ${edge.reason}` : edge.loop && edge.kind === 'observed' && !edge.undeclared ? OBSERVED_LOOP_HINT : undefined}
             style={{ transform: `translate(-50%, -50%) translate(${mid.x}px, ${mid.y}px)`, color }}
           >
             {edge.kind === 'message' && edge.counts ? <MessageCounts counts={edge.counts} /> : label}
@@ -203,6 +205,8 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
     </>
   )
 })
+
+const OBSERVED_LOOP_HINT = 'With no routing file, a rejection and a second run in the same turn look the same.'
 
 const FIT_OPTIONS = { maxZoom: 1, padding: 0.12 }
 
@@ -219,7 +223,7 @@ const LEGEND: ReadonlyArray<{ label: string; color: string; dashed?: boolean }> 
   { label: 'not confirmed', color: DELIVERY_COLOR.failed },
   { label: 'refused', color: DELIVERY_COLOR.refused },
   { label: 'context link', color: 'var(--state-automation)', dashed: true },
-  { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
+  { label: 'reject or went back', color: 'var(--state-attention)', dashed: true },
   { label: 'opened, then, spawned, next', color: 'rgba(var(--tint-rgb), 0.45)' }
 ]
 

