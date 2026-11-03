@@ -39,7 +39,7 @@ const ROWS = {
     title: 'Colour theme',
     keywords: [
       'theme', 'color', 'colour', 'scheme', 'palette', 'ansi', 'dracula', 'nord', 'gruvbox',
-      'solarized', 'tokyo', 'catppuccin', 'dark', 'light'
+      'solarized', 'tokyo', 'catppuccin', 'dark', 'light', 'green', 'black', 'parrot'
     ]
   },
   fontFamily: {
