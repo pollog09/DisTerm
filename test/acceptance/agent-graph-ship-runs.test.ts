@@ -14,7 +14,7 @@ import { ClaudeSubagentLifecycle } from '../../src/core/claude-subagent-lifecycl
 import { subagentReplay } from '../../src/core/subagent-replay'
 import { WORKING_STALE_MS } from '../../src/shared/agents/stale'
 import { normalizeClaude } from '../../src/shared/agents/normalize'
-import type { ShipConfig, ShipEdge } from '../../src/shared/ship-config'
+import type { ShipConfig, ShipEdge, ShipPipeline } from '../../src/shared/ship-config'
 import { buildAgentGraphModel, type GraphEdge } from '../../src/renderer/lib/agentGraphModel'
 
 const NODE = 'orch'
@@ -173,11 +173,16 @@ describe('backwards is judged against the declared order', () => {
     expect(m.nodes.find((n) => n.id === impl)!.reentered).toBeUndefined()
   })
 
-  it('with no next edges, the stage list is the order', async () => {
-    run('implementer', 'doc-writer', 'implementer')
-    const m = await model([])
-    expect(m.edges.find((e) => e.source.endsWith(':docs') && e.target.endsWith(':impl'))).toMatchObject({ undeclared: true, loop: true })
-    expect(m.edges.find((e) => e.source.endsWith(':impl') && e.target.endsWith(':docs'))!.loop).toBeUndefined()
+  it('with no next edges there is no order: going down the list and back up calls nothing a loop', async () => {
+    for (const edges of [[], [REJECT]]) {
+      _resetForTest()
+      lifecycle = new ClaudeSubagentLifecycle()
+      run('doc-writer', 'implementer')
+      const m = await model(edges)
+      expect(m.edges.find((e) => e.source.endsWith(':docs') && e.target.endsWith(':impl'))).toMatchObject({ undeclared: true })
+      expect(m.edges.some((e) => e.loop)).toBe(false)
+      expect(m.nodes.some((n) => n.reentered)).toBe(false)
+    }
   })
 })
 
@@ -328,5 +333,96 @@ describe('a long healthy subagent', () => {
     start(newId(), 'implementer')
     const m = await model([...NEXT, REJECT], STAGES, clock + WORKING_STALE_MS + 1)
     expect(m.nodes.find((n) => n.id === impl)!.activity).toBe('stale')
+  })
+})
+
+describe('an agent used by more than one stage', () => {
+  const STEPS = [{ id: 'impl', agent: 'implementer' }, { id: 'r1', agent: 'change-reviewer' }, { id: 'fix', agent: 'implementer' }, { id: 'r2', agent: 'change-reviewer' }]
+  const CHAIN: ShipEdge[] = [{ from: 'impl', to: 'r1', kind: 'next' }, { from: 'r1', to: 'fix', kind: 'next' }, { from: 'fix', to: 'r2', kind: 'next' }]
+  const stage = (m: Awaited<ReturnType<typeof model>>, id: string) => m.nodes.find((n) => n.id === `stage:orch:ship-change:${id}`)!
+
+  it('a clean run walks the stages in order, with no loop', async () => {
+    run('implementer', 'change-reviewer', 'implementer', 'change-reviewer')
+    const m = await model(CHAIN, STEPS)
+    for (const id of ['impl', 'r1', 'fix', 'r2']) expect(stage(m, id).runs, id).toBe(1)
+    expect(m.edges.some((e) => e.loop || e.undeclared)).toBe(false)
+    expect(m.nodes.some((n) => n.reentered)).toBe(false)
+    expect(edge(m.edges, 'ship:orch:ship-change:fix:r2:next')!.traversals).toBe(1)
+  })
+
+  it('a retry of a stage stays on that stage', async () => {
+    run('implementer', 'implementer', 'change-reviewer')
+    const m = await model(CHAIN, STEPS)
+    expect(stage(m, 'impl').runs).toBe(2)
+    expect(stage(m, 'r1').runs).toBe(1)
+  })
+
+  it('a declared reject back to a repeated stage still reads as a rejection', async () => {
+    run('implementer', 'change-reviewer', 'implementer', 'change-reviewer', 'implementer')
+    const m = await model([...CHAIN, { from: 'r2', to: 'fix', kind: 'reject' }], STEPS)
+    expect(edge(m.edges, 'ship:orch:ship-change:r2:fix:reject')).toMatchObject({ traversals: 1, loop: true })
+    expect(stage(m, 'fix')).toMatchObject({ runs: 2, reentered: true })
+  })
+
+  it('with no route to any of them it says so, and draws no move', async () => {
+    run('change-reviewer', 'implementer')
+    const m = await model([], STEPS)
+    expect(m.notices.join()).toMatch(/could not be placed/)
+    expect(m.edges.some((e) => e.kind !== 'spawned' && (e.loop || e.undeclared || e.traversals))).toBe(false)
+  })
+})
+
+describe('which pipeline a run was', () => {
+  const pipelineConfig = (pipelines: ShipPipeline[]): ShipConfig => ({ ...ship([]), pipelines })
+  const SHIP: ShipPipeline = { id: 'ship', name: 'Ship', stages: STAGES, edges: [...NEXT, REJECT] }
+  const HOTFIX: ShipPipeline = { id: 'hotfix', name: 'Hotfix', stages: [{ id: 'rv', agent: 'change-reviewer' }, { id: 'im', agent: 'implementer' }], edges: [{ from: 'rv', to: 'im', kind: 'next' }] }
+  const TRIAGE: ShipPipeline = { id: 'triage', name: 'Triage', stages: [{ id: 't', agent: 'triager' }, { id: 'f', agent: 'fixer' }], edges: [{ from: 't', to: 'f', kind: 'next' }] }
+  async function modelOf(pipelines: ShipPipeline[]) {
+    const snapshot = await readAgentGraphSnapshot('P', { route: () => ({ kind: 'unsupported' }) })
+    return buildAgentGraphModel({
+      sessions: [{ id: NODE, kind: 'terminal', title: 'Orchestrator', agentId: 'claude', machine: { kind: 'local', label: 'x' } }],
+      links: [], ropes: [], snapshot, ship: pipelineConfig(pipelines), now: clock
+    })
+  }
+
+  it('a tie goes to the order they ran in, not the order the file lists', async () => {
+    run('change-reviewer', 'implementer')
+    const m = await modelOf([SHIP, HOTFIX])
+    expect(edge(m.edges, 'ship:orch:hotfix:rv:im:next')!.traversals).toBe(1)
+    expect(m.edges.some((e) => e.loop)).toBe(false)
+    expect(m.nodes.some((n) => n.id.startsWith('stage:orch:ship:'))).toBe(false)
+  })
+
+  it('a session that ran two pipelines lights both, and shows neither as unrun', async () => {
+    run('implementer', 'doc-writer', 'change-reviewer')
+    userPrompt()
+    run('triager', 'fixer')
+    const m = await modelOf([SHIP, TRIAGE])
+    expect(m.nodes.find((n) => n.id === 'stage:orch:triage:t')).toMatchObject({ runs: 1 })
+    expect(m.nodes.find((n) => n.id === 'stage:orch:ship:impl')).toMatchObject({ runs: 1 })
+    expect(m.nodes.some((n) => n.id.startsWith('stage:template:'))).toBe(false)
+    expect(m.nodes.some((n) => n.kind === 'subagent')).toBe(false)
+  })
+
+  it('two pipelines in one turn are each taken in turn', async () => {
+    run('implementer', 'doc-writer', 'triager', 'fixer')
+    const m = await modelOf([SHIP, TRIAGE])
+    expect(m.nodes.find((n) => n.id === 'stage:orch:ship:docs')).toMatchObject({ runs: 1 })
+    expect(m.nodes.find((n) => n.id === 'stage:orch:triage:f')).toMatchObject({ runs: 1 })
+  })
+
+  it('a true tie is drawn as observed, says so, and calls nothing a rejection', async () => {
+    const twin: ShipPipeline = { ...SHIP, id: 'twin', name: 'Twin' }
+    run('implementer', 'doc-writer', 'change-reviewer', 'implementer')
+    const m = await modelOf([SHIP, twin])
+    expect(m.notices.join()).toMatch(/fit Ship or Twin equally/)
+    expect(m.nodes.some((n) => n.kind === 'stage')).toBe(false)
+    expect(m.edges.some((e) => e.kind === 'ship-reject')).toBe(false)
+  })
+
+  it('a pipeline nothing ran stays a template', async () => {
+    run('implementer')
+    const m = await modelOf([SHIP, TRIAGE])
+    expect(m.nodes.find((n) => n.id === 'stage:template:triage:t')).toMatchObject({ runs: 0 })
   })
 })

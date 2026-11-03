@@ -342,6 +342,23 @@ describe('switching between two projects that both show the graph', () => {
   })
 })
 
+describe('the file-mode notice', () => {
+  it('names the inference and both limits whenever a file routes the graph', async () => {
+    shipResult.current = configWith({ pipelines: [PIPELINE], graphSource: 'project' })
+    await mount()
+    const hint = document.querySelector('.agent-graph__hint')!.textContent
+    expect(hint).toContain('inferred from hook order')
+    expect(hint).toContain('clean second run in one turn')
+    expect(hint).toContain('from the last stage to the first')
+  })
+
+  it('is absent with no file, where the line itself says it cannot tell', async () => {
+    shipResult.current = configWith()
+    await mount()
+    expect(document.querySelector('.agent-graph__hint')).toBeNull()
+  })
+})
+
 describe('what a stage says', () => {
   it('shows the trigger, and for an agent with no file does not claim it is missing', async () => {
     shipResult.current = configWith({ pipelines: [PIPELINE], graphSource: 'project' })

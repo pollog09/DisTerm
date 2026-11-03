@@ -303,8 +303,12 @@ things can go wrong quietly:
 - **`sharp` is installed per architecture.** `@img/sharp-darwin-x64` is an optional dependency pinned to
   x64, so `npm ci` on Apple silicon may leave it out, and electron-builder does not fetch it. If it is
   missing, an x64 `.dmg` built there has a broken project icon upload. Building on an Intel Mac avoids
-  the question; on Apple silicon, check for it first with `ls node_modules/@img/`, and if it is absent
-  install it (`npm install --no-save --cpu=x64 --os=darwin sharp`) before building.
+  the question. On Apple silicon, check first with `ls node_modules/@img/`. If it is absent, add the x64
+  packages without touching anything else, at the versions `package-lock.json` pins:
+  `npm install --no-save --force @img/sharp-darwin-x64@<ver> @img/sharp-libvips-darwin-x64@<ver>`. Do not
+  use `--cpu=x64 --os=darwin`: npm treats the host's own optional packages as inert under those flags and
+  removes the darwin-arm64 builds of sharp, esbuild, rollup, lightningcss and tailwind's oxide, which
+  `make-icon` and `build` need. This recipe has not been run on a Mac yet, so check step 2 below after it.
 
 On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`:
 

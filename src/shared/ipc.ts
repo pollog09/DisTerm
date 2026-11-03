@@ -354,7 +354,7 @@ export const IPC = {
   shipConfigRead: 'ship-config:read',
   /** Write the example `ship-graph.json`, only where no file exists. */
   shipGraphCreate: 'ship-config:create-graph',
-  /** Fire-and-forget ref-counted subscribe/unsubscribe: while a view holds one, the core re-reads
+  /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while a view holds one, the core re-reads
    *  the config on a timer and pushes `shipConfigChanged` on a real change. */
   shipConfigSubscribe: 'ship-config:subscribe',
   shipConfigUnsubscribe: 'ship-config:unsubscribe',

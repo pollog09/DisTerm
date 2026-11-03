@@ -206,6 +206,9 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
   )
 })
 
+/** Shown whenever a file routes the graph: what its loops are, and the two cases hooks cannot tell. */
+export const SHIP_LOOP_HINT =
+  'Loops are inferred from hook order. A clean second run in one turn reads as a rejection if a reject edge is declared, and a rejection from the last stage to the first is not drawn if only next edges are.'
 const OBSERVED_LOOP_HINT = 'With no routing file, a rejection and a second run in the same turn look the same.'
 
 const FIT_OPTIONS = { maxZoom: 1, padding: 0.12 }
@@ -428,6 +431,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           <IconCanvasView /> Canvas
         </button>
       </div>
+      {ship && ship.pipelines.length > 0 && <p className="agent-graph__hint">{SHIP_LOOP_HINT}</p>}
       {notices.length > 0 && (
         <ul className="agent-graph__notices">
           {notices.map((n) => <li key={n}>{n}</li>)}
