@@ -98,6 +98,9 @@ export interface NormalizedAgentEvent {
   sessionTitle?: string
   // session lifecycle phase: 'start' resets to idle, 'end' resets + clears loop/fan-out
   sessionPhase?: 'start' | 'end'
+  /** Claude's `SessionStart.source`: `startup`, `clear`, `resume` or `compact`. The last two continue
+   *  the same work, which the agent graph has to tell from a real reset. Absent on other CLIs. */
+  sessionSource?: string
   // subagent
   toolUseId?: string
   subagentType?: string
@@ -479,7 +482,10 @@ export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | nu
     }
     return null
   }
-  if (ev === 'SessionStart') return { ...base, kind: 'session', sessionPhase: 'start' }
+  if (ev === 'SessionStart') {
+    const source = (p as { source?: unknown }).source
+    return { ...base, kind: 'session', sessionPhase: 'start', ...(typeof source === 'string' && source ? { sessionSource: source } : {}) }
+  }
   if (ev === 'SessionEnd') return { ...base, kind: 'session', sessionPhase: 'end' }
   return null
 }

@@ -30,6 +30,37 @@ export interface ShipPipeline {
   edges: ShipEdge[]
 }
 
+/**
+ * The `next` edges that define an order, and any that close a cycle. Walked in stage-list order, so the
+ * edge that loses is the one returning to where the walk started: a way back written without
+ * `"kind": "reject"`, which is the only honest reading of a process that has a first stage at all.
+ */
+export function splitNextCycle(
+  stageIds: readonly string[],
+  edges: readonly ShipEdge[]
+): { order: ShipEdge[]; cycle: ShipEdge[] } {
+  const out = new Map<string, ShipEdge[]>()
+  for (const e of edges) if (e.kind === 'next') out.set(e.from, [...(out.get(e.from) ?? []), e])
+  const order: ShipEdge[] = []
+  const cycle: ShipEdge[] = []
+  const state = new Map<string, 'walking' | 'done'>()
+  const visit = (id: string): void => {
+    state.set(id, 'walking')
+    for (const e of out.get(id) ?? []) {
+      const seen = state.get(e.to)
+      if (seen === 'walking') {
+        cycle.push(e)
+        continue
+      }
+      order.push(e)
+      if (!seen) visit(e.to)
+    }
+    state.set(id, 'done')
+  }
+  for (const id of stageIds) if (!state.has(id)) visit(id)
+  return { order, cycle }
+}
+
 export type ShipScope = 'global' | 'project'
 
 /** The eight names Claude Code accepts for an agent colour. Anything else is dropped. */

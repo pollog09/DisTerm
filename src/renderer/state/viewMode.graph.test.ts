@@ -3,6 +3,7 @@ import {
   isBoardView,
   isGraphView,
   isKanbanOpen,
+  openIssueOnBoard,
   parseViewMap,
   showCanvas,
   toggleBoardView,
@@ -64,6 +65,16 @@ describe('the board toggle stays canvas and board', () => {
     expect(view('p')).toBe('kanban')
     toggleBoardView('p')
     expect(view('p')).toBe('canvas')
+  })
+})
+
+describe('a GitHub issue chip clicked over the graph', () => {
+  it('brings up the board that can show it, with the request standing', () => {
+    useViewMode.getState().setView('p', 'graph')
+    const ref = { repo: 'o/r', number: 7 } as never
+    openIssueOnBoard('p', ref, true, () => {})
+    expect(view('p')).toBe('kanban')
+    expect(useViewMode.getState().requestedIssue).toBe(ref)
   })
 })
 

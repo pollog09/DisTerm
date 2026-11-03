@@ -8035,8 +8035,10 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   palette row, so a merge from upstream stays cheap.
 - **`isKanbanOpen` means "the canvas is covered", not "the board is up".** Its ~20 callers in
   `Canvas.tsx` all ask whether a canvas gesture would act on something nobody can see, so the graph
-  answers true and none of them had to change. Code that means the board itself asks `isBoardView`
-  (`toggleBoardView`, the palette's label). "Go to node" still asks for a card
+  answers true. The flag `kanbanOpen` is a different thing and stays board-only, so a gesture reading
+  it directly has to add `graphOpen`: the image paste guard did (`canvasCoveredByView`), and an image
+  pasted over the graph landed on the hidden canvas until it did. Code that means the board itself asks
+  `isBoardView` (`toggleBoardView`, `openIssueOnBoard`, the palette's label). "Go to node" still asks for a card
   (`requestedCardNodeId`), and the graph consumes that request by opening the terminal in its modal;
   without that, every notification click and notch Go would read as dead over this view.
   `TerminalNode`'s board render pause and `boardCoversCanvas` read the view directly and test
@@ -8051,10 +8053,19 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   measured it), the reviewer landed to the LEFT of what it reviews.
 - **Re-entry means moving BACKWARDS against the order the `next` edges declare**, not "ran again" and
   not first-seen order. With "ran again", one rejection paints every forward edge of the second pass;
-  with first-seen order, review, impl, docs, review paints the declared docs -> review. A reset or a new
-  user prompt (`turn-start`) starts a new run, so predecessors never cross one. Inside a turn a declared
-  move is taken as declared, and an undeclared last-to-first move is a new run. `docs/ship-graph.md`
-  states this for users.
+  with first-seen order, review, impl, docs, review paints the declared docs -> review. It is reachability
+  along `next` edges (`splitNextCycle` drops an edge closing a cycle, with a warning), so a stage the file
+  says nothing about is never behind anything. A real reset or a new user prompt (`turn-start`) starts a
+  new run, so predecessors never cross one; `SessionStart` with `compact` or `resume` is not a reset, which
+  is why the normalizer carries `sessionSource`. Inside a turn a declared move is taken as declared, and
+  an undeclared last-to-first move is a new run. `docs/ship-graph.md` states this for users.
+- **A run's first end stands, and a re-start is a new pass.** The tool path can report a child's end
+  again after its native stop, and a rejection can resume the same `agent_id`; rewriting `endedAt` in
+  either case moves the run past whatever started in between, which erased the forward edge and invented
+  a false `spawned` one. The acceptance test goes through `ClaudeSubagentLifecycle`, as production does.
+- **Streamed output counts as life** (`SubagentReplay.touch` to `AgentGraphLog.recordActivity`), coalesced
+  and replaced per subagent, or a healthy run past 20 minutes reads "no recent signal" beside a canvas
+  card that knows better.
 - **`now` is only sampled on a rebuild**, and a killed subagent sends nothing, so while a run is open one
   timer waits for `nextStaleAt`. With none open there is no timer.
 - **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
@@ -8086,7 +8097,9 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   and `__proto__` never reach the output; ids must be plain tokens; `trigger.command` is shown, never
   run. A malformed project file warns and falls back to the global one, and the row still offers Open,
   because Create would refuse. Create never overwrites (`wx` locally; remotely a checked temp published with `ln`, since the script
-  itself crosses the ssh channel and `remote-write.guard.test.ts` forbids a bare `cat >`).
+  itself crosses the ssh channel and `remote-write.guard.test.ts` forbids a bare `cat >`). That script is
+  one function called on its last line, so a cut-off script runs nothing, and success is its done marker:
+  exit 0 can be a shell that read nothing.
 
 ## Canvas interaction & panels (`Canvas.tsx` is the hub)
 

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { recordDelivery, resetAgentMessageTraceForTests } from '../agents/agent-message-trace'
 import { AGENT_GRAPH_LABEL_MAX, deliveryClass, mergeAgentGraphEvents, type AgentGraphEvent } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
-import { AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
+import { normalizeClaude } from '../../shared/agents/normalize'
+import { ACTIVITY_COALESCE_MS, AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
 
 const delivery = (id: string, ts = 1): AgentGraphEvent => ({ kind: 'delivery', id, ts, from: 'a', to: 'b', outcome: 'delivered' })
 const agentEvent = (over: Partial<NormalizedAgentEvent>): NormalizedAgentEvent =>
@@ -52,12 +53,74 @@ describe('agentEventToGraphEvent', () => {
       .toMatchObject({ kind: 'session-reset', nodeId: 'n' })
   })
 
+  it('a compaction and a resume continue; a clear, a launch or a source-less start are resets; an exit is an end', () => {
+    const session = (over: Partial<NormalizedAgentEvent>) => agentEventToGraphEvent(agentEvent({ kind: 'session', sessionPhase: 'start', ...over }), 5)
+    expect(session({ sessionSource: 'compact' })).toBeNull()
+    expect(session({ sessionSource: 'resume' })).toBeNull()
+    expect(session({ sessionSource: 'clear' })).toMatchObject({ kind: 'session-reset' })
+    expect(session({ sessionSource: 'startup' })).toMatchObject({ kind: 'session-reset' })
+    expect(session({})).toMatchObject({ kind: 'session-reset' })
+    expect(session({ sessionPhase: 'end' })).toMatchObject({ kind: 'session-end' })
+  })
+
+  it('the Claude normalizer carries the source, only as a string', () => {
+    const start = (source: unknown) => normalizeClaude({ nodeId: 'n', agentId: 'claude', payload: { hook_event_name: 'SessionStart', session_id: 's', source } })
+    expect(start('compact')!.sessionSource).toBe('compact')
+    expect(start(7)!.sessionSource).toBeUndefined()
+  })
+
   it('a label is one bounded line', () => {
     const e = agentEventToGraphEvent(agentEvent({ kind: 'subagent-start', toolUseId: 't', taskLabel: `a\nb${'x'.repeat(4000)}` }), 5)
     expect(e && e.kind === 'subagent-start' && e.label).toMatch(/^ab?x*/)
     const label = e && e.kind === 'subagent-start' ? e.label ?? '' : ''
     expect(label.length).toBeLessThanOrEqual(AGENT_GRAPH_LABEL_MAX)
     expect(label).not.toContain('\n')
+  })
+})
+
+describe('recordActivity', () => {
+  const open = (log: AgentGraphLog, subId = 't'): void => log.recordAgentEvent(agentEvent({ kind: 'subagent-start', toolUseId: subId }), 1)
+  const activity = (log: AgentGraphLog) => log.snapshot().events.filter((e) => e.kind === 'subagent-activity')
+
+  it('coalesces a stream and keeps one entry per subagent, however long it runs', () => {
+    const log = new AgentGraphLog()
+    open(log)
+    log.recordActivity('t', ACTIVITY_COALESCE_MS)
+    log.recordActivity('t', ACTIVITY_COALESCE_MS + 1) // inside the window
+    expect(activity(log)).toHaveLength(1)
+    expect(activity(log)[0].ts).toBe(ACTIVITY_COALESCE_MS)
+    for (let i = 2; i < 200; i++) log.recordActivity('t', ACTIVITY_COALESCE_MS * i)
+    expect(activity(log)).toHaveLength(1)
+    expect(log.snapshot().dropped).toBe(0)
+  })
+
+  it('names the session, so a relay peer can be judged on it, and ignores what it never saw start', () => {
+    const log = new AgentGraphLog()
+    log.recordActivity('nobody', ACTIVITY_COALESCE_MS)
+    expect(activity(log)).toEqual([])
+    open(log)
+    log.recordActivity('t', ACTIVITY_COALESCE_MS)
+    expect(activity(log)[0]).toMatchObject({ nodeId: 'n', subId: 't' })
+  })
+
+  it('stops at the end, a reset or an exit', () => {
+    const log = new AgentGraphLog()
+    open(log, 'a')
+    log.recordAgentEvent(agentEvent({ kind: 'subagent-end', toolUseId: 'a' }), 2)
+    open(log, 'b')
+    log.recordAgentEvent(agentEvent({ kind: 'session', sessionPhase: 'end' }), 3)
+    log.recordActivity('a', ACTIVITY_COALESCE_MS)
+    log.recordActivity('b', ACTIVITY_COALESCE_MS)
+    expect(activity(log)).toEqual([])
+  })
+
+  it('reaches subscribers through the same live stream', () => {
+    const log = new AgentGraphLog()
+    open(log)
+    const seen: string[] = []
+    log.onEvent((e) => seen.push(e.kind))
+    log.recordActivity('t', ACTIVITY_COALESCE_MS)
+    expect(seen).toEqual(['subagent-activity'])
   })
 })
 

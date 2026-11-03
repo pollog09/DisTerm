@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +26,7 @@ const local = (cwd: string | null): ShipConfigRouter => ({ route: () => ({ kind:
 function hostRunner(home: string, extraEnv: Record<string, string> = {}) {
   return async (script: string): Promise<{ code: number; stdout: string }> => {
     try {
-      const stdout = execFileSync('sh', ['-s'], { input: script, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: process.env.PATH ?? '', HOME: home, ...extraEnv } })
+      const stdout = execFileSync('sh', ['-s'], { input: script, cwd: home, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: process.env.PATH ?? '', HOME: home, ...extraEnv } })
       return { code: 0, stdout }
     } catch (err) {
       const e = err as { status?: number; stdout?: string }
@@ -114,25 +114,52 @@ describe('createShipGraph reports the path the host really used', () => {
     await expect(createShipGraph('P', 'global', router)).resolves.toMatchObject({ ok: false, reason: 'exists', message: `${file} already exists.` })
   })
 
-  it('a script cut off by a dropped channel publishes nothing, at any length', async () => {
+  it('a script cut off by a dropped channel runs nothing and reports nothing, at any length', async () => {
     const home = testTmpDir('ship-create-cut-')
     const cwd = path.join(home, 'proj')
+    const hostCwd = path.join(home, 'where-the-shell-runs')
     fs.mkdirSync(cwd)
+    fs.mkdirSync(hostCwd)
     let whole = ''
     await createShipGraph('P', 'project', { route: () => ({ kind: 'remote', remoteCwd: cwd, host: 'box', runScript: async (s) => {
       whole = s
       return { code: 0, stdout: '' }
     } }) })
-    const file = path.join(cwd, '.claude', 'ship-graph.json')
-    const run = hostRunner(home)
-    for (let at = 0; at < whole.length - 1; at += 7) {
-      await run(whole.slice(0, at))
-      if (fs.existsSync(file)) {
-        // Only a script past its size check may publish, and then the file is whole.
+    const dir = path.join(cwd, '.claude')
+    const file = path.join(dir, 'ship-graph.json')
+    const bodyStart = whole.indexOf('{\n  "pipelines"')
+    const bodyEnd = whole.indexOf("}\n' >")
+    expect(bodyStart).toBeGreaterThan(0)
+    const lastLine = whole.lastIndexOf('nt_create_ship_graph\n')
+    const cut = async (at: number): Promise<void> => {
+      const r = await createShipGraph('P', 'project', { route: () => ({ kind: 'remote', remoteCwd: cwd, host: 'box', runScript: async (script) => {
+        // sh -s on a piece of this call's script (its nonce is its own), in a neutral cwd: what a
+        // dropped channel leaves.
+        const out = spawnSync('sh', ['-s'], { input: script.slice(0, at), cwd: hostCwd, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: home } })
+        return { code: out.status ?? 1, stdout: out.stdout ?? '' }
+      } }) })
+      const label = JSON.stringify(whole.slice(Math.max(0, at - 24), at))
+      expect(fs.readdirSync(hostCwd), `stray from ${label}`).toEqual([])
+      if (at < lastLine + 'nt_create_ship_graph'.length) {
+        expect(r.ok, `reported success from ${label}`).toBe(false)
+        expect(fs.existsSync(dir), `ran part of the script from ${label}`).toBe(false)
+      } else {
+        expect(r.ok, label).toBe(true) // the call itself made it across
         expect(JSON.parse(fs.readFileSync(file, 'utf8')).pipelines[0].id).toBe('ship-change')
-        fs.rmSync(file)
       }
+      fs.rmSync(dir, { recursive: true, force: true })
     }
+    // Every byte of the script around the JSON, and a sample inside it, where every cut is the same.
+    for (let at = 1; at < whole.length; at++) {
+      if (at > bodyStart + 4 && at < bodyEnd - 4 && at % 40 !== 0) continue
+      await cut(at)
+    }
+    await cut(whole.length)
+  }, 60_000)
+
+  it('exit 0 with no done marker is not a success: a shell that read nothing also exits 0', async () => {
+    const router: ShipConfigRouter = { route: () => ({ kind: 'remote', remoteCwd: '/p', host: 'box', runScript: async () => ({ code: 0, stdout: '' }) }) }
+    await expect(createShipGraph('P', 'project', router)).resolves.toMatchObject({ ok: false, reason: 'failed' })
   })
 
   it('leaves no temp behind', async () => {
@@ -303,6 +330,43 @@ describe('registerShipConfigHandlers', () => {
     await vi.advanceTimersByTimeAsync(SHIP_POLL_REMOTE_MS * 10)
     expect(most).toBe(1)
     p.casts.get(IPC.shipConfigUnsubscribe)!('P', 'view')
+  })
+
+  it('closing and reopening on a slow host never reads twice at once, and a stopped read changes nothing', async () => {
+    vi.useFakeTimers()
+    const p = platform()
+    let inFlight = 0
+    let most = 0
+    let answer = 'first'
+    const nonceOf = (s: string): string => /printf '\\n(NTSC[0-9a-f]+) home/.exec(s)![1]
+    registerShipConfigHandlers(p.core, {
+      route: () => ({
+        kind: 'remote',
+        remoteCwd: '/p',
+        host: 'box',
+        runScript: async (script) => {
+          most = Math.max(most, ++inFlight)
+          const said = answer
+          await new Promise((r) => setTimeout(r, 1000))
+          inFlight--
+          const n = nonceOf(script)
+          return { code: 0, stdout: `\n${n} home /h\n\n${n} agent global ${said}.md\n---\nname: ${said}\n---\n\n${n} end\n` }
+        }
+      })
+    })
+    const sub = p.casts.get(IPC.shipConfigSubscribe)!
+    const unsub = p.casts.get(IPC.shipConfigUnsubscribe)!
+    sub('P', 'a')
+    unsub('P', 'a')
+    sub('P', 'b')
+    unsub('P', 'b')
+    answer = 'second'
+    sub('P', 'c')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(most).toBe(1)
+    // The stopped reads said `first`. Had one set the signature, the live read's `second` would push.
+    expect(p.broadcast).not.toHaveBeenCalled()
+    unsub('P', 'c')
   })
 
   it('a local project polls on the shorter interval', async () => {

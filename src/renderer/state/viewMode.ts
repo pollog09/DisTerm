@@ -284,6 +284,6 @@ export function openIssueOnBoard(
     return
   }
   const vm = useViewMode.getState()
-  if (projectId && !isKanbanOpen(projectId)) vm.toggle(projectId)
+  if (projectId && !isBoardView(projectId)) vm.setView(projectId, 'kanban')
   useViewMode.getState().requestIssue(ref)
 }

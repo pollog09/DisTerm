@@ -228,10 +228,22 @@ describe('reduceSubagents', () => {
     expect(runs[0]).toMatchObject({ subId: 'native', startedAt: 10 })
   })
 
-  it('a stop followed by a start of the same id resumes the run', () => {
+  it('a stop followed by a start of the same id is a new pass, and the first keeps its end', () => {
     const runs = reduceSubagents([start('p', 'a', 'x', 10), end('p', 'a', 20), start('p', 'a', 'x', 30)]).get('p')!
-    expect(runs).toHaveLength(1)
-    expect(runs[0].endedAt).toBeUndefined()
+    expect(runs).toHaveLength(2)
+    expect(runs[0].endedAt).toBe(20)
+    expect(runs[1].endedAt).toBeUndefined()
+  })
+
+  it('a second end does not move the first', () => {
+    const runs = reduceSubagents([start('p', 'a', 'x', 10), end('p', 'a', 20), end('p', 'a', 50)]).get('p')!
+    expect(runs[0].endedAt).toBe(20)
+  })
+
+  it('activity moves only the signal, on the open pass', () => {
+    const activity = (ts: number): AgentGraphEvent => ({ kind: 'subagent-activity', id: 'activity:a', ts, nodeId: 'p', subId: 'a' })
+    const runs = reduceSubagents([start('p', 'a', 'x', 10), activity(15), end('p', 'a', 20), activity(30)]).get('p')!
+    expect(runs[0]).toMatchObject({ lastSignalTs: 15, lastEventTs: 20 })
   })
 
   it('a session reset ends what was running', () => {

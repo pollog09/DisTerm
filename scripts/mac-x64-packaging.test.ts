@@ -11,7 +11,7 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'))
 
 /** Run a package.json script for real, with `npm` and `electron-builder` stubbed on PATH to log. */
-function runScript(name: string, builderExit: number): { status: number | null; calls: string[] } {
+function runScript(name: string, builderExit: number, rebuildExit = 0): { status: number | null; calls: string[] } {
   const dir = testTmpDir('mac-x64-')
   const log = join(dir, 'calls.log')
   const stub = (tool: string, exit: number): void => {
@@ -20,6 +20,7 @@ function runScript(name: string, builderExit: number): { status: number | null; 
     chmodSync(file, 0o755)
   }
   stub('npm', 0)
+  writeFileSync(join(dir, 'npm'), `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$*" = "run rebuild" ]; then exit ${rebuildExit}; fi\nexit 0\n`)
   stub('electron-builder', builderExit)
   const r = spawnSync('sh', ['-c', pkg.scripts[name]], { env: { PATH: `${dir}:/usr/bin:/bin` }, encoding: 'utf8' })
   return { status: r.status, calls: readFileSync(log, 'utf8').trim().split('\n') }
@@ -46,6 +47,14 @@ describe('Intel Mac packaging', () => {
     const { calls, status } = runScript('dist:mac:x64', 3)
     expect(calls[calls.length - 1]).toBe('npm run rebuild')
     expect(status).toBe(3)
+  })
+
+  it('a build that worked but a restore that failed is a failure, or an x64 node-pty goes unnoticed', () => {
+    expect(runScript('dist:mac:x64', 0, 1).status).toBe(1)
+  })
+
+  it('when both fail, the build failure is the one reported', () => {
+    expect(runScript('dist:mac:x64', 3, 1).status).toBe(3)
   })
 
   it('every mac target and the release build include x64', () => {

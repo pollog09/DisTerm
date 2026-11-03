@@ -51,7 +51,28 @@ export interface AgentGraphSubagentEndEvent {
   subId: string
 }
 
-/** The session's context was reset, so whatever it had running is no longer its own. */
+/** A running subagent streamed output. One entry per subagent, replaced as it moves on, so a healthy
+ *  long run is not read as a dead one without filling the buffer. */
+export interface AgentGraphSubagentActivityEvent {
+  kind: 'subagent-activity'
+  /** `activity:<subId>`: stable, so a newer one replaces the older wherever they merge. */
+  id: string
+  ts: number
+  nodeId: string
+  subId: string
+}
+
+/** The CLI went away. What it was running went with it, but this is not a new run: a resume continues
+ *  the same work. */
+export interface AgentGraphSessionEndEvent {
+  kind: 'session-end'
+  id: string
+  ts: number
+  nodeId: string
+}
+
+/** The session really started over (`/clear`, a fresh launch), so what follows is a new run, and
+ *  whatever it had running is no longer its own. A compaction or a resume is not this. */
 export interface AgentGraphSessionResetEvent {
   kind: 'session-reset'
   id: string
@@ -74,6 +95,8 @@ export type AgentGraphEvent =
   | AgentGraphSubagentStartEvent
   | AgentGraphSubagentEndEvent
   | AgentGraphSessionResetEvent
+  | AgentGraphSessionEndEvent
+  | AgentGraphSubagentActivityEvent
 
 export interface AgentGraphSnapshot {
   /** Oldest first. */
