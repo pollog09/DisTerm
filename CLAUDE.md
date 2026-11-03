@@ -9859,7 +9859,11 @@ Windows loopback and pane probes see `wsl.exe`.
   `remoteAtomicWrite`, never on an argv. The client's private key stays on Windows. Modes are 0600/0700.
   POSIX modes do not apply on Windows, so each key directory gets an explicit ACL for this user with
   inheritance removed, through a fixed-path `icacls` before a key lands in it (`windowsPrivateDirArgs`).
-  If that fails it is logged and setup continues on the profile folder's own ACLs. A lost key heals: the
+  The grant is by SID from a fixed-path `whoami /user /fo csv /nh`, never by name: on a domain machine with
+  a same-named local account, a name could grant the local account while `/inheritance:r` removes the real
+  user. If the SID cannot be read strictly, or either step fails, the directory is left unchanged on the
+  profile folder's own ACLs, it is logged, and setup continues. **SYSTEM and Administrators lose access to
+  this folder**, which system-level backup tools may notice. A lost key heals: the
   public half is derived from the private key, and a lost private key gets a new pair.
 - **The host key pin is exact.** A different key in the distro is refused by name, and no key is
   adopted: with nothing to compare (first connect, reinstalled distro, lost local records) core
@@ -9887,13 +9891,18 @@ Windows loopback and pane probes see `wsl.exe`.
   on the next connect.
   - **Only for a project the user created on the endpoint,** on its connect (`WslEndpoints.connected`).
     Never for a folder browse, a listing or a `wsl:` profile.
-  - **Exactly one, recognized inside the distro.** `WSL_KEEPALIVE_OPS` reports a process only if this user
-    owns it and its arguments after argv[0] are EXACTLY `-c <script> <marker>`. The marker holds the
-    endpoint's random handle. A process that merely mentions it is neither trusted nor stopped, which
-    `wsl-keepalive.test.ts` proves with real decoy processes. `trim` keeps one and stops any extra.
-  - **Stopping:** turning the setting off, or deleting an endpoint's last project (`wsl-project:unbind`),
-    stops that one by the same match. It checks `wsl.exe --list --running` first, because `-d` would boot
-    a stopped distro only to find nothing. Closing a tab does not stop it: closing means "not now".
+  - **Exactly one per DISTRO, recognized inside it.** `WSL_KEEPALIVE_OPS` reports a process only if this
+    user owns it and its arguments after argv[0] are EXACTLY `-c <script> nodeterm-wsl-keepalive-<16 hex>`.
+    Any handle counts, because a lost or corrupt `endpoint.json` mints a new one, and the old keepalive
+    must still be reused and stoppable. A process that merely mentions the marker is neither trusted nor
+    stopped, which `wsl-keepalive.test.ts` proves with real decoy processes. `trim` keeps one and stops any
+    extra. **Two valid records on one distro** share that one keepalive: whichever connects reuses it, and
+    deleting a project stops it only when no record on that distro still has a project.
+  - **Stopping:** deleting a distro's last project (`wsl-project:unbind`), or turning the setting off,
+    stops it by the same match. Turning it off looks in every distro `wsl.exe --list --running` reports,
+    including ones with no readable record, because a lost record leaves nothing saying which distro it
+    was. It runs one read of `/proc` there and starts nothing. Closing a tab does not stop it: closing means
+    "not now".
   - **If it cannot start:** a named `keepalive` warning, and the project still works.
   - The `distro-restarted` warning (boot id + init start time) remains for when the distro stopped anyway.
 - **Stopping a distro, combined behavior.** The keepalive has no restart loop and the service has no timer,
@@ -9901,10 +9910,16 @@ Windows loopback and pane probes see `wsl.exe`.
   OPEN project reconnects: its dropped channels fire the renderer's `SshReconnector` right away, and the
   45 s `revalidateAll` watchdog follows. Either one re-establishes the master, which boots the distro and
   starts a new keepalive. **So a distro cannot stay stopped while one of its projects is open.** To keep it
-  stopped, close its project tabs first, then run `wsl --terminate <distro>`. Closing a WSL tab drops its
-  master (`dropClosedWslConnection`, unlike an ordinary SSH project, whose master stays), so the watchdog
-  has nothing to revive. Reopening the tab starts the distro again. Closing alone leaves the distro running
-  on its keepalive; to stop that too, turn the setting off or delete the project.
+  stopped, close its project tabs first, then run `wsl --terminate <distro>`. Closing a WSL tab keeps its
+  master down (`dropClosedWslConnection`, unlike an ordinary SSH project, whose master stays). That takes
+  three things together, because ending the master alone starts a reconnect: the parked PTY's channel
+  exits 255, which reports a drop, which dials a second later and registers the project with the watchdog
+  again. So the close cancels a pending reconnect, `SshReconnector` refuses any drop for a closed WSL
+  project (`createProjectReconnector`), and the terminals' parks are disposed, since a park on the ended
+  master is dead and reopening would adopt it. Reopening the tab connects and reattaches to the live tmux
+  session, starting the distro if it stopped. Closing alone leaves the distro running on its keepalive; to
+  stop that too, turn the setting off or delete the project. A setting change never starts a distro: it
+  only touches distros `wsl.exe --list --running` reports.
 - **Testing:** `wsl-endpoint.test.ts` and `wsl-keepalive.test.ts` run the real NativeMux against ssh2's
   Server behind a scripted `wsl.exe` on any OS, and the real scripts under `/bin/sh` on POSIX. For a live
   run off Windows set `NODETERM_NATIVE_SSH=1` and `NODETERM_WSL_PROJECTS=1`, which resolves the bare

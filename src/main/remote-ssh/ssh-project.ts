@@ -101,6 +101,8 @@ interface Runners {
   endpointWarnings?: (conn: SshConnection) => WslWarning[]
   /** A WSL project finished connecting: the keepalive decision. Must not reject the connect. */
   endpointConnected?: (projectId: string, conn: SshConnection) => Promise<void>
+  /** A WSL project's connection was ended on purpose. */
+  endpointDisconnected?: (projectId: string, conn: SshConnection) => void
   /** Spawn the long-lived master; returns a handle we can kill. `stderr()` (when the spawner wires
    *  it) returns the master's captured stderr so a failed connect can surface the REAL ssh error
    *  (auth denied, host unreachable, host-key mismatch) instead of a generic timeout. `env` (when
@@ -2709,6 +2711,7 @@ export class SshProjectManager {
       if (opts?.final && this.conns.size === 0) this.r.onIdle?.()
       return
     }
+    if (isWslHost(c.conn.host)) this.r.endpointDisconnected?.(projectId, c.conn)
     // Remove the pushed agent-status mirror while the master is still alive: a file left behind
     // would freeze the phone's badges at the last event (the heartbeat that lets the phone detect
     // staleness dies with this connection). Best-effort.
@@ -2938,6 +2941,7 @@ export function initSshProject(
     authorizeEndpoint: (projectId, conn, controlPath) => wsl.authorize(projectId, conn.host, controlPath),
     endpointWarnings: (conn) => wsl.warningsFor(conn.host),
     endpointConnected: (projectId, conn) => wsl.connected(projectId, conn.host),
+    endpointDisconnected: (projectId, conn) => wsl.disconnected(projectId, conn.host),
     spawnMaster: native ? (args) => startNativeMaster(nativeMux(), args) : (args, env) => {
       // Capture the master's stderr (stdin/stdout stay ignored) so a failed connect can report the
       // real ssh error instead of a generic timeout. Buffer is capped so a chatty host can't grow it

@@ -2,9 +2,10 @@
 // opening it causes. The connect is an effect that runs off the store change, so a subscriber scheduling
 // it stands in for React, on the real store.
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjects } from '../state/projects'
-import { bindOpenedWslProject, dropClosedWslConnection, unbindDeletedWslProject } from './wslProjectBinding'
+import { reportSshExit, setSshDropHandler } from './sshDropReport'
+import { bindOpenedWslProject, createProjectReconnector, dropClosedWslConnection, releaseClosedTerminals, unbindDeletedWslProject } from './wslProjectBinding'
 import type { Project } from '@shared/types'
 
 const wsl: NonNullable<Project['ssh']> = {
@@ -54,26 +55,188 @@ describe('bindOpenedWslProject', () => {
   })
 })
 
-describe('dropClosedWslConnection', () => {
-  it('disconnects a closed WSL project, after its session kill was answered', async () => {
-    const order: string[] = []
-    let answer: () => void = () => {}
-    const ended = new Promise<void>((r) => (answer = r))
-    const disconnect = vi.fn(async () => order.push('disconnect'))
-    dropClosedWslConnection({ id: 'p1', ssh: wsl }, ended, disconnect, () => order.push('clear'))
-    await Promise.resolve()
-    expect(disconnect).not.toHaveBeenCalled()
-    answer()
-    await vi.waitFor(() => expect(disconnect).toHaveBeenCalledWith('p1'))
-    expect(order).toEqual(['clear', 'disconnect'])
+describe('closing a WSL project keeps its master down', () => {
+  // The chain from the review, on the real store, the real coordinator and the real exit report: a
+  // disconnect ends the parked PTY's channel with 255, and that exit must not lead to a dial.
+  const NODE = 'term-1'
+  let rec: ReturnType<typeof createProjectReconnector>
+  let dial: ReturnType<typeof vi.fn>
+  let respawn: ReturnType<typeof vi.fn>
+  let released: string[]
+  let disconnect: ReturnType<typeof vi.fn>
+
+  const exit255 = (projectId: string): void => reportSshExit(255, projectId, true, NODE)
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    useProjects.setState({ projects: [], activeProjectId: '' } as never)
+    dial = vi.fn(async () => true)
+    respawn = vi.fn()
+    released = []
+    rec = createProjectReconnector({ connect: dial as never, respawn: respawn as never })
+    setSshDropHandler((projectId, nodeId) => rec.reportDrop(projectId, nodeId))
+    // What really follows a disconnect: the parked PTY's channel exits 255, and its retained
+    // subscription reports it.
+    disconnect = vi.fn(async (id: string) => exit255(id))
   })
 
-  it('leaves an ordinary SSH project connected, as it always was', async () => {
-    const disconnect = vi.fn(async () => {})
-    dropClosedWslConnection({ id: 'p2', ssh: plain }, undefined, disconnect, () => {})
-    dropClosedWslConnection(undefined, undefined, disconnect, () => {})
-    await new Promise((r) => setTimeout(r, 5))
+  afterEach(() => {
+    setSshDropHandler(null)
+    rec.dispose()
+    vi.useRealTimers()
+  })
+
+  function close(id: string, ended?: Promise<unknown>): void {
+    const store = useProjects.getState()
+    dropClosedWslConnection(store.getProject(id), {
+      ended,
+      forgetReconnect: (x) => rec.forget(x),
+      releaseTerminals: (x) => released.push(x.id),
+      clearConn: () => {},
+      disconnect: disconnect as never
+    })
+    store.closeProject(id)
+  }
+
+  const open = (ssh: NonNullable<Project['ssh']>): string => useProjects.getState().openSshProject('p', ssh).id
+
+  it('the exit its disconnect causes dials nothing, however long we wait', async () => {
+    const id = open(wsl)
+    close(id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(disconnect).toHaveBeenCalledWith(id)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(dial).not.toHaveBeenCalled()
+  })
+
+  it('a reconnect already pending at close never fires', async () => {
+    const id = open(wsl)
+    exit255(id)
+    close(id)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(dial).not.toHaveBeenCalled()
+    expect(respawn).not.toHaveBeenCalled()
+  })
+
+  it('a backoff waiting when the project closes some other way stops at its next step', async () => {
+    const id = open(wsl)
+    exit255(id)
+    useProjects.getState().closeProject(id)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(dial).not.toHaveBeenCalled()
+  })
+
+  it('an explicit retry on a closed project dials nothing either', async () => {
+    const id = open(wsl)
+    close(id)
+    await vi.advanceTimersByTimeAsync(0)
+    rec.retryNow(id, [NODE])
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(dial).not.toHaveBeenCalled()
+  })
+
+  it('a loop cancelled by the close does not come back when the tab reopens', async () => {
+    const id = open(wsl)
+    exit255(id)
+    close(id)
+    await vi.advanceTimersByTimeAsync(0)
+    useProjects.getState().reopenProject(id)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(dial).not.toHaveBeenCalled()
+    expect(respawn).not.toHaveBeenCalled()
+  })
+
+  it('reopening reconnects: a later drop dials and respawns as usual', async () => {
+    const id = open(wsl)
+    close(id)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(dial).not.toHaveBeenCalled()
+    useProjects.getState().reopenProject(id)
+    exit255(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(dial).toHaveBeenCalledTimes(1)
+    expect(respawn).toHaveBeenCalledWith(id, [NODE])
+  })
+
+  it('releases the terminals in the close’s own tick, before the disconnect', async () => {
+    const order: string[] = []
+    disconnect.mockImplementation(async () => order.push('disconnect'))
+    const id = open(wsl)
+    const store = useProjects.getState()
+    dropClosedWslConnection(store.getProject(id), {
+      ended: undefined,
+      forgetReconnect: () => order.push('forget'),
+      releaseTerminals: () => order.push('release'),
+      clearConn: () => order.push('clear'),
+      disconnect: disconnect as never
+    })
+    expect(order).toEqual(['forget', 'release'])
+    store.closeProject(id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(order).toEqual(['forget', 'release', 'clear', 'disconnect'])
+  })
+
+  it('waits for the close’s own session kill before disconnecting', async () => {
+    let answer: () => void = () => {}
+    const id = open(wsl)
+    close(id, new Promise<void>((r) => (answer = r)))
+    await vi.advanceTimersByTimeAsync(10)
     expect(disconnect).not.toHaveBeenCalled()
+    answer()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(disconnect).toHaveBeenCalledWith(id)
+  })
+
+  it('a tab reopened before that kill was answered keeps its connection', async () => {
+    let answer: () => void = () => {}
+    const id = open(wsl)
+    close(id, new Promise<void>((r) => (answer = r)))
+    useProjects.getState().reopenProject(id)
+    answer()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(disconnect).not.toHaveBeenCalled()
+  })
+
+  it('an ordinary SSH project behaves as before: connected, not released, and it redials', async () => {
+    const id = open(plain)
+    close(id)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(disconnect).not.toHaveBeenCalled()
+    expect(released).toEqual([])
+    exit255(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(dial).toHaveBeenCalledTimes(1)
+  })
+
+  it('an open WSL project still reconnects, and other exit codes report nothing', async () => {
+    const id = open(wsl)
+    reportSshExit(0, id, true, NODE)
+    reportSshExit(255, id, false, NODE)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(dial).not.toHaveBeenCalled()
+    exit255(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(dial).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('releaseClosedTerminals', () => {
+  const project = { nodes: [{ id: 't1', kind: 'terminal' }, { id: 't2' }, { id: 'w1', kind: 'whiteboard' }] } as never
+
+  it('a mounted project’s terminals dispose on unmount instead of parking', () => {
+    const onUnmount: string[] = []
+    const park: string[] = []
+    releaseClosedTerminals(project, true, { disposeOnUnmount: (n) => onUnmount.push(n), disposePark: (n) => park.push(n) })
+    expect(onUnmount).toEqual(['t1', 't2'])
+    expect(park).toEqual([])
+  })
+
+  it('an unmounted project’s parks are dropped, without marking anything for a later unmount', () => {
+    const onUnmount: string[] = []
+    const park: string[] = []
+    releaseClosedTerminals(project, false, { disposeOnUnmount: (n) => onUnmount.push(n), disposePark: (n) => park.push(n) })
+    expect(park).toEqual(['t1', 't2'])
+    expect(onUnmount).toEqual([])
   })
 })
 
@@ -104,8 +267,13 @@ describe('Canvas uses them', () => {
 
   it('the close path drops the connection', () => {
     const close = src.slice(src.indexOf('const performCloseProject = useCallback('), src.indexOf('const closeProject = useCallback('))
-    expect(close).toContain('dropClosedWslConnection(store.getProject(id), ended, sshDisconnect,')
+    expect(close).toContain('dropClosedWslConnection(store.getProject(id), {')
     expect(close.indexOf('dropClosedWslConnection')).toBeLessThan(close.indexOf('store.closeProject(id)'))
+  })
+
+  it('runs the coordinator that knows about closed projects', () => {
+    expect(src).toContain('const rec = createProjectReconnector({')
+    expect(src).not.toContain('new SshReconnector(')
   })
 
   it('unbinds in deleteProject, not in the close path', () => {

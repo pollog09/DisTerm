@@ -32,6 +32,9 @@ export interface SshReconnectorDeps {
   connect: (projectId: string) => Promise<boolean>
   /** Respawn the given (dead) terminal nodes of the project. */
   respawn: (projectId: string, nodeIds: string[]) => void
+  /** May this project be dialed at all right now? Asked at every step that would lead to a dial,
+   *  because the answer can change while a backoff is waiting. Absent = yes. */
+  mayDial?: (projectId: string) => boolean
 }
 
 export class SshReconnector {
@@ -46,7 +49,7 @@ export class SshReconnector {
 
   /** A remote terminal's ssh died with exit 255: queue it and (re)start the project's loop. */
   reportDrop(projectId: string, nodeId: string): void {
-    if (this.disposed) return
+    if (this.disposed || !this.mayDial(projectId)) return
     const respawnedAt = this.lastRespawn.get(nodeId)
     if (respawnedAt !== undefined && Date.now() - respawnedAt < RESPAWN_REFUSE_MS) return
     let loop = this.loops.get(projectId)
@@ -98,6 +101,18 @@ export class SshReconnector {
     this.flush(projectId, loop)
   }
 
+  /** Stop reconnecting this project: a pending backoff is cancelled and its queued nodes dropped. */
+  forget(projectId: string): void {
+    const loop = this.loops.get(projectId)
+    if (!loop) return
+    if (loop.timer !== null) clearTimeout(loop.timer)
+    this.loops.delete(projectId)
+  }
+
+  private mayDial(projectId: string): boolean {
+    return this.deps.mayDial ? this.deps.mayDial(projectId) : true
+  }
+
   dispose(): void {
     this.disposed = true
     for (const loop of this.loops.values()) {
@@ -115,6 +130,10 @@ export class SshReconnector {
   }
 
   private async tryConnect(projectId: string, loop: ProjectLoop): Promise<void> {
+    if (!this.mayDial(projectId)) {
+      if (this.loops.get(projectId) === loop) this.loops.delete(projectId)
+      return
+    }
     let ok = false
     try {
       ok = await this.deps.connect(projectId)

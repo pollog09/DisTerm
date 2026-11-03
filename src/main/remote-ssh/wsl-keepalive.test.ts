@@ -12,14 +12,18 @@ import { remoteAtomicWrite } from '../remote-atomic-write'
 import { ed25519KeyPair } from '../../core/remote-ssh/native/test-keys'
 import { formatCksum, posixCksum } from '../../core/remote-ssh/posix-cksum'
 import {
+  WHOAMI_SID_ARGS,
+  WSL_KEEPALIVE_MARKER_PREFIX,
   WSL_KEEPALIVE_OPS,
   WSL_KEEPALIVE_SCRIPT,
   WSL_PROBE_SCRIPT,
   WSL_SSHD_DIR,
   WslEndpoints,
   icaclsExe,
+  parseWhoamiSid,
+  restrictWindowsDir,
   spawnKeepaliveProcess,
-  windowsPrivateDirArgs,
+  whoamiExe,
   wslKeepaliveMarker,
   wslRunner,
   wslSshdConfig,
@@ -57,7 +61,7 @@ interface Harness {
   spawnFails: { value?: string }
 }
 
-function harness(over: { dir?: string; d?: Distro; opFails?: boolean; neverAppears?: boolean; slowOps?: boolean } = {}): Harness {
+function harness(over: { dir?: string; d?: Distro; opFails?: boolean; neverAppears?: boolean; slowOps?: boolean; runningFails?: { value: boolean } } = {}): Harness {
   const d = over.d ?? distro()
   const dir = over.dir ?? testTmpDir('nt-wsl-ka-')
   const calls: Harness['calls'] = []
@@ -71,6 +75,7 @@ function harness(over: { dir?: string; d?: Distro; opFails?: boolean; neverAppea
   const run: WslRun = async (args, o) => {
     calls.push({ args, stdin: o.stdin })
     if (args[0] === '--list') {
+      if (args[1] === '--running' && over.runningFails?.value) return ok('', 1)
       const names = args[1] === '--running' ? (d.running ? ['Ubuntu'] : []) : ['Ubuntu', 'Other']
       return { ...ok(''), stdout: Buffer.from(`${names.join('\r\n')}\r\n`, 'utf16le') }
     }
@@ -97,17 +102,25 @@ function harness(over: { dir?: string; d?: Distro; opFails?: boolean; neverAppea
     }
     if (script === WSL_KEEPALIVE_OPS) {
       if (over.opFails) return ok('', 1)
-      const [op, marker] = [args[7], args[8]]
-      const pids = d.keepalives.get(marker) ?? []
+      const op = args[7]
+      expect(args[8]).toBe(WSL_KEEPALIVE_MARKER_PREFIX)
+      const pids = [...d.keepalives.values()].flat()
       // Answers from what it saw when asked. A real wsl.exe round trip takes a while, and that gap is
       // what lets two unserialized connects both find none.
       if (over.slowOps) await new Promise((r) => setTimeout(r, 20))
       if (op === 'stop') {
-        d.keepalives.delete(marker)
+        d.keepalives.clear()
         return ok(pids.map((p) => `NTWSL stopped=${p}\n`).join(''))
       }
       if (op === 'trim') {
-        d.keepalives.set(marker, pids.slice(0, 1))
+        let kept = false
+        for (const [m, list] of [...d.keepalives]) {
+          if (kept || !list.length) d.keepalives.delete(m)
+          else {
+            d.keepalives.set(m, list.slice(0, 1))
+            kept = true
+          }
+        }
         return ok(pids.slice(0, 1).map((p) => `NTWSL keepalive=${p}\n`).join(''))
       }
       return ok(pids.map((p) => `NTWSL keepalive=${p}\n`).join(''))
@@ -265,16 +278,14 @@ describe('the keepalive: when it cannot start', () => {
 })
 
 describe('the keepalive: stopping', () => {
-  it('turning the setting off stops only this endpoint’s, and does not boot a stopped distro', async () => {
+  it('turning the setting off stops it, and does not boot a stopped distro', async () => {
     const h = harness()
     const { host, marker } = await ready(h)
     await h.svc.bind('p1', host)
     await h.svc.connected('p1', host)
-    h.d.keepalives.set('nodeterm-wsl-keepalive-ffffffffffffffff', ['55'])
     h.enabled.value = false
     await h.svc.keepaliveSettingChanged()
     expect(h.d.keepalives.has(marker)).toBe(false)
-    expect(h.d.keepalives.get('nodeterm-wsl-keepalive-ffffffffffffffff')).toEqual(['55'])
 
     const stopped = harness()
     const s = await ready(stopped)
@@ -327,6 +338,51 @@ describe('the keepalive: stopping', () => {
     expect(h.d.running).toBe(false)
   })
 
+  it('turning it off then on while the project is closed and its distro stopped boots nothing', async () => {
+    const h = harness()
+    const { host } = await ready(h)
+    await h.svc.bind('p1', host)
+    await h.svc.connected('p1', host)
+    h.svc.disconnected('p1', host)
+    h.d.running = false
+    h.d.keepalives.clear()
+    const before = dCalls(h)
+    h.enabled.value = false
+    await h.svc.keepaliveSettingChanged()
+    h.enabled.value = true
+    await h.svc.keepaliveSettingChanged()
+    expect(dCalls(h)).toBe(before)
+    expect(h.d.running).toBe(false)
+    expect(h.spawned).toHaveLength(1)
+  })
+
+  it('a setting change boots nothing even with a project open, if its distro is stopped', async () => {
+    const h = harness()
+    const { host } = await ready(h)
+    await h.svc.bind('p1', host)
+    h.enabled.value = false
+    await h.svc.connected('p1', host)
+    h.d.running = false
+    const before = dCalls(h)
+    h.enabled.value = true
+    await h.svc.keepaliveSettingChanged()
+    expect(dCalls(h)).toBe(before)
+    expect(h.d.running).toBe(false)
+    expect(h.spawned).toEqual([])
+  })
+
+  it('a closed project’s distro, still running, does not get a new one when the setting comes on', async () => {
+    const h = harness()
+    const { host } = await ready(h)
+    await h.svc.bind('p1', host)
+    h.enabled.value = false
+    await h.svc.connected('p1', host)
+    h.svc.disconnected('p1', host)
+    h.enabled.value = true
+    await h.svc.keepaliveSettingChanged()
+    expect(h.spawned).toEqual([])
+  })
+
   it('an unbound project no longer connects, and `wsl --shutdown` is not fought: nothing runs until a connect', async () => {
     const h = harness()
     const { host, marker } = await ready(h)
@@ -360,6 +416,73 @@ describe('whose process counts', () => {
   })
 })
 
+describe('a keepalive under a handle the records no longer know', () => {
+  it('a corrupt record: the new one reuses the old keepalive instead of starting a second', async () => {
+    const h = harness()
+    const old = await ready(h)
+    await h.svc.bind('p1', old.host)
+    await h.svc.connected('p1', old.host)
+    expect(h.spawned).toHaveLength(1)
+    fs.writeFileSync(path.join(h.dir, old.handle, 'endpoint.json'), '{ not json')
+    const next = await ready(h)
+    expect(next.handle).not.toBe(old.handle)
+    await h.svc.bind('p2', next.host)
+    await h.svc.connected('p2', next.host)
+    expect(h.spawned).toHaveLength(1)
+    expect([...h.d.keepalives.values()].flat()).toHaveLength(1)
+  })
+
+  it('a lost record: turning the setting off still stops it, and only looks in running distros', async () => {
+    const h = harness()
+    const { host, handle } = await ready(h)
+    await h.svc.bind('p1', host)
+    await h.svc.connected('p1', host)
+    fs.rmSync(path.join(h.dir, handle), { recursive: true })
+    h.enabled.value = false
+    h.calls.length = 0
+    await h.svc.keepaliveSettingChanged()
+    expect([...h.d.keepalives.values()].flat()).toEqual([])
+    const started = h.calls.filter((c) => c.args[0] === '-d').map((c) => c.args[1])
+    expect(started).toEqual(['Ubuntu'])
+    expect(h.calls[0].args).toEqual(['--list', '--running', '--quiet'])
+  })
+
+  it('WSL not answering about what is running: a setting change touches nothing', async () => {
+    const runningFails = { value: false }
+    const h = harness({ runningFails })
+    const { host } = await ready(h)
+    await h.svc.bind('p1', host)
+    await h.svc.connected('p1', host)
+    runningFails.value = true
+    const before = dCalls(h)
+    h.enabled.value = false
+    await h.svc.keepaliveSettingChanged()
+    h.enabled.value = true
+    await h.svc.keepaliveSettingChanged()
+    expect(dCalls(h)).toBe(before)
+  })
+
+  it('two valid records on one distro share one keepalive, which lasts until the last project goes', async () => {
+    const h = harness()
+    const first = await ready(h)
+    await h.svc.bind('p1', first.host)
+    await h.svc.connected('p1', first.host)
+    // A second record for the same distro, as a restored backup would leave.
+    const handle2 = 'abcdefabcdefabcd'
+    const host2 = first.host.replace(first.handle, handle2)
+    fs.cpSync(path.join(h.dir, first.handle), path.join(h.dir, handle2), { recursive: true })
+    const rec = JSON.parse(fs.readFileSync(path.join(h.dir, handle2, 'endpoint.json'), 'utf8'))
+    fs.writeFileSync(path.join(h.dir, handle2, 'endpoint.json'), JSON.stringify({ ...rec, host: host2, projects: [] }))
+    await h.svc.bind('p2', host2)
+    await h.svc.connected('p2', host2)
+    expect(h.spawned).toHaveLength(1)
+    await h.svc.unbind('p1', first.host)
+    expect([...h.d.keepalives.values()].flat()).toHaveLength(1)
+    await h.svc.unbind('p2', host2)
+    expect([...h.d.keepalives.values()].flat()).toEqual([])
+  })
+})
+
 describe('starting the keepalive process', () => {
   it('shares no pipe with the app, and is detached', () => {
     const child = spawnKeepaliveProcess(process.execPath, ['-e', 'setTimeout(()=>{},50)']) as ChildProcess
@@ -386,8 +509,8 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
   }
   const alive = (c: ChildProcess): boolean => c.exitCode === null && c.signalCode === null
 
-  async function op(name: 'find' | 'stop' | 'trim', marker = MARKER): Promise<string> {
-    const r = await wslRunner('/bin/sh')(['-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', name, marker, WSL_KEEPALIVE_SCRIPT], {
+  async function op(name: 'find' | 'stop' | 'trim'): Promise<string> {
+    const r = await wslRunner('/bin/sh')(['-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', name, WSL_KEEPALIVE_MARKER_PREFIX, WSL_KEEPALIVE_SCRIPT], {
       timeoutMs: 10_000
     })
     expect(r.code).toBe(0)
@@ -416,14 +539,34 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
       start(['-c', 'sleep 30', 'x', WSL_KEEPALIVE_SCRIPT, MARKER]),
       // One extra argument after a true copy.
       start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER, 'extra']),
-      // Another endpoint's marker.
-      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('ffffffffffffffff')])
+      // The prefix without a real handle: too short, too long, not hex, or none.
+      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123456789abcdef0')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('0123456789ABCDEF')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('zzzzzzzzzzzzzzzz')]),
+      start(['-c', WSL_KEEPALIVE_SCRIPT, WSL_KEEPALIVE_MARKER_PREFIX]),
+      // The right prefix on another script.
+      start(['-c', 'sleep 30', wslKeepaliveMarker('fedcba9876543210')])
     ]
     await new Promise((r) => setTimeout(r, 150))
     expect(await op('find')).toBe(`NTWSL keepalive=${k.pid}\n`)
     await op('stop')
     await vi.waitFor(() => expect(alive(k)).toBe(false), { timeout: 5000 })
     for (const d of decoys) expect(alive(d)).toBe(true)
+  })
+
+  it('finds and stops a keepalive under any handle, which a lost record leaves behind', async () => {
+    const other = start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('fedcba9876543210')])
+    await appears(other)
+    await op('stop')
+    await vi.waitFor(() => expect(alive(other)).toBe(false), { timeout: 5000 })
+  })
+
+  it('trim keeps one and stops the rest, across handles', async () => {
+    const third = start(['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('fedcba9876543210')])
+    await appears(third)
+    await op('trim')
+    await op('stop')
   })
 
   it('trim keeps one and stops the rest', async () => {
@@ -605,12 +748,55 @@ describe('Windows key directory access', () => {
       log: (l) => logs.push(l)
     })
     expect((await svc.prepare('Ubuntu', BROWSE)).ok).toBe(true)
-    expect(logs.join('\n')).toMatch(/could not restrict access.*Access is denied/)
+    expect(logs.join('\n')).toMatch(/left .* unchanged.*Access is denied/)
   })
 
-  it('a fixed path and one argv element per argument, whatever the environment says', () => {
-    expect(icaclsExe({ SystemRoot: 'C:\\Evil', PATH: 'D:\\Evil' })).toBe('C:\\Windows\\System32\\icacls.exe')
-    expect(windowsPrivateDirArgs('C:\\Users\\A B\\x', 'A B')).toEqual(['C:\\Users\\A B\\x', '/inheritance:r', '/grant:r', 'A B:(OI)(CI)F'])
+  it('fixed paths and one argv element per argument, whatever the environment says', () => {
+    const hostile = { SystemRoot: 'C:\\Evil', PATH: 'D:\\Evil' }
+    expect(icaclsExe(hostile)).toBe('C:\\Windows\\System32\\icacls.exe')
+    expect(whoamiExe(hostile)).toBe('C:\\Windows\\System32\\whoami.exe')
+    expect(WHOAMI_SID_ARGS).toEqual(['/user', '/fo', 'csv', '/nh'])
+  })
+
+  it('grants by the current user’s SID, read from whoami, never by name', async () => {
+    const calls: [string, string[]][] = []
+    const exec = async (file: string, args: string[]): Promise<string> => {
+      calls.push([file, args])
+      return file.endsWith('whoami.exe') ? '"CORP\\alice","S-1-5-21-111-222-333-1001"\r\n' : 'processed 1 file\r\n'
+    }
+    await restrictWindowsDir('C:\\Users\\A B\\x', WIN_ENV, exec)
+    expect(calls).toEqual([
+      ['C:\\Windows\\System32\\whoami.exe', ['/user', '/fo', 'csv', '/nh']],
+      ['C:\\Windows\\System32\\icacls.exe', ['C:\\Users\\A B\\x', '/inheritance:r', '/grant:r', '*S-1-5-21-111-222-333-1001:(OI)(CI)F']]
+    ])
+  })
+
+  it.each([
+    ['empty', ''],
+    ['no SID', '"CORP\\alice","alice"'],
+    ['not csv', 'CORP\\alice S-1-5-21-1-2'],
+    ['two lines', '"a","S-1-5-21-1"\r\n"b","S-1-5-21-2"'],
+    ['a SID with something after it', '"a","S-1-5-21-1:(F) x"'],
+    ['an option in place of a SID', '"a","/grant:r"']
+  ])('%s from whoami: icacls never runs, so the directory is untouched', async (_n, out) => {
+    expect(parseWhoamiSid(out)).toBeNull()
+    const ran: string[] = []
+    const exec = async (file: string): Promise<string> => {
+      ran.push(file)
+      return out
+    }
+    await expect(restrictWindowsDir('C:\\x', WIN_ENV, exec)).rejects.toThrow(/did not report a SID/)
+    expect(ran).toEqual(['C:\\Windows\\System32\\whoami.exe'])
+  })
+
+  it('whoami failing to run leaves the directory untouched too', async () => {
+    const ran: string[] = []
+    const exec = async (file: string): Promise<string> => {
+      ran.push(file)
+      throw new Error('ENOENT')
+    }
+    await expect(restrictWindowsDir('C:\\x', WIN_ENV, exec)).rejects.toThrow('ENOENT')
+    expect(ran).toHaveLength(1)
   })
 
   it('POSIX never runs it', async () => {

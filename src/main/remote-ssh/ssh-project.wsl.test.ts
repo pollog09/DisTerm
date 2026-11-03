@@ -97,9 +97,11 @@ describe('SshProjectManager with a WSL host', () => {
   })
 
   it('after a disconnect the watchdog has nothing to revive, so a stopped distro stays stopped', async () => {
-    const { mgr, spawnMaster } = manager({ authorizeEndpoint: async () => {} })
+    const endpointDisconnected = vi.fn()
+    const { mgr, spawnMaster } = manager({ authorizeEndpoint: async () => {}, endpointDisconnected })
     await mgr.connect('p1', conn)
     await mgr.disconnect('p1', { final: true })
+    expect(endpointDisconnected).toHaveBeenCalledWith('p1', conn)
     spawnMaster.mockClear()
     await mgr.revalidateAll()
     expect(spawnMaster).not.toHaveBeenCalled()

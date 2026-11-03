@@ -466,7 +466,14 @@ import { handedOffWarning } from '../lib/handedOff'
 import { skipNextColdResumeFor } from '../terminal/handed-off-resume'
 import { SshProjectDialog } from '../components/SshProjectDialog'
 import type { WslWarning } from '@shared/wsl-project'
-import { bindOpenedWslProject, dropClosedWslConnection, unbindDeletedWslProject } from '../lib/wslProjectBinding'
+import {
+  bindOpenedWslProject,
+  createProjectReconnector,
+  dropClosedWslConnection,
+  isClosedWslProject,
+  releaseClosedTerminals,
+  unbindDeletedWslProject
+} from '../lib/wslProjectBinding'
 import { SshPassphrasePrompt } from '../components/SshPassphrasePrompt'
 import { transport } from '../terminal/local-transport'
 import { sshFs } from '../terminal/ssh-fs'
@@ -17612,7 +17619,7 @@ export function Canvas() {
   // via onConnected (wired into the status subscription below).
   const sshReconnectorRef = useRef<SshReconnector | null>(null)
   useEffect(() => {
-    const rec = new SshReconnector({
+    const rec = createProjectReconnector({
       connect: async (scopeId) => {
         // A HOST ATTACHMENT has no project row to read its endpoint from — `registerAttachment`
         // put it on record before the first dial, precisely so a connect that never succeeded is
@@ -17628,6 +17635,8 @@ export function Canvas() {
         // Same post-connect sequence as the active-project effect: arm remote git routing first
         // (only if this project is still the active tab), then record the connection info.
         const info = await window.nodeTerminal.sshProject.connect(projectId, ssh.server, ssh.remoteCwd)
+        // Closed while that was in flight: its close disconnected this, so nothing is connected.
+        if (isClosedWslProject(useProjects.getState().getProject(projectId))) return false
         if (useProjects.getState().activeProjectId === projectId) {
           await api.git.setActiveRemote(projectId)
         }
@@ -18022,9 +18031,20 @@ export function Canvas() {
       const store = useProjects.getState()
       if (id === store.activeProjectId) commitActiveToStore()
       const ended = endSessions ? endProjectSessions(id) : undefined
-      // A closed WSL project gives up its connection, so the watchdog cannot boot a distro the user
-      // stopped. See `dropClosedWslConnection`.
-      dropClosedWslConnection(store.getProject(id), ended, sshDisconnect, (p) => useSshConn.getState().clear(p))
+      // A closed WSL project gives up its connection, so nothing can boot a distro the user stopped.
+      dropClosedWslConnection(store.getProject(id), {
+        ended,
+        forgetReconnect: (p) => sshReconnectorRef.current?.forget(p),
+        releaseTerminals: (p) => {
+          const sessionId = sessionForProject(p.id).id
+          releaseClosedTerminals(p, p.id === store.activeProjectId, {
+            disposeOnUnmount: (nodeId) => disposeTerminalOnUnmount(sessionId, nodeId),
+            disposePark: (nodeId) => disposeParkedTerminal(terminalKey(sessionId, nodeId))
+          })
+        },
+        clearConn: (p) => useSshConn.getState().clear(p),
+        disconnect: sshDisconnect
+      })
       // A relay tab is never reopened from the history (`planReopen` skips it too): its nodes are
       // the host's sessions.
       if (!store.getProject(id)?.remote) {

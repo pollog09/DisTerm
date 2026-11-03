@@ -21,7 +21,6 @@
 import { execFile, spawn } from 'child_process'
 import { randomBytes } from 'crypto'
 import fs from 'fs/promises'
-import os from 'os'
 import path from 'path'
 import type { ParsedKey } from 'ssh2'
 import { REMOTE_TMUX_PATH_DIRS, type SshServer } from '../../../shared/ssh'
@@ -70,17 +69,22 @@ export const WSL_KEEPALIVE_SCRIPT =
   `trap 'kill "$p" 2>/dev/null; exit 0' TERM INT HUP; ` +
   `while :; do sleep 86400 & p=$!; wait "$p" || exit 0; done`
 
-/** `$0` of the keepalive. The handle is random per machine, so nothing else carries this by accident. */
+/** The part of `$0` every keepalive of this app shares. */
+export const WSL_KEEPALIVE_MARKER_PREFIX = 'nodeterm-wsl-keepalive-'
+
+/** `$0` of the keepalive: the prefix, then the 16-hex handle of the endpoint that started it. */
 export function wslKeepaliveMarker(handle: string): string {
-  return `nodeterm-wsl-keepalive-${handle}`
+  return `${WSL_KEEPALIVE_MARKER_PREFIX}${handle}`
 }
 
 /**
- * Find or stop this endpoint's keepalive from inside the distro. A process counts only if THIS user
- * owns it and its arguments after argv[0] are EXACTLY `-c <script> <marker>`: a process that merely
- * mentions the marker, one of another user, or this script (whose own arguments are shaped
- * differently) is never reported or stopped. argv[0] is not compared because wsl.exe decides how it
- * spells `sh`. Args: find|stop|trim, marker, script. `trim` keeps the first match.
+ * Find or stop this app's keepalive in a distro, whichever endpoint record started it. A lost or
+ * corrupt `endpoint.json` mints a new handle, and a keepalive under the old one must still be reused
+ * and stoppable. A process counts only if THIS user owns it and its arguments after argv[0] are EXACTLY
+ * `-c <script> <prefix><16 hex>`. A process that merely mentions the marker, one of another user, or
+ * this script (whose own arguments are shaped differently) is never reported or stopped. argv[0] is not
+ * compared because wsl.exe decides how it spells `sh`. Args: find|stop|trim, prefix, script. `trim`
+ * keeps the first match.
  */
 export const WSL_KEEPALIVE_OPS =
   `a=$1; m=$2; s=$3; n=$(printf '\\nx'); n=\${n%x}; want="-c$n$s$n$m"; first=1; ` +
@@ -88,7 +92,9 @@ export const WSL_KEEPALIVE_OPS =
   `p=\${d#/proc/}; [ "$p" != "$$" ] || continue; ` +
   `[ -O "$d" ] || continue; ` +
   `c=$(tr '\\000' '\\n' < "$d/cmdline" 2>/dev/null) || continue; ` +
-  `[ "\${c#*$n}" = "$want" ] || continue; ` +
+  `r=\${c#*$n}; h=\${r#"$want"}; [ "$h" != "$r" ] || continue; ` +
+  `[ "\${#h}" = 16 ] || continue; ` +
+  `case "$h" in *[!0-9a-f]*) continue ;; esac; ` +
   `case "$a" in ` +
   `find) printf 'NTWSL keepalive=%s\\n' "$p" ;; ` +
   `stop) kill "$p" 2>/dev/null; printf 'NTWSL stopped=%s\\n' "$p" ;; ` +
@@ -329,21 +335,46 @@ export function icaclsExe(env: NodeJS.ProcessEnv = process.env): string {
   return `${windowsSystemDrive(env)}:\\Windows\\System32\\icacls.exe`
 }
 
-/**
- * The directory holding a client key, for this user alone, with inherited entries removed. POSIX
- * modes do not apply on Windows, and a relocated profile can inherit broader access. `(OI)(CI)` makes
- * files created inside inherit the same entry. No shell: each element is one argv element.
- */
-export function windowsPrivateDirArgs(dir: string, user: string): string[] {
-  return [dir, '/inheritance:r', '/grant:r', `${user}:(OI)(CI)F`]
+/** `whoami.exe` by a fixed path, for the same reason. */
+export function whoamiExe(env: NodeJS.ProcessEnv = process.env): string {
+  return `${windowsSystemDrive(env)}:\\Windows\\System32\\whoami.exe`
 }
 
-function defaultRestrictDir(dir: string, env: NodeJS.ProcessEnv): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(icaclsExe(env), windowsPrivateDirArgs(dir, os.userInfo().username), { timeout: 15_000, windowsHide: true }, (e) =>
-      e ? reject(e) : resolve()
-    )
+export const WHOAMI_SID_ARGS = ['/user', '/fo', 'csv', '/nh']
+
+/**
+ * The SID out of `whoami /user /fo csv /nh`: one line, `"DOMAIN\name","S-1-…"`. Anything else is null.
+ * The caller then changes nothing, because a guess here could lock the user out of their own keys.
+ */
+export function parseWhoamiSid(stdout: string): string | null {
+  const m = /^"[^"\r\n]*","(S-1-[0-9]+(?:-[0-9]+)+)"$/.exec(stdout.trim())
+  return m ? m[1] : null
+}
+
+/**
+ * The directory holding a client key, for this user alone, with inherited entries removed. POSIX modes
+ * do not apply on Windows, and a relocated profile can inherit broader access. By SID, never by name:
+ * on a domain machine with a same-named local account, a name could grant the local account while
+ * `/inheritance:r` removes the real user. `(OI)(CI)` makes files created inside inherit the entry. SYSTEM
+ * and Administrators lose access to this folder. No shell: each element is one argv element.
+ */
+export function windowsPrivateDirArgs(dir: string, sid: string): string[] {
+  return [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`]
+}
+
+export type WinExec = (file: string, args: string[]) => Promise<string>
+
+const defaultWinExec: WinExec = (file, args) =>
+  new Promise((resolve, reject) => {
+    execFile(file, args, { timeout: 15_000, windowsHide: true }, (e, stdout) => (e ? reject(e) : resolve(String(stdout))))
   })
+
+/** Rejects, having changed nothing, when the current user's SID cannot be established. */
+export async function restrictWindowsDir(dir: string, env: NodeJS.ProcessEnv, exec: WinExec = defaultWinExec): Promise<void> {
+  const out = await exec(whoamiExe(env), WHOAMI_SID_ARGS)
+  const sid = parseWhoamiSid(out)
+  if (!sid) throw new Error('whoami did not report a SID')
+  await exec(icaclsExe(env), windowsPrivateDirArgs(dir, sid))
 }
 
 export interface WslEndpointDeps {
@@ -431,8 +462,8 @@ export class WslEndpoints {
   private readonly writes = new Map<string, Promise<unknown>>()
   /** Key directories already made private this run. */
   private readonly restricted = new Set<string>()
-  /** Hosts a bound project connected to this run: what turning the setting on applies to. */
-  private readonly openHosts = new Set<string>()
+  /** Bound projects with a connection up, per host: what turning the setting on applies to. */
+  private readonly openProjects = new Map<string, Set<string>>()
   private readonly keepaliveWarnings = new Map<string, WslWarning>()
   private readonly keepaliveWork = new Map<string, Promise<void>>()
 
@@ -587,61 +618,94 @@ export class WslEndpoints {
   async connected(projectId: string, host: string): Promise<void> {
     const record = await this.read(host)
     if (!record || !this.isBound(record, projectId)) return
-    this.openHosts.add(host)
+    const open = this.openProjects.get(host) ?? new Set<string>()
+    open.add(projectId)
+    this.openProjects.set(host, open)
     await this.applyKeepalive(record)
   }
 
-  /** The setting changed. Applies to what is open now, and starts no other distro. */
-  async keepaliveSettingChanged(): Promise<void> {
-    await Promise.all(
-      (await this.allRecords()).map(async (record) => {
-        if (this.deps.keepaliveEnabled?.() === true) {
-          if (this.openHosts.has(record.host)) await this.applyKeepalive(record)
-          return
-        }
-        this.keepaliveWarnings.delete(record.host)
-        await this.stopKeepaliveIfRunning(record)
-      })
-    )
+  /** A project's connection ended on purpose (its tab closed, or it was deleted). */
+  disconnected(projectId: string, host: string): void {
+    this.openProjects.get(host)?.delete(projectId)
   }
 
   /**
-   * The user deleted a project. The endpoint's last project takes the keepalive with it. A closed tab
-   * does not come here: closing says "not now", and its agents are meant to keep running.
+   * The setting changed. This never starts a distro, in either direction: only distros WSL reports as
+   * already running are touched. Turning it on applies to the ones with an open project. Turning it off
+   * looks in every running distro, because a keepalive must be stoppable even when the record that
+   * started it was lost, and then nothing here knows which distro it was in.
+   */
+  async keepaliveSettingChanged(): Promise<void> {
+    const running = await this.runningDistros()
+    const records = await this.allRecords()
+    if (this.deps.keepaliveEnabled?.() === true) {
+      if (!running) return
+      await Promise.all(
+        records
+          .filter((r) => this.openProjects.get(r.host)?.size && running.includes(r.distro))
+          .map((r) => this.applyKeepalive(r))
+      )
+      return
+    }
+    for (const r of records) this.keepaliveWarnings.delete(r.host)
+    await Promise.all((running ?? []).map((distro) => this.queueKeepalive(distro, () => this.keepaliveOp(distro, 'stop').then(() => {}))))
+  }
+
+  /**
+   * The user deleted a project. The distro's last project takes the keepalive with it, counting every
+   * valid record on that distro, because there is one keepalive per distro. A closed tab does not come
+   * here: closing says "not now", and its agents are meant to keep running.
    */
   async unbind(projectId: unknown, host: unknown): Promise<boolean> {
     if (typeof projectId !== 'string' || !isWslHost(host)) return false
     this.boundNow.get(host)?.delete(projectId)
+    this.openProjects.get(host)?.delete(projectId)
     const saved = await this.mutate(host, (record) => {
       record.projects = record.projects.filter((p) => p !== projectId)
     })
     const record = await this.read(host)
-    if (saved && record && !record.projects.length && !this.boundNow.get(host)?.size) {
-      this.openHosts.delete(host)
+    if (saved && record && !(await this.distroHasProjects(record.distro))) {
       this.keepaliveWarnings.delete(host)
-      await this.stopKeepaliveIfRunning(record)
+      const running = await this.runningDistros()
+      if (running?.includes(record.distro)) {
+        await this.queueKeepalive(record.distro, () => this.keepaliveOp(record.distro, 'stop').then(() => {}))
+      }
     }
     return saved
+  }
+
+  private async distroHasProjects(distro: string): Promise<boolean> {
+    return (await this.allRecords()).some((r) => r.distro === distro && (r.projects.length > 0 || (this.boundNow.get(r.host)?.size ?? 0) > 0))
+  }
+
+  /** `--list --running` starts nothing. Null: WSL did not answer, so nothing is known to be running. */
+  private async runningDistros(): Promise<string[] | null> {
+    const list = await this.run(['--list', '--running', '--quiet'], { timeoutMs: LIST_TIMEOUT_MS })
+    return list.code === 0 && !list.timedOut ? parseWslDistroList(list.stdout).filter(isValidDistroName) : null
   }
 
   private isBound(record: WslRecord, projectId: string): boolean {
     return record.projects.includes(projectId) || this.boundNow.get(record.host)?.has(projectId) === true
   }
 
-  /** One at a time per host, so two connects cannot both find none and both start one. */
-  private applyKeepalive(record: WslRecord): Promise<void> {
-    const running = this.keepaliveWork.get(record.host)
-    const next = (running ?? Promise.resolve())
-      .then(() => (this.deps.keepaliveEnabled?.() === true ? this.startKeepalive(record) : this.stopKeepalive(record)))
+  /** One at a time per distro, so two connects cannot both find none and both start one. */
+  private queueKeepalive(distro: string, work: () => Promise<void>): Promise<void> {
+    const next = (this.keepaliveWork.get(distro) ?? Promise.resolve())
+      .then(work)
       .catch((e: Error) => this.deps.log?.(`[wsl] keepalive: ${e.message}`))
-    this.keepaliveWork.set(record.host, next)
+    this.keepaliveWork.set(distro, next)
     return next
   }
 
-  private keepaliveOp(record: WslRecord, op: 'find' | 'stop' | 'trim'): Promise<WslRunResult> {
-    const marker = wslKeepaliveMarker(handleOf(record.host) as string)
+  private applyKeepalive(record: WslRecord): Promise<void> {
+    return this.queueKeepalive(record.distro, () =>
+      this.deps.keepaliveEnabled?.() === true ? this.startKeepalive(record) : this.stopKeepalive(record)
+    )
+  }
+
+  private keepaliveOp(distro: string, op: 'find' | 'stop' | 'trim'): Promise<WslRunResult> {
     return this.run(
-      ['-d', record.distro, '--exec', 'sh', '-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', op, marker, WSL_KEEPALIVE_SCRIPT],
+      ['-d', distro, '--exec', 'sh', '-c', WSL_KEEPALIVE_OPS, 'nodeterm-wsl-keepalive-op', op, WSL_KEEPALIVE_MARKER_PREFIX, WSL_KEEPALIVE_SCRIPT],
       { timeoutMs: KEEPALIVE_OP_TIMEOUT_MS }
     )
   }
@@ -655,7 +719,7 @@ export class WslEndpoints {
     }
     this.keepaliveWarnings.delete(record.host)
     // `trim`, not `find`: it reports the one to reuse and removes any extra, so there is exactly one.
-    const found = await this.keepaliveOp(record, 'trim')
+    const found = await this.keepaliveOp(record.distro, 'trim')
     if (found.code !== 0 || found.timedOut) return fail('wsl.exe did not answer')
     if (keepalivePids(found.stdout).length) return
     let failure: string | undefined
@@ -671,7 +735,7 @@ export class WslEndpoints {
     for (let i = 0; i < KEEPALIVE_VERIFY_TRIES; i++) {
       await delay(KEEPALIVE_VERIFY_GAP_MS)
       if (failure) return fail(failure)
-      const check = await this.keepaliveOp(record, 'find')
+      const check = await this.keepaliveOp(record.distro, 'find')
       if (check.code === 0 && keepalivePids(check.stdout).length) return
     }
     fail('it did not appear in the distribution')
@@ -679,22 +743,7 @@ export class WslEndpoints {
 
   private async stopKeepalive(record: WslRecord): Promise<void> {
     this.keepaliveWarnings.delete(record.host)
-    await this.keepaliveOp(record, 'stop')
-  }
-
-  /**
-   * Stopping must not start: `wsl.exe -d` boots a stopped distro, and one that is stopped has no
-   * keepalive to stop. `--list --running` asks without starting anything.
-   */
-  private async stopKeepaliveIfRunning(record: WslRecord): Promise<void> {
-    const list = await this.run(['--list', '--running', '--quiet'], { timeoutMs: LIST_TIMEOUT_MS })
-    if (list.code !== 0 || list.timedOut || !parseWslDistroList(list.stdout).includes(record.distro)) return
-    const running = this.keepaliveWork.get(record.host) ?? Promise.resolve()
-    const next = running
-      .then(() => this.stopKeepalive(record))
-      .catch((e: Error) => this.deps.log?.(`[wsl] keepalive: ${e.message}`))
-    this.keepaliveWork.set(record.host, next)
-    await next
+    await this.keepaliveOp(record.distro, 'stop')
   }
 
   private async allRecords(): Promise<WslRecord[]> {
@@ -720,10 +769,10 @@ export class WslEndpoints {
     if (this.platform !== 'win32' || this.restricted.has(dir)) return
     this.restricted.add(dir)
     try {
-      await (this.deps.restrictDir ?? ((d: string) => defaultRestrictDir(d, this.env)))(dir)
+      await (this.deps.restrictDir ?? ((d: string) => restrictWindowsDir(d, this.env)))(dir)
     } catch (e) {
       // Named, not fatal: the directory still has the profile's own access rules.
-      this.deps.log?.(`[wsl] could not restrict access to ${dir}; it keeps the access rules of your profile folder: ${(e as Error).message}`)
+      this.deps.log?.(`[wsl] left ${dir} unchanged, on the access rules of your profile folder: ${(e as Error).message}`)
     }
   }
 
