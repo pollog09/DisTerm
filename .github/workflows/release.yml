@@ -47,6 +47,16 @@ jobs:
       - name: Install dependencies
         run: caffeinate -dims npm ci
 
+      # sharp's binary is an optional dependency per platform, so `npm ci` on this ARM64 runner
+      # skips the x64 one, and the Intel app would ship with no working project icon upload.
+      # Versions come from the lockfile so they cannot drift. --no-save leaves the lockfile alone,
+      # --force allows the other CPU, and --ignore-scripts skips a second native rebuild.
+      - name: Add the x64 sharp binary for the Intel build
+        run: |
+          sharp_version=$(node -p "require('./package-lock.json').packages['node_modules/@img/sharp-darwin-x64'].version")
+          libvips_version=$(node -p "require('./package-lock.json').packages['node_modules/@img/sharp-libvips-darwin-x64'].version")
+          caffeinate -dims npm install --no-save --force --ignore-scripts "@img/sharp-darwin-x64@$sharp_version" "@img/sharp-libvips-darwin-x64@$libvips_version"
+
       # The bundled tmux (resources/bin/tmux → <app>/Contents/Resources/bin/tmux via the mac
       # extraResources entry). Without a tmux on the machine the app silently degrades to plain
       # shells — no persistence across restarts, no mobile attach, and a park/dispose kills the
@@ -109,6 +119,18 @@ jobs:
           APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      # Before anything is published. A missing optional package is not an electron-builder error,
+      # so without this an Intel app with no sharp binary would ship without anyone noticing.
+      - name: Verify the Intel app has its sharp binary
+        run: |
+          unpacked="dist/mac/nodeterm.app/Contents/Resources/app.asar.unpacked/node_modules/@img"
+          for pkg in sharp-darwin-x64 sharp-libvips-darwin-x64; do
+            if [ ! -f "$unpacked/$pkg/package.json" ]; then
+              echo "::error::$pkg is missing from the Intel app ($unpacked)"
+              exit 1
+            fi
+          done
 
       # NOTE: there is deliberately no actions/upload-artifact step. Each release is ~800 MB of
       # DMGs + zips, and Actions artifact storage is a small, billed quota that those copies filled

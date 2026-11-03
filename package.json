@@ -33,7 +33,7 @@
     "dist:linux": "npm run make-icon && npm run build && electron-builder --linux --publish never -c.extraMetadata.nodeTermUpdates=disabled",
     "dist:win": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=disabled",
     "dist:win:release": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=manual",
-    "release": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --arm64 --x64 --publish never; s=$?; npm run rebuild; exit $s'",
+    "release": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --arm64 --x64 --publish never; s=$?; npm run rebuild; r=$?; [ \"$s\" -eq 0 ] || exit \"$s\"; [ \"$r\" -eq 0 ] && exit 0; echo \"release: the build is good, but restoring native modules failed; run npm run rebuild\" >&2; [ -n \"$CI\" ] && exit 0; exit \"$r\"'",
     "postinstall": "node scripts/patch-node-pty.mjs && node scripts/patch-smart-whisper.mjs && electron-rebuild -f -w node-pty,smart-whisper && node scripts/stage-conpty-dll.mjs"
   },
   "build": {
