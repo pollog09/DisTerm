@@ -42,6 +42,8 @@ export interface LinkMenuContext {
   explorerRoot?: string
   /** "New terminal here" can open on the machine that owns the path (not a relay tab). */
   terminals: boolean
+  /** WSL distributions a "New terminal here" can start in. Empty off Windows. */
+  wslTerminals?: ReadonlyArray<{ label: string; shell: string }>
   /** True while `path` is already downloading — a second start would land a duplicate `name (2)`. */
   downloading: (path: string) => boolean
 }
@@ -61,7 +63,7 @@ export interface LinkMenuActions extends UrlLinkActions {
   openFile(abs: string): void
   revealInExplorer(abs: string): void
   revealInOs(abs: string): void
-  openTerminal(dir: string): void
+  openTerminal(dir: string, shell?: string): void
   download(abs: string, dir: boolean, pickFolder: boolean): void
 }
 
@@ -129,7 +131,15 @@ export function linkMenuItems(
   const items: MenuItem[] = []
   if (!dir) items.push({ label: 'Open', onClick: () => act.openFile(abs) })
   if (rel !== null) items.push({ label: 'Reveal in Explorer', onClick: () => act.revealInExplorer(abs) })
-  if (dir && ctx.terminals) items.push({ label: 'New terminal here', onClick: () => act.openTerminal(abs) })
+  if (dir && ctx.terminals) {
+    items.push({ label: 'New terminal here', onClick: () => act.openTerminal(abs) })
+    for (const wsl of ctx.wslTerminals ?? []) {
+      items.push({
+        label: `New terminal here: ${wsl.label}`,
+        onClick: () => act.openTerminal(abs, wsl.shell)
+      })
+    }
+  }
   items.push({ type: 'separator' })
   for (const d of downloadMenuEntries(ctx.route, abs, { dir, here: false })) {
     items.push({

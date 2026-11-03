@@ -69,6 +69,18 @@ means — and what you may assume when writing a feature — is three tiers, not
   `core/terminal-profiles.ts` in `spawnNew`, never accepted as argv from a wire payload. Do not use
   `wsl.exe --cd`: it runs the command anyway when the directory is missing. Details:
   docs/windows-session-host.md, "Windows profile resolution".
+  **Every menu that starts a terminal offers the distributions, from ONE list**
+  (`state/wslTerminals.ts`): the pane menu, sidebar "+", Dock, group frame menu, ⌘K, both kanban boards,
+  and both "New terminal here" menus. Canvas publishes one read, so a menu on each of many nodes costs
+  no `wsl.exe` launch. The list is empty off a Windows core, so a new surface needs no platform check of
+  its own, only `useWslTerminalsFor` / `wslTerminalsForProject`, which also refuse an SSH project and a
+  relay tab. `canvas/wsl-terminal-entry-points.source.test.ts` pins the surfaces it names and cannot
+  catch a new one. Two starts have no row and use the default shell, which Settings → Shell can make
+  WSL: the `node.newTerminal` chord and the `nodeterm://open` sheet. The list is read again on window
+  focus (at most once a minute), because the core answers no distributions for a failed `wsl.exe` too,
+  so such a read never erases a list that had them (`nextProfiles`). Surfaces: Desktop on Windows; a
+  browser on a Windows Server Edition gets the rows from that server's distributions; Mac, Linux and
+  relay tabs get none. Mobile: N/A, it attaches to existing sessions.
 - **New code is platform-neutral by default.** Do not hardcode POSIX assumptions. Publish files
   through `renameAtomic`/`writeFileAtomic` (`src/core/fs-atomic.ts`), not a bare `fs.rename` — the
   guard test (`fs-atomic.guard.test.ts`) enforces this. Resolve path separators / absolute-path
