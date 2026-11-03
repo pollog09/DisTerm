@@ -84,6 +84,8 @@ import {
   type BrowserSurfaceKind
 } from './browser-guest-registry'
 import { appendBoardLogVia, registerBoardLogHandlers, type BoardLogRoute } from '../core/board-log-handlers'
+import { registerAgentGraphHandlers } from '../core/agent-graph/handlers'
+import { registerShipConfigHandlers, type ShipConfigRoute } from '../core/ship-config/handlers'
 import {
   createDeliveryQueue,
   restoreDeliveryQueue,
@@ -2263,6 +2265,27 @@ app.whenReady().then(async () => {
     }
   }
   const boardLog = registerBoardLogHandlers(corePlatform, boardLogRouter)
+  registerAgentGraphHandlers(corePlatform, boardLogRouter)
+  // The agents an SSH project runs are the HOST's: discovery goes over the project's master, and a
+  // project whose master is down says so rather than describing this machine's agents as the host's.
+  registerShipConfigHandlers(corePlatform, {
+    route: (projectId: string): ShipConfigRoute => {
+      const ref = sshProjectManager?.refForProject(projectId)
+      if (ref?.remoteCwd) {
+        return {
+          kind: 'remote',
+          remoteCwd: ref.remoteCwd,
+          host: ref.conn.host,
+          runScript: (script) =>
+            sshProjectManager!.sshRun(childArgs(ref.conn, ref.controlPath, 'sh -s'), script, { timeoutMs: 20_000 })
+        }
+      }
+      if (workspaceStore.projectTargetInfo(projectId)?.ssh) {
+        return { kind: 'unsupported', reason: 'This SSH project is not connected.' }
+      }
+      return { kind: 'local', cwd: workspaceStore.localCwdForProject(projectId) ?? null }
+    }
+  })
   registerLogHandlers(corePlatform, logBuffer, () => settingsStore.get().debugLogPanel)
 
   // Agent messaging (the `send`/`reply` control verbs). Canvas.tsx forwards the validated verb

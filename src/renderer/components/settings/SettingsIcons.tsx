@@ -134,6 +134,14 @@ const PATHS: Record<StaticSettingsSectionId, React.JSX.Element> = {
   ),
   // A dot inside two pairs of arcs: this terminal is being broadcast (the same glyph as the
   // node menu's "Share live link…" row, `IconBroadcast`).
+  'ship-process': (
+    <>
+      <circle cx="3.5" cy="8" r="2" />
+      <circle cx="12.5" cy="3.5" r="2" />
+      <circle cx="12.5" cy="12.5" r="2" />
+      <path d="M5.3 7.1 10.7 4.4M5.3 8.9l5.4 2.7" />
+    </>
+  ),
   'live-links': (
     <>
       <circle cx="8" cy="8" r="1.6" />

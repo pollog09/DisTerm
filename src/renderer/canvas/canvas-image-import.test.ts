@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  canvasCoveredByView,
   canvasImagePasteArmedAfterKey,
   canvasImportRefusal,
   droppedDirectories,
@@ -180,5 +183,19 @@ describe('canvasImagePasteArmedAfterKey', () => {
     expect(canvasImagePasteArmedAfterKey(true, paste)).toBe(true)
     expect(canvasImagePasteArmedAfterKey(true, openSettings)).toBe(false)
     expect(canvasImagePasteArmedAfterKey(false, paste)).toBe(false)
+  })
+})
+
+describe('canvasCoveredByView', () => {
+  it('neither full-page view lets a paste through to the canvas', () => {
+    expect(canvasCoveredByView(false, false)).toBe(false)
+    expect(canvasCoveredByView(true, false)).toBe(true)
+    expect(canvasCoveredByView(false, true)).toBe(true)
+  })
+
+  it('Canvas asks it with both flags. Canvas has no render harness, so this one reads the call site', () => {
+    const src = readFileSync(join(__dirname, 'Canvas.tsx'), 'utf8')
+    const guard = src.split('\n').find((l) => l.includes('canvasImagePasteArmedRef.current ||'))!
+    expect(guard).toContain('canvasCoveredByView(kanbanOpen, graphOpen)')
   })
 })

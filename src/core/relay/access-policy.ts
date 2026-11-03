@@ -277,7 +277,10 @@ export const VIEW: Readonly<Record<string, Check>> = Object.freeze({
   [IPC.presenceProject]: pass,
   [IPC.boardLogRead]: projectArg0,
   [IPC.boardLogSubscribe]: projectArg0,
-  [IPC.boardLogUnsubscribe]: projectArg0
+  [IPC.boardLogUnsubscribe]: projectArg0,
+  // Message and subagent history of a shared project; the RESPONSE is trimmed to shared nodes by
+  // narrowResponseForRole (the live buffer spans every project of this core).
+  [IPC.agentGraphSnapshot]: projectArg0
 })
 
 export const COMMENT: Readonly<Record<string, Check>> = Object.freeze({
@@ -493,7 +496,14 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.relayHostedPeerPending,
   IPC.relayHostedPendingClosed,
   IPC.relayHostedSharedChanged,
+  // A machine's Claude config (its global agents and commands) belongs to the host's user, and a
+  // viewer's graph is observation only. Create writes a file on the host.
+  IPC.shipConfigRead,
+  IPC.shipGraphCreate,
+  IPC.shipConfigSubscribe,
+  IPC.shipConfigUnsubscribe,
   // Server→client events (see the doc comment): what a non-editor receives is VIEW_EVENTS.
+  IPC.agentGraphEvent,
   IPC.workspaceMigrated,
   IPC.workspaceCorruptRecovered,
   IPC.workspaceExternalChange,
@@ -582,9 +592,22 @@ type EventCheck = (args: unknown[], ctx: AccessContext, owners: SubagentOwners |
 const always: EventCheck = () => true
 
 /** Exact event channels a Viewer/Commenter may RECEIVE. Anything else is dropped for them. */
+/**
+ * Does this graph event concern only the peer's shared nodes? A delivery names two nodes and needs
+ * both: the far end of a message into another project is that project's activity. The core's buffer
+ * spans every project, so this is what keeps a peer's graph to the project it was given.
+ */
+function agentGraphEventShared(event: unknown, ctx: AccessContext): boolean {
+  if (field(event, 'kind') === 'delivery') {
+    return sharedNode(field(event, 'from'), ctx) && sharedNode(field(event, 'to'), ctx)
+  }
+  return sharedNode(field(event, 'nodeId'), ctx)
+}
+
 export const VIEW_EVENTS: Readonly<Record<string, EventCheck>> = Object.freeze({
   [IPC.canvasMut]: (a, ctx) => sharedProject(a[0], ctx),
   [IPC.agentStatus]: (a, ctx) => sharedNode(field(a[0], 'nodeId'), ctx),
+  [IPC.agentGraphEvent]: (a, ctx) => agentGraphEventShared(a[0], ctx),
   [IPC.agentSubagentActivity]: (a, ctx, owners) => {
     const toolUseId = field(a[0], 'toolUseId')
     return typeof toolUseId === 'string' && sharedNode(owners?.get(toolUseId), ctx)
@@ -687,6 +710,13 @@ const NODE_KEYED_SNAPSHOTS: ReadonlySet<string> = new Set([IPC.agentSubagentSnap
 export function narrowResponseForRole(method: string, result: unknown, ctx: AccessContext): unknown {
   if (isEditor(ctx.role)) return result
   if (method === IPC.workspaceLoad) return redactWorkspaceExec(result)
+  if (method === IPC.agentGraphSnapshot) {
+    const events = field(result, 'events')
+    return {
+      ...(result as object),
+      events: Array.isArray(events) ? events.filter((e) => agentGraphEventShared(e, ctx)) : []
+    }
+  }
   if (!NODE_KEYED_SNAPSHOTS.has(method)) return result
   return Array.isArray(result) ? result.filter((e) => sharedNode(field(e, 'nodeId'), ctx)) : []
 }

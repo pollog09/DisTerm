@@ -275,6 +275,49 @@ Do not add a field inside `ProjectKanban.meta[]` entries: every card-meta setter
 priority, labels, the phone's label verb) rebuilds the entry from a fixed list and silently drops
 anything else. Board-level fields survive every transform — `pullLinks` is one.
 
+## The agent graph view
+
+The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
+Three things to know before touching a view:
+
+- **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
+  the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
+  views consume it. A new full-page view must mark the canvas covered and consume that request.
+- **The graph's model and layout are pure** (`lib/agentGraphModel.ts`, `lib/agentGraphLayout.ts`). A
+  new kind of line or badge goes in the model with a test, not in a component.
+- **A new graph channel is a relay decision.** The core's event buffer spans every project, so anything
+  a peer can read from it must be narrowed to its shared nodes, and machine config stays Editor-only.
+  `.claude/ship-graph.json` arrives in a clone: display only, never executed, and every field read
+  one by one in `core/ship-config/sanitize.ts`.
+
+Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
+and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
+work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
+
+**Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two
+things can go wrong quietly:
+
+- **`resources/bin/tmux` is gitignored**, and a missing `extraResources` source is only a WARNING to
+  electron-builder. A fresh checkout that did not run `node scripts/build-tmux.mjs` first gets a `.dmg`
+  with no bundled tmux. The release job runs it as its own step for this reason; a local `dist` does not.
+- **`sharp` is installed per architecture.** `@img/sharp-darwin-x64` is an optional dependency pinned to
+  x64, so `npm ci` on Apple silicon may leave it out, and electron-builder does not fetch it. If it is
+  missing, an x64 `.dmg` built there has a broken project icon upload. Building on an Intel Mac avoids
+  the question. On Apple silicon, check first with `ls node_modules/@img/`. If it is absent, add the x64
+  packages without touching anything else, at the versions `package-lock.json` pins:
+  `npm install --no-save --force @img/sharp-darwin-x64@<ver> @img/sharp-libvips-darwin-x64@<ver>`. Do not
+  use `--cpu=x64 --os=darwin`: npm treats the host's own optional packages as inert under those flags and
+  removes the darwin-arm64 builds of sharp, esbuild, rollup, lightningcss and tailwind's oxide, which
+  `make-icon` and `build` need. This recipe has not been run on a Mac yet, so check step 2 below after it.
+
+On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`:
+
+1. `file <app>/Contents/MacOS/nodeterm` says x86_64, and `<app>/Contents/Resources/bin/tmux` exists and
+   runs (`--version`).
+2. `ls <app>/Contents/Resources/app.asar.unpacked/node_modules/@img/` lists `sharp-darwin-x64`.
+3. A terminal opens and survives a quit and relaunch, a project icon upload works, and dictation loads.
+4. The agent graph opens from the tab's graph icon, lists your agents and draws a ship pipeline.
+
 ## House rules
 
 - **Check `src/shared` before writing a two-line helper.** A JSON-object guard (`isRecord`), an

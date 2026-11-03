@@ -1111,6 +1111,16 @@ export interface LogApi {
   onBatch(cb: (batch: LogRecord[]) => void): () => void
 }
 
+/** The agent graph view's core surface (core/agent-graph, core/ship-config). */
+export interface AgentGraphApi {
+  snapshot(projectId: string): Promise<import('./agent-graph').AgentGraphSnapshot>
+  onEvent(listener: (event: import('./agent-graph').AgentGraphEvent) => void): () => void
+  readShipConfig(projectId: string): Promise<import('./ship-config').ShipConfigResult>
+  createShipGraph(projectId: string, scope: import('./ship-config').ShipScope): Promise<import('./ship-config').ShipGraphCreateResult>
+  /** Subscribe to config changes on the machine this project runs on; returns an unsubscribe. */
+  onShipConfigChanged(projectId: string, cb: () => void): () => void
+}
+
 export interface BoardLogApi {
   /** Append one entry. Resolves `false` on any failure (unsupported project, fs/exec error). */
   append(projectId: string, entry: BoardLogEntry): Promise<boolean>
@@ -4689,6 +4699,7 @@ export interface NodeTerminalApi {
   projectLimit: ProjectLimitApi
   contextLink: ContextLinkApi
   boardLog: BoardLogApi
+  agentGraph: AgentGraphApi
   logs: LogApi
   githubIssues: import('./github-issues').GitHubIssuesApi
   githubControl: import('./github-issues').GitHubControlApi

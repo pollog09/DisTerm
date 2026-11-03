@@ -1,3 +1,4 @@
+import { holdShipConfigLease } from '../shared/ship-config'
 import { subscribeAgentReplay } from '../shared/agent-replay-subscription'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { IPC } from '../shared/ipc'
@@ -888,6 +889,29 @@ const api: NodeTerminalApi = {
       return () => {
         ipcRenderer.removeListener(ch, handler)
         ipcRenderer.send(IPC.boardLogUnsubscribe, projectId)
+      }
+    }
+  },
+  agentGraph: {
+    snapshot: (projectId) => ipcRenderer.invoke(IPC.agentGraphSnapshot, projectId),
+    onEvent: (listener) => {
+      const handler = (_e: unknown, event: Parameters<typeof listener>[0]): void => listener(event)
+      ipcRenderer.on(IPC.agentGraphEvent, handler)
+      return () => ipcRenderer.removeListener(IPC.agentGraphEvent, handler)
+    },
+    readShipConfig: (projectId) => ipcRenderer.invoke(IPC.shipConfigRead, projectId),
+    createShipGraph: (projectId, scope) => ipcRenderer.invoke(IPC.shipGraphCreate, projectId, scope),
+    onShipConfigChanged: (projectId, cb) => {
+      const ch = IPC.shipConfigChanged(projectId)
+      const handler = (): void => cb()
+      ipcRenderer.on(ch, handler)
+      const release = holdShipConfigLease({
+        subscribe: (leaseId) => ipcRenderer.send(IPC.shipConfigSubscribe, projectId, leaseId),
+        unsubscribe: (leaseId) => ipcRenderer.send(IPC.shipConfigUnsubscribe, projectId, leaseId)
+      })
+      return () => {
+        ipcRenderer.removeListener(ch, handler)
+        release()
       }
     }
   },

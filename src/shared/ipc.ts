@@ -347,6 +347,19 @@ export const IPC = {
   boardLogUnsubscribe: 'board-log:unsubscribe',
   /** Per-project push fired when a project's board log changes (mirrors the ptyData naming). */
   boardLogChanged: (projectId: string) => `board-log:changed:${projectId}`,
+  /** The agent graph view's history for one project (core/agent-graph/handlers.ts). */
+  agentGraphSnapshot: 'agent-graph:snapshot',
+  /** main→renderer push: one `AgentGraphEvent` as it is recorded. Never carries a message body. */
+  agentGraphEvent: 'agent-graph:event',
+  /** One machine's ship config: its agents, commands and `ship-graph.json` (core/ship-config). */
+  shipConfigRead: 'ship-config:read',
+  /** Write the example `ship-graph.json`, only where no file exists. */
+  shipGraphCreate: 'ship-config:create-graph',
+  /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while a view holds one, the core re-reads
+   *  the config on a timer and pushes `shipConfigChanged` on a real change. */
+  shipConfigSubscribe: 'ship-config:subscribe',
+  shipConfigUnsubscribe: 'ship-config:unsubscribe',
+  shipConfigChanged: (projectId: string) => `ship-config:changed:${projectId}`,
   appUpdateAvailable: 'app:update-available',
   appUpdateDownloaded: 'app:update-downloaded',
   appUpdateProgress: 'app:update-progress',

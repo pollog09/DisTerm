@@ -1,4 +1,5 @@
 import { subagentReplay } from './subagent-replay'
+import { agentGraphLog } from './agent-graph/event-log'
 import fs from 'fs'
 import path from 'path'
 import { writeFileAtomic } from './fs-atomic'
@@ -1661,6 +1662,7 @@ interface NeedsYouClassification {
 export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgentEvent {
   if (!rawEvent?.nodeId) return rawEvent
   subagentReplay.record(rawEvent)
+  agentGraphLog.recordAgentEvent(rawEvent)
   const ev = resolveGrokStopCancelled(rawEvent)
   const nodeId = ev.nodeId
   const now = Date.now()
@@ -2483,6 +2485,7 @@ export async function flush(): Promise<void> {
 /** Reset all module state (in-memory map + config + listeners + inbox). Test-only. */
 export function _resetForTest(): void {
   subagentReplay.clear()
+  agentGraphLog.clear()
   state.clear()
   if (sweepTimer) clearInterval(sweepTimer)
   sweepTimer = null

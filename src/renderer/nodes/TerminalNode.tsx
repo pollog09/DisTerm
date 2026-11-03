@@ -1581,7 +1581,7 @@ export function TerminalNode({
   const boardOpen = useViewMode(
     (s) =>
       (omniKanbanEnabled && s.globalKanban) ||
-      viewFor(s, useProjects.getState().activeProjectId ?? '') === 'kanban'
+      viewFor(s, useProjects.getState().activeProjectId ?? '') !== 'canvas'
   )
   const boardOpenRef = useRef(boardOpen)
   // The live session's board render pause (attached by the lifecycle effect): while the board

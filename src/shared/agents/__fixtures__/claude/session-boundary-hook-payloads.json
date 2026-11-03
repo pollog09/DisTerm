@@ -1,0 +1,1333 @@
+{
+ "_provenance": "captured live from Claude Code 2.1.317 (linux-x64) on 2026-11-02, logged-in account, model haiku, interactive TUI in a private tmux socket, with --settings holding only capture hooks and --agents defining gt-impl and gt-slow. Session ids replaced in order of appearance (the same id stays the same placeholder); agent ids, tool_use ids, prompt ids, KEYS AND SHAPES UNCHANGED; all free text, paths and prompts replaced by placeholders, except the structural start of an injected prompt and the /gt-cmd slash command.",
+ "claudeVersion": "2.1.317",
+ "scenarios": {
+  "clear_slash_exit": {
+   "mode": "interactive",
+   "description": "a prompt, the custom slash command /gt-cmd, /clear, a prompt, /exit",
+   "events": [
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "hook_event_name": "SessionStart",
+     "source": "startup",
+     "model": "claude-haiku-5-5"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "2e9730ec-7e7c-4cf7-80fa-87aa8a1d69f5",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "2e9730ec-7e7c-4cf7-80fa-87aa8a1d69f5",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "9d899c9e-0d5a-4517-b253-d4a1c3ad49b6",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "/gt-cmd"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "9d899c9e-0d5a-4517-b253-d4a1c3ad49b6",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "1967d840-6101-4b97-8825-821d402b8153",
+     "hook_event_name": "SessionEnd",
+     "reason": "clear"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000002",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "hook_event_name": "SessionStart",
+     "source": "clear"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000002",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "59cbcf87-6d09-4fe0-a748-bcc55123c620",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000002",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "59cbcf87-6d09-4fe0-a748-bcc55123c620",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000002",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "89d918cf-b052-4102-a9e7-a34719831ee8",
+     "hook_event_name": "SessionEnd",
+     "reason": "prompt_input_exit"
+    }
+   ]
+  },
+  "compact_after_subagent": {
+   "mode": "interactive",
+   "description": "a gt-impl subagent to completion, /compact, a prompt, /exit",
+   "events": [
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "hook_event_name": "SessionStart",
+     "source": "startup",
+     "model": "claude-haiku-5-5"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-impl"
+     },
+     "tool_use_id": "toolu_01C7RG6Tbmi4ZvXpvoq5yVSW"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "agent_id": "a19bfea6c2bbd9acd",
+     "agent_type": "gt-impl",
+     "hook_event_name": "SubagentStart"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-impl"
+     },
+     "tool_response": {
+      "isAsync": true,
+      "status": "async_launched",
+      "agentId": "a19bfea6c2bbd9acd",
+      "description": "[removed]",
+      "resolvedModel": "[removed]",
+      "prompt": "[prompt removed]",
+      "outputFile": "[removed]",
+      "canReadOutputFile": true,
+      "canContinueAgent": true
+     },
+     "tool_use_id": "toolu_01C7RG6Tbmi4ZvXpvoq5yVSW",
+     "duration_ms": 7
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "agent_id": "a19bfea6c2bbd9acd",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a19bfea6c2bbd9acd",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a19bfea6c2bbd9acd",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "agent_id": "a19bfea6c2bbd9acd",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01YZWRx7Lc96BYAN8f7coSS1"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "df947a27-e5b8-4e59-8ec6-585ff7d89dad",
+     "permission_mode": "auto",
+     "agent_id": "a19bfea6c2bbd9acd",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_response": {
+      "success": true,
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01YZWRx7Lc96BYAN8f7coSS1",
+     "duration_ms": 22
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "fea7ff93-338e-4623-aa26-5622f6a311b1",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "<agent-message from=\"a19bfea6c2bbd9acd\">\n[Subagent hand-back] [report removed]\n</agent-message>"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "fea7ff93-338e-4623-aa26-5622f6a311b1",
+     "permission_mode": "auto",
+     "agent_id": "a19bfea6c2bbd9acd",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": true,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [
+      {
+       "id": "a19bfea6c2bbd9acd",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "fea7ff93-338e-4623-aa26-5622f6a311b1",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "871128d5-72d5-4932-924f-9f2193d78db4",
+     "hook_event_name": "PreCompact",
+     "trigger": "manual",
+     "custom_instructions": null
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "871128d5-72d5-4932-924f-9f2193d78db4",
+     "permission_mode": "auto",
+     "agent_id": "a4e8212fb3e0208aa",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "871128d5-72d5-4932-924f-9f2193d78db4",
+     "permission_mode": "auto",
+     "agent_id": "a15fbd87cacb44031",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "871128d5-72d5-4932-924f-9f2193d78db4",
+     "hook_event_name": "SessionStart",
+     "source": "compact",
+     "model": "claude-haiku-5-5"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "374954ae-2da9-42f6-8d30-5e869792bfa2",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "374954ae-2da9-42f6-8d30-5e869792bfa2",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "34dcd65e-8286-4ee3-83a6-6da684d6f315",
+     "hook_event_name": "SessionEnd",
+     "reason": "prompt_input_exit"
+    }
+   ]
+  },
+  "resume": {
+   "mode": "interactive",
+   "description": "claude --resume of the session above, a prompt, /exit",
+   "events": [
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "hook_event_name": "SessionStart",
+     "source": "resume",
+     "seconds_since_last_response": 3,
+     "context_tokens": 40464,
+     "prompt_cache_likely_expired": false,
+     "estimated_cache_write_usd": 0.0081
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "dea1b583-5c65-4e9b-8f38-65678b40f9bb",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "dea1b583-5c65-4e9b-8f38-65678b40f9bb",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000003",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "2aa6b406-32d0-4813-a14f-d94a843b9704",
+     "hook_event_name": "SessionEnd",
+     "reason": "prompt_input_exit"
+    }
+   ]
+  },
+  "send_message_then_running_across_compact": {
+   "mode": "interactive",
+   "description": "a gt-impl subagent, the parent resuming it through SendMessage, a new prompt with a background gt-slow subagent (sleep 45), and /compact while it runs",
+   "events": [
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "hook_event_name": "SessionStart",
+     "source": "startup",
+     "model": "claude-haiku-5-5"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-impl"
+     },
+     "tool_use_id": "toolu_01HtX9ecvR45Gwbuc7V85ov3"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "hook_event_name": "SubagentStart"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-impl"
+     },
+     "tool_response": {
+      "isAsync": true,
+      "status": "async_launched",
+      "agentId": "a27e97d516801be1d",
+      "description": "[removed]",
+      "resolvedModel": "[removed]",
+      "prompt": "[prompt removed]",
+      "outputFile": "[removed]",
+      "canReadOutputFile": true,
+      "canContinueAgent": true
+     },
+     "tool_use_id": "toolu_01HtX9ecvR45Gwbuc7V85ov3",
+     "duration_ms": 8
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01TyB53nPKGLCpGaxEy5g3s2"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "8bbce712-8ae5-4c6b-a8da-0a3d10f2ed07",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_response": {
+      "success": true,
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01TyB53nPKGLCpGaxEy5g3s2",
+     "duration_ms": 22
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "<agent-message from=\"a27e97d516801be1d\">\n[Subagent hand-back] [report removed]\n</agent-message>"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": true,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "adb93bd1d5b2e6e95",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "[removed]",
+      "max_results": 1
+     },
+     "tool_use_id": "toolu_014geuiYEedZpQYWpQFBJDvC"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "[removed]",
+      "max_results": 1
+     },
+     "tool_response": {
+      "matches": [
+       "[removed]"
+      ],
+      "query": "[removed]",
+      "total_deferred_tools": 39
+     },
+     "tool_use_id": "toolu_014geuiYEedZpQYWpQFBJDvC",
+     "duration_ms": 1
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "SendMessage",
+     "tool_input": {
+      "to": "[removed]",
+      "summary": "[removed]",
+      "message": "[removed]",
+      "type": "message",
+      "recipient": "[removed]",
+      "recipient_kind": "[removed]",
+      "content": "[removed]"
+     },
+     "tool_use_id": "toolu_017EJzh5rZ4tFCQWUP3SumtN"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "SendMessage",
+     "tool_input": {
+      "to": "[removed]",
+      "summary": "[removed]",
+      "message": "[removed]",
+      "type": "message",
+      "recipient": "[removed]",
+      "recipient_kind": "[removed]",
+      "content": "[removed]"
+     },
+     "tool_response": {
+      "success": true,
+      "message": "[removed]",
+      "resumedAgentId": "a27e97d516801be1d",
+      "revivedAgentId": "[removed]",
+      "pin": {
+       "id": "a27e97d516801be1d",
+       "name": "[removed]",
+       "ref": "[removed]"
+      }
+     },
+     "tool_use_id": "toolu_017EJzh5rZ4tFCQWUP3SumtN",
+     "duration_ms": 14
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "hook_event_name": "SubagentStart"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "a93264c47b3d4d1f1",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01BVFEfWBsGvff8ocQJWSQt4"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "53187ad8-ea62-4fb0-9e3b-f47929a69212",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "SubagentHandback",
+     "tool_input": {
+      "message": "[removed]"
+     },
+     "tool_response": {
+      "success": true,
+      "message": "[removed]"
+     },
+     "tool_use_id": "toolu_01BVFEfWBsGvff8ocQJWSQt4",
+     "duration_ms": 1
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "7a9b3d3e-4dcf-4b12-b571-65481385e80b",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "<agent-message from=\"a27e97d516801be1d\">\n[Subagent hand-back] [report removed]\n</agent-message>"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "7a9b3d3e-4dcf-4b12-b571-65481385e80b",
+     "permission_mode": "auto",
+     "agent_id": "a27e97d516801be1d",
+     "agent_type": "gt-impl",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": true,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "background_tasks": [
+      {
+       "id": "a27e97d516801be1d",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-impl"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "7a9b3d3e-4dcf-4b12-b571-65481385e80b",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "7da6ff19-0460-42e1-807a-27650390087c",
+     "permission_mode": "auto",
+     "agent_id": "a11f6993737abd6e3",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "833ab12f-bb1a-45b8-ab31-c475e7545d86",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "833ab12f-bb1a-45b8-ab31-c475e7545d86",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-slow"
+     },
+     "tool_use_id": "toolu_01RZ6hw2Urvfdy3EfuJ7hkb8"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "833ab12f-bb1a-45b8-ab31-c475e7545d86",
+     "agent_id": "a8ec2cca067d751c0",
+     "agent_type": "gt-slow",
+     "hook_event_name": "SubagentStart"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "833ab12f-bb1a-45b8-ab31-c475e7545d86",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[removed]",
+      "prompt": "[prompt removed]",
+      "subagent_type": "gt-slow"
+     },
+     "tool_response": {
+      "isAsync": true,
+      "status": "async_launched",
+      "agentId": "a8ec2cca067d751c0",
+      "description": "[removed]",
+      "resolvedModel": "[removed]",
+      "prompt": "[prompt removed]",
+      "outputFile": "[removed]",
+      "canReadOutputFile": true,
+      "canContinueAgent": true
+     },
+     "tool_use_id": "toolu_01RZ6hw2Urvfdy3EfuJ7hkb8",
+     "duration_ms": 4
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "833ab12f-bb1a-45b8-ab31-c475e7545d86",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a8ec2cca067d751c0",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-slow"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "hook_event_name": "PreCompact",
+     "trigger": "manual",
+     "custom_instructions": null
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "permission_mode": "auto",
+     "agent_id": "a8ec2cca067d751c0",
+     "agent_type": "gt-slow",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Bash",
+     "tool_input": {
+      "command": "[removed]",
+      "description": "[removed]",
+      "run_in_background": true
+     },
+     "tool_use_id": "toolu_01KSKtCXFbjb4xpTRf7jYUvr"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "permission_mode": "auto",
+     "agent_id": "a8ec2cca067d751c0",
+     "agent_type": "gt-slow",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Bash",
+     "tool_input": {
+      "command": "[removed]",
+      "description": "[removed]",
+      "run_in_background": true
+     },
+     "tool_response": {
+      "stdout": "[removed]",
+      "stderr": "[removed]",
+      "interrupted": false,
+      "isImage": false,
+      "noOutputExpected": false,
+      "backgroundTaskId": "[removed]"
+     },
+     "tool_use_id": "toolu_01KSKtCXFbjb4xpTRf7jYUvr",
+     "duration_ms": 54
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "permission_mode": "auto",
+     "agent_id": "a8ec2cca067d751c0",
+     "agent_type": "gt-slow",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "a8ec2cca067d751c0",
+       "type": "subagent",
+       "status": "running",
+       "description": "[removed]",
+       "agent_type": "gt-slow"
+      },
+      {
+       "id": "b6mc7gteq",
+       "type": "shell",
+       "status": "running",
+       "description": "[removed]",
+       "command": "[removed]"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "permission_mode": "auto",
+     "agent_id": "a0abd5c987352362d",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "b6mc7gteq",
+       "type": "shell",
+       "status": "running",
+       "description": "[removed]",
+       "command": "[removed]"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "0cfbfe11-8a50-493f-9057-76e5da090ac4",
+     "hook_event_name": "SessionStart",
+     "source": "compact",
+     "model": "claude-haiku-5-5"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "bf90acc9-fb70-459b-8e04-4afca8e8afa7",
+     "permission_mode": "auto",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "<task-notification>\n<task-id>a8ec2cca067d751c0</task-id>\n[notification removed]\n</task-notification>"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "bf90acc9-fb70-459b-8e04-4afca8e8afa7",
+     "permission_mode": "auto",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "Stop",
+     "stop_hook_active": false,
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "b6mc7gteq",
+       "type": "shell",
+       "status": "running",
+       "description": "[removed]",
+       "command": "[removed]"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "bf90acc9-fb70-459b-8e04-4afca8e8afa7",
+     "permission_mode": "auto",
+     "agent_id": "a5e16004930ece048",
+     "agent_type": "",
+     "effort": {
+      "level": "[removed]"
+     },
+     "hook_event_name": "SubagentStop",
+     "stop_hook_active": false,
+     "agent_transcript_path": "/home/user/.claude/projects/-work-project/subagents/agent.jsonl",
+     "last_assistant_message": "[removed]",
+     "background_tasks": [
+      {
+       "id": "b6mc7gteq",
+       "type": "shell",
+       "status": "running",
+       "description": "[removed]",
+       "command": "[removed]"
+      }
+     ],
+     "session_crons": []
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000004",
+     "transcript_path": "/home/user/.claude/projects/-work-project/transcript.jsonl",
+     "cwd": "/work/project",
+     "scratchpad_dir": "/tmp/scratchpad",
+     "prompt_id": "448700ab-d434-4c63-aa69-8fce24d6c705",
+     "hook_event_name": "SessionEnd",
+     "reason": "other"
+    }
+   ]
+  }
+ }
+}

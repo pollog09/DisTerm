@@ -10,6 +10,7 @@ nodeterm's license.
 | Electron | MIT |
 | React, React DOM | MIT |
 | @xyflow/react (React Flow) | MIT |
+| @dagrejs/dagre, @dagrejs/graphlib | MIT |
 | @xterm/xterm, @xterm/addon-fit | MIT |
 | monaco-editor | MIT |
 | @excalidraw/excalidraw (whiteboard node) | MIT |
