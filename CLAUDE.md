@@ -9917,11 +9917,16 @@ Windows loopback and pane probes see `wsl.exe`.
   again. So the close cancels a pending reconnect, `SshReconnector` dials nothing for a closed WSL project
   (`createProjectReconnector`), and the terminals' parks are disposed, since a park on the ended master is
   dead and reopening would adopt it. A drop on a closed project is still REMEMBERED: closing the last open
-  tab leaves its nodes mounted (the load effect bails with no active project), so reopening keeps the same
-  ids, nothing remounts, and those dead terminals come back only through a respawn. The coordinator holds
-  them and, on reopen, resumes the ordinary loop, whichever comes first: a `connected` status or its own
-  1 s timer (a connect that reuses a live master reports no status). Each respawn's `new-session -A`
-  reattaches to the live tmux session, and reopening starts the distro if it stopped. Closing alone leaves the distro running on its keepalive; to
+  tab leaves its nodes mounted (the load effect bails with no active project), so a DIRECT reopen keeps the
+  same ids, nothing remounts, and those dead terminals come back only through a respawn. The coordinator
+  holds them and, on reopen, resumes the ordinary loop, whichever comes first: a `connected` status or its
+  own 1 s timer (a connect that reuses a live master reports no status). Each respawn's `new-session -A`
+  reattaches to the live tmux session, and reopening starts the distro if it stopped. **Once another project
+  is active the hold is dropped** (`nodesMayBeMounted`): its load replaced those nodes, so reopening mounts
+  them fresh and they attach by themselves, and a respawn would only kill a terminal that just attached. A
+  close also ends that project's `RESPAWN_REFUSE_MS` windows, because the exit it causes says nothing about
+  a broken spawn, and refusing one that lands just after a quick reopen would strand the terminal. An
+  ordinary SSH project keeps its window. Closing alone leaves the distro running on its keepalive; to
   stop that too, turn the setting off or delete the project. A setting change never starts a distro: it
   only touches distros `wsl.exe --list --running` reports.
 - **Testing:** `wsl-endpoint.test.ts` and `wsl-keepalive.test.ts` run the real NativeMux against ssh2's

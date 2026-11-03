@@ -42,18 +42,24 @@ export interface SshReconnectorDeps {
   mayDial?: (projectId: string) => boolean
   /** Call back when `mayDial` may have changed, so held nodes can resume. Returns the unsubscribe. */
   onMayDialChange?: (changed: () => void) => () => void
+  /** Can this project's terminals still be on the canvas? No means a held node is already gone, and
+   *  reopening mounts it fresh, so a respawn would only kill a terminal that just attached. Absent = yes. */
+  nodesMayBeMounted?: (projectId: string) => boolean
 }
 
 export class SshReconnector {
   private readonly deps: SshReconnectorDeps
   private readonly loops = new Map<string, ProjectLoop>()
-  private readonly lastRespawn = new Map<string, number>()
+  private readonly lastRespawn = new Map<string, { at: number; projectId: string }>()
   private disposed = false
   private readonly unsubscribe: (() => void) | undefined
 
   constructor(deps: SshReconnectorDeps) {
     this.deps = deps
-    this.unsubscribe = deps.onMayDialChange?.(() => this.resumeHeld())
+    this.unsubscribe = deps.onMayDialChange?.(() => {
+      this.dropUnmountedHolds()
+      this.resumeHeld()
+    })
   }
 
   /** A remote terminal's ssh died with exit 255: queue it and (re)start the project's loop. */
@@ -63,11 +69,11 @@ export class SshReconnector {
     // its nodes on the canvas), so without this nothing would ever bring it back. Ahead of the refuse
     // window, because that window is about broken spawns and this death is the close's own.
     if (!this.mayDial(projectId)) {
-      this.hold(projectId).pending.add(nodeId)
+      if (this.nodesMayBeMounted(projectId)) this.hold(projectId).pending.add(nodeId)
       return
     }
     const respawnedAt = this.lastRespawn.get(nodeId)
-    if (respawnedAt !== undefined && Date.now() - respawnedAt < RESPAWN_REFUSE_MS) return
+    if (respawnedAt !== undefined && Date.now() - respawnedAt.at < RESPAWN_REFUSE_MS) return
     let loop = this.loops.get(projectId)
     if (!loop) {
       loop = { pending: new Set(), timer: null, attempt: 0 }
@@ -120,8 +126,11 @@ export class SshReconnector {
   }
 
   /** Stop dialing this project: a pending backoff is cancelled. Its queued nodes are kept, because
-   *  they still need a respawn when the project is back. */
+   *  they still need a respawn when the project is back. Its refuse windows end here: this close is
+   *  about to kill those terminals, and that exit says nothing about a broken spawn. Refused, it would
+   *  strand a terminal when it lands just after a quick reopen. */
   forget(projectId: string): void {
+    for (const [nodeId, r] of this.lastRespawn) if (r.projectId === projectId) this.lastRespawn.delete(nodeId)
     if (this.loops.has(projectId)) this.hold(projectId)
   }
 
@@ -137,6 +146,18 @@ export class SshReconnector {
     loop.held = true
     loop.fromClose = true
     return loop
+  }
+
+  /** A held project whose terminals have left the canvas has nothing left to respawn. */
+  private dropUnmountedHolds(): void {
+    if (this.disposed) return
+    for (const [projectId, loop] of this.loops) {
+      if (loop.held && !this.nodesMayBeMounted(projectId)) this.loops.delete(projectId)
+    }
+  }
+
+  private nodesMayBeMounted(projectId: string): boolean {
+    return this.deps.nodesMayBeMounted ? this.deps.nodesMayBeMounted(projectId) : true
   }
 
   /** Projects that may be dialed again go back to the ordinary loop. On a timer rather than at once,
@@ -201,7 +222,10 @@ export class SshReconnector {
     if (loop.pending.size === 0) return
     const nodeIds = [...loop.pending]
     const now = Date.now()
-    if (!loop.fromClose) for (const id of nodeIds) this.lastRespawn.set(id, now)
+    for (const id of nodeIds) {
+      if (loop.fromClose) this.lastRespawn.delete(id)
+      else this.lastRespawn.set(id, { at: now, projectId })
+    }
     this.deps.respawn(projectId, nodeIds)
   }
 }

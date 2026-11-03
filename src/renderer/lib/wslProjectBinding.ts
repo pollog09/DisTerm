@@ -30,14 +30,24 @@ export function isClosedWslProject(project: Pick<Project, 'closed' | 'ssh'> | un
  * which registers the project with the watchdog again, and that boots a distro the user stopped.
  *
  * But the drop is still remembered. Closing the LAST open tab leaves its nodes mounted (the load effect
- * bails with no active project), so reopening keeps the same ids and nothing remounts. Those terminals
- * come back only through a respawn, so the coordinator holds them and resumes when the project reopens.
+ * bails with no active project), so a direct reopen keeps the same ids and nothing remounts. Those
+ * terminals come back only through a respawn, so the coordinator holds them and resumes on reopen. Once
+ * another project is active its load has replaced them, so reopening mounts them fresh and attaches, and
+ * the hold is dropped: a respawn then would only kill a terminal that just attached.
  */
-export function createProjectReconnector(deps: Omit<SshReconnectorDeps, 'mayDial' | 'onMayDialChange'>): SshReconnector {
+export function createProjectReconnector(
+  deps: Omit<SshReconnectorDeps, 'mayDial' | 'onMayDialChange' | 'nodesMayBeMounted'>
+): SshReconnector {
   return new SshReconnector({
     ...deps,
     mayDial: (id) => !isClosedWslProject(useProjects.getState().getProject(id)),
-    onMayDialChange: (changed) => useProjects.subscribe(changed)
+    onMayDialChange: (changed) => useProjects.subscribe(changed),
+    // With another project active, the canvas load replaced this project's nodes. With none (the
+    // welcome screen), they are still mounted.
+    nodesMayBeMounted: (id) => {
+      const active = useProjects.getState().activeProjectId
+      return !active || active === id
+    }
   })
 }
 

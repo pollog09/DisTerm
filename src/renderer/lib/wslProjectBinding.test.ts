@@ -151,6 +151,152 @@ describe('closing a WSL project keeps its master down', () => {
     expect(respawn).toHaveBeenCalledWith(id, [NODE])
   })
 
+  describe('another project opened in between: the canvas load replaced the terminals', () => {
+    const other: NonNullable<Project['ssh']> = { server: { host: 'other.example.com', user: 'dev' }, remoteCwd: '/o' }
+
+    it('close the last tab, open another, reopen: the fresh mounts get no respawn', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(useProjects.getState().activeProjectId).toBe('')
+      open(other)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(respawn).not.toHaveBeenCalled()
+      expect(dial).not.toHaveBeenCalled()
+    })
+
+    it('close the last tab and reopen directly: still exactly one respawn', async () => {
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(respawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('closing a tab with others open: a node queued before the close gets no respawn on reopen', async () => {
+      disconnect.mockImplementation(async () => {})
+      open(other)
+      const id = open(wsl)
+      exit255(id)
+      close(id)
+      expect(useProjects.getState().activeProjectId).not.toBe('')
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(respawn).not.toHaveBeenCalled()
+      expect(dial).not.toHaveBeenCalled()
+    })
+
+    it('an exit landing after the other project opened is not held for later', async () => {
+      disconnect.mockImplementation(async () => {})
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      open(other)
+      exit255(id)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(respawn).not.toHaveBeenCalled()
+    })
+
+    it('a project still dialable keeps its queue when another is active, as before', async () => {
+      const id = open(plain)
+      exit255(id)
+      open(other)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledWith(id)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+  })
+
+  describe('the refuse window and a close', () => {
+    /** A node respawned by the ordinary loop, so its 10 s window has just started. */
+    async function respawnedJustNow(id: string): Promise<void> {
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledTimes(1)
+      respawn.mockClear()
+      dial.mockClear()
+    }
+
+    it('an older window does not strand a terminal whose exit lands just after a quick reopen', async () => {
+      disconnect.mockImplementation(async () => {})
+      const id = open(wsl)
+      await respawnedJustNow(id)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).toHaveBeenCalledTimes(1)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a respawn flushed from a close clears an older window, so a later exit is reported', async () => {
+      const id = open(wsl)
+      await respawnedJustNow(id)
+      useProjects.getState().closeProject(id)
+      exit255(id)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      expect(respawn).toHaveBeenCalledTimes(1)
+      respawn.mockClear()
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledWith(id, [NODE])
+    })
+
+    it('a loop held by a close respawns its node without starting a window', async () => {
+      const id = open(wsl)
+      await respawnedJustNow(id)
+      exit255(id) // refused: inside the window, as it should be while the project is open
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(dial).not.toHaveBeenCalled()
+      reportSshExit(255, id, true, 'term-2')
+      useProjects.getState().closeProject(id)
+      await vi.advanceTimersByTimeAsync(1000)
+      useProjects.getState().reopenProject(id)
+      rec.onConnected(id)
+      respawn.mockClear()
+      reportSshExit(255, id, true, 'term-2')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledWith(id, ['term-2'])
+    })
+
+    it('an ordinary SSH project keeps its window, through its own close and reopen too', async () => {
+      const id = open(plain)
+      await respawnedJustNow(id)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      useProjects.getState().reopenProject(id)
+      exit255(id)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(dial).not.toHaveBeenCalled()
+      expect(respawn).not.toHaveBeenCalled()
+    })
+
+    it('closing a WSL project leaves another project’s window alone', async () => {
+      const ssh = open(plain)
+      reportSshExit(255, ssh, true, 'term-ssh')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(respawn).toHaveBeenCalledWith(ssh, ['term-ssh'])
+      respawn.mockClear()
+      dial.mockClear()
+      const id = open(wsl)
+      close(id)
+      await vi.advanceTimersByTimeAsync(0)
+      reportSshExit(255, ssh, true, 'term-ssh')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(dial).not.toHaveBeenCalled()
+    })
+  })
+
   describe('what the close’s cancel keeps', () => {
     beforeEach(() => {
       // This close's own disconnect reports nothing, so only what was queued before it is in play.

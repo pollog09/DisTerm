@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { testTmpDir } from '../../core/test-tmp'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { remoteAtomicWrite } from '../remote-atomic-write'
@@ -539,6 +539,7 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
   // These scan every process of this user, and `stop` kills what matches. Run inside WSL, the production
   // prefix would match a REAL keepalive, so every op here uses one no real keepalive can have.
   const TEST_PREFIX = `nt-test-keepalive-${RUN_ID.replace(/-/g, '')}-`
+  const SECOND_PREFIX = `nt-test-second-${RUN_ID.replace(/-/g, '')}-`
   const testMarker = (handle: string): string => `${TEST_PREFIX}${handle}`
   const MARKER = testMarker('0123456789abcdef')
   const OTHER = testMarker('fedcba9876543210')
@@ -599,27 +600,26 @@ describe.skipIf(process.platform === 'win32')('the keepalive scripts under a rea
     await vi.waitFor(async () => expect(await op('find')).toContain(`keepalive=${c.pid}\n`), { timeout: 5000 })
   }
 
-  // A stand-in for a REAL keepalive, alive across every test here. `find` with the production prefix only
-  // reads, so it is safe to prove this is one the production match would really take.
-  let realLooking: ChildProcess
-  beforeAll(async () => {
-    realLooking = spawn('/bin/sh', ['-c', WSL_KEEPALIVE_SCRIPT, wslKeepaliveMarker('abcdefabcdefabcd')], { stdio: 'ignore' })
-    await vi.waitFor(
-      async () => expect(await opWith(WSL_KEEPALIVE_MARKER_PREFIX, 'find')).toContain(`keepalive=${realLooking.pid}\n`),
-      { timeout: 5000 }
-    )
-  })
-  afterAll(async () => {
-    const survived = alive(realLooking)
-    await stopOwn(realLooking)
-    expect(survived).toBe(true)
+  it('the production prefix is what the marker is built from, and no test here uses it', () => {
+    // Strings only. A process carrying it could be acted on by a running app's own `trim`.
+    expect(WSL_KEEPALIVE_MARKER_PREFIX).toBe('nodeterm-wsl-keepalive-')
+    expect(wslKeepaliveMarker('0123456789abcdef')).toBe('nodeterm-wsl-keepalive-0123456789abcdef')
+    expect(TEST_PREFIX.startsWith(WSL_KEEPALIVE_MARKER_PREFIX)).toBe(false)
+    expect(SECOND_PREFIX.startsWith(WSL_KEEPALIVE_MARKER_PREFIX)).toBe(false)
   })
 
-  it('never sees a keepalive with the production prefix, so `stop` cannot reach one', async () => {
-    expect(await op('find')).not.toContain(`keepalive=${realLooking.pid}\n`)
-    expect(await op('stop')).toBe('')
-    expect(await op('trim')).toBe('')
-    expect(alive(realLooking)).toBe(true)
+  it('a prefix isolates completely: find, stop and trim under one never see a process under another', async () => {
+    const mine = start(['-c', WSL_KEEPALIVE_SCRIPT, MARKER])
+    const theirs = start(['-c', WSL_KEEPALIVE_SCRIPT, `${SECOND_PREFIX}0123456789abcdef`])
+    await appears(mine)
+    await vi.waitFor(async () => expect(await opWith(SECOND_PREFIX, 'find')).toBe(`NTWSL keepalive=${theirs.pid}\n`), { timeout: 5000 })
+    expect(await op('find')).toBe(`NTWSL keepalive=${mine.pid}\n`)
+    expect(await op('trim')).toBe(`NTWSL keepalive=${mine.pid}\n`)
+    expect(await op('stop')).toBe(`NTWSL stopped=${mine.pid}\n`)
+    await vi.waitFor(() => expect(alive(mine)).toBe(false), { timeout: 5000 })
+    expect(await op('find')).toBe('')
+    expect(alive(theirs)).toBe(true)
+    expect(await opWith(SECOND_PREFIX, 'find')).toBe(`NTWSL keepalive=${theirs.pid}\n`)
   })
 
   it('finds the keepalive and stops it, with its sleep', async () => {
