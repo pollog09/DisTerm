@@ -2880,6 +2880,8 @@ export interface GitFileChange {
 
 export interface GitStatus {
   hasRepo: boolean
+  /** With `hasRepo` false: git could not answer, so whether a repository exists is unknown. */
+  readError?: string
   /** "owner/repo" from the origin remote, else the folder name. */
   repoName: string
   branch: string

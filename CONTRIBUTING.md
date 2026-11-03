@@ -68,6 +68,11 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+**Local git goes through `localGitCommand`** (`src/core/wsl-git.ts`), never a bare `run('git', …)`. On
+Windows a project in a WSL distribution must run git inside that distribution: Git for Windows refuses
+the folder, and once told to trust it reports every executable as changed, so a "stage all" commit
+strips exec bits. Do not add `safe.directory`.
+
 **Windows agent messaging:** direct ConPTY terminals are looked up by the runtime node index,
 not the persistence key. `NativeWindowsPane` checks console membership, the unambiguous native
 process chain and process birth times, and frames paste only after the terminal requested it.

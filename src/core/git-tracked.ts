@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { gitEnv } from './git-env'
+import { localGitCommand } from './wsl-git'
 
 const run = promisify(execFile)
 
@@ -12,7 +13,11 @@ const run = promisify(execFile)
  */
 export async function gitTracksFile(folder: string, file: string): Promise<boolean | 'unknown'> {
   try {
-    await run('git', ['ls-files', '--error-unmatch', '--', file], { cwd: folder, env: gitEnv(), timeout: 10_000 })
+    const cmd = localGitCommand(folder, ['ls-files', '--error-unmatch', '--', file], {
+      env: gitEnv(),
+      timeout: 10_000
+    })
+    await run(cmd.file, cmd.args, cmd.options)
     return true
   } catch (e) {
     const err = e as { code?: unknown; stderr?: string }

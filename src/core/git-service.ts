@@ -15,6 +15,7 @@ import { directExecutableInvocation } from './exec-path'
 import { ghPath } from './gh-path'
 import { gitEnv } from './git-env'
 import { worktreeTargetRefusal } from './worktree-target'
+import { gitReadFailure, localGitCommand } from './wsl-git'
 import {
   isValidCloneUrl,
   expandCloneUrl,
@@ -111,8 +112,9 @@ async function git(cwd: string, args: string[]): Promise<Exec> {
     return { ok: r.ok, out: r.out, err: r.err }
   }
   try {
-    const { stdout } = await run('git', args, { cwd, env: GIT_ENV, maxBuffer: 20 * 1024 * 1024 })
-    return { ok: true, out: stdout.replace(/\n$/, ''), err: '' }
+    const cmd = localGitCommand(cwd, args, { env: GIT_ENV, maxBuffer: 20 * 1024 * 1024 })
+    const { stdout } = await run(cmd.file, cmd.args, cmd.options)
+    return { ok: true, out: cmd.mapOutput(String(stdout).replace(/\n$/, '')), err: '' }
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string; message?: string }
     return { ok: false, out: (err.stdout ?? '').trim(), err: (err.stderr || err.message || '').trim() }
@@ -380,7 +382,8 @@ export class GitService {
 
     const inside = await git(cwd, ['rev-parse', '--is-inside-work-tree'])
     if (!inside.ok || inside.out.trim() !== 'true') {
-      return { ...empty, repoName: path.basename(cwd) }
+      const readError = inside.ok ? null : gitReadFailure(inside.err)
+      return { ...empty, repoName: path.basename(cwd), ...(readError ? { readError } : {}) }
     }
 
     // These reads are independent of each other; run them concurrently instead of

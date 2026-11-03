@@ -447,7 +447,19 @@ export function SourceControlPanel({
           </div>
         )}
 
-        {cwd && status && !status.hasRepo && (
+        {cwd && status && !status.hasRepo && status.readError && (
+          <div className="drawer__body">
+            <p className="set-note">Git could not read this folder.</p>
+            <div className="scm-error" role="alert">
+              <pre className="scm-error__msg">{status.readError}</pre>
+            </div>
+            <button className="sc-btn" disabled={busy} onClick={() => void refresh()}>
+              Try again
+            </button>
+          </div>
+        )}
+
+        {cwd && status && !status.hasRepo && !status.readError && (
           <div className="drawer__body">
             <p className="set-note">No git repository in this folder.</p>
             <button className="sc-btn" disabled={busy} onClick={() => act(() => git.init(cwd))}>
