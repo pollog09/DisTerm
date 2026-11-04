@@ -78,6 +78,16 @@ export interface ShipAgent {
   overridesGlobal?: true
 }
 
+export type ShipMcpTransport = 'stdio' | 'http' | 'sse' | 'unknown'
+
+/** A configured MCP server. NAME AND TRANSPORT ONLY: a server's command, arguments, environment, URL
+ *  and headers carry tokens, and none of them is ever read past the parser that produced this. */
+export interface ShipMcpServer {
+  name: string
+  scope: ShipScope
+  transport: ShipMcpTransport
+}
+
 export interface ShipMachine {
   kind: 'local' | 'ssh'
   /** The SSH host for `ssh`; empty for `local`, which the renderer names itself (`thisMachine()`). */
@@ -90,6 +100,11 @@ export interface ShipConfig {
   commands: string[]
   workflows: string[]
   skills: string[]
+  /** The MCP servers the machine's Claude config declares. Only meaningful when `mcpRead`. */
+  mcpServers: ShipMcpServer[]
+  /** The config files were read. False on an SSH host (`~/.claude.json` holds credentials and is not
+   *  fetched) and says nothing is configured only when true. */
+  mcpRead: boolean
   pipelines: ShipPipeline[]
   /** Which file `pipelines` came from; null = no usable file, so the graph is observation only. */
   graphSource: ShipScope | null

@@ -7,7 +7,9 @@ import {
   buildShipConfig,
   mergeAgents,
   newShipScriptNonce,
+  MCP_FILE_MAX_BYTES,
   parseAgentFile,
+  parseMcpServers,
   parseRemoteShipOutput,
   readLocalShipInput,
   remoteShipScript,
@@ -253,5 +255,144 @@ describe('remote discovery', () => {
     const whole = `\n${nonce} home /h\n\n${nonce} agent global a.md\nbody\n\n${nonce} end\n`
     expect(parseRemoteShipOutput(nonce, whole, false).complete).toBe(true)
     expect(parseRemoteShipOutput(nonce, whole.slice(0, whole.indexOf(`${nonce} end`) - 1), false).complete).toBe(false)
+  })
+})
+
+describe('MCP servers', () => {
+  const SECRET = 'ghp_SECRETTOKEN0123456789'
+  const claudeJson = JSON.stringify({
+    mcpServers: {
+      github: { type: 'http', url: `https://api.example.com/mcp?token=${SECRET}`, headers: { Authorization: `Bearer ${SECRET}` } },
+      local: { command: 'npx', args: ['-y', 'srv', `--key=${SECRET}`], env: { API_KEY: SECRET } },
+      remote: { url: 'https://x.example.com/sse' },
+      odd: { type: 'ws' },
+      streams: { type: 'sse', url: 'https://y.example.com' }
+    },
+    projects: {
+      '/work/app': { mcpServers: { local: { type: 'stdio', command: 'other', env: { K: SECRET } }, only_here: { command: 'x' } } },
+      '/work/other': { mcpServers: { elsewhere: { command: 'x' } } }
+    }
+  })
+  const mcpJson = JSON.stringify({ mcpServers: { cloned: { command: 'curl', args: [SECRET] } } })
+
+  it('reads name, scope and transport, the project replacing the global one of the same name', () => {
+    const warnings: string[] = []
+    const servers = parseMcpServers(
+      [{ source: 'claude-json', text: claudeJson }, { source: 'mcp-json', text: mcpJson }],
+      '/work/app',
+      warnings
+    )
+    expect(servers).toEqual([
+      { name: 'cloned', scope: 'project', transport: 'stdio' },
+      { name: 'github', scope: 'global', transport: 'http' },
+      { name: 'local', scope: 'project', transport: 'stdio' },
+      { name: 'odd', scope: 'global', transport: 'unknown' },
+      { name: 'only_here', scope: 'project', transport: 'stdio' },
+      { name: 'remote', scope: 'global', transport: 'http' },
+      { name: 'streams', scope: 'global', transport: 'sse' }
+    ])
+    expect(warnings).toEqual([])
+  })
+
+  it('a project without its own entry sees only the global servers', () => {
+    const names = parseMcpServers([{ source: 'claude-json', text: claudeJson }], '/nowhere', []).map((s) => s.name)
+    expect(names).toEqual(['github', 'local', 'odd', 'remote', 'streams'])
+  })
+
+  it('no command, argument, environment, URL or header leaves the parser', () => {
+    const config = buildShipConfig(
+      { global: { agents: [], commands: [], workflows: [], skills: [], graph: null }, project: null, truncated: [], projectCwd: '/work/app',
+        mcp: { files: [{ source: 'claude-json', text: claudeJson }, { source: 'mcp-json', text: mcpJson }], problems: [] } },
+      PATHS
+    )
+    expect(config.mcpRead).toBe(true)
+    expect(JSON.stringify(config)).not.toContain(SECRET)
+    expect(JSON.stringify(config)).not.toContain('Authorization')
+    expect(JSON.stringify(config)).not.toContain('npx')
+  })
+
+  it('a malformed file is a warning that does not quote it, and never a throw', () => {
+    const warnings: string[] = []
+    const servers = parseMcpServers([{ source: 'claude-json', text: `{"mcpServers": ${SECRET}` }, { source: 'mcp-json', text: '[1]' }], null, warnings)
+    expect(servers).toEqual([])
+    expect(warnings).toEqual([
+      '~/.claude.json is not valid JSON, so its MCP servers were not read.',
+      '.mcp.json is not a JSON object, so its MCP servers were not read.'
+    ])
+    expect(warnings.join()).not.toContain(SECRET)
+  })
+
+  it('skips and counts names outside the alphabet, __proto__ included', () => {
+    const text = '{"mcpServers":{"ok":{"command":"x"},"a b":{},"x/y":{},"__proto__":{"command":"x"},"' + 'n'.repeat(65) + '":{}}}'
+    const warnings: string[] = []
+    expect(parseMcpServers([{ source: 'claude-json', text }], null, warnings).map((s) => s.name)).toEqual(['ok'])
+    expect(warnings).toEqual(['Skipped 4 MCP servers whose name is not plain text.'])
+  })
+
+  it('caps the list and says so', () => {
+    const table = Object.fromEntries(Array.from({ length: 130 }, (_, i) => [`s${String(i).padStart(3, '0')}`, { command: 'x' }]))
+    const warnings: string[] = []
+    const servers = parseMcpServers([{ source: 'claude-json', text: JSON.stringify({ mcpServers: table }) }], null, warnings)
+    expect(servers).toHaveLength(100)
+    expect(warnings).toEqual(['Only the first 100 of 130 MCP servers are listed.'])
+  })
+
+  describe('the local reader', () => {
+    function home(): { claudeJson: string; project: string; home: string } {
+      const root = testTmpDir('ship-mcp-')
+      return { claudeJson: path.join(root, '.claude.json'), project: path.join(root, 'proj'), home: path.join(root, '.claude') }
+    }
+
+    it('reads ~/.claude.json and the project .mcp.json, and marks the config read', async () => {
+      const m = home()
+      write(m.claudeJson, claudeJson)
+      write(path.join(m.project, '.mcp.json'), mcpJson)
+      const input = await readLocalShipInput(m.home, m.project, m.claudeJson)
+      expect(input.mcp!.files.map((f) => f.source)).toEqual(['claude-json', 'mcp-json'])
+      expect(input.mcp!.problems).toEqual([])
+    })
+
+    it('no file at all is read and empty, not a problem', async () => {
+      const m = home()
+      const c = buildShipConfig(await readLocalShipInput(m.home, m.project, m.claudeJson), PATHS)
+      expect(c).toMatchObject({ mcpServers: [], mcpRead: true })
+      expect(c.warnings).toEqual([])
+    })
+
+    it('a FIFO in place of the file is refused without hanging', async () => {
+      const m = home()
+      fs.mkdirSync(path.dirname(m.claudeJson), { recursive: true })
+      execFileSync('mkfifo', [m.claudeJson])
+      const c = buildShipConfig(await readLocalShipInput(m.home, null, m.claudeJson), PATHS)
+      expect(c.mcpServers).toEqual([])
+      expect(c.warnings).toEqual(['~/.claude.json is not a regular file, so its MCP servers were not read.'])
+    })
+
+    it('a file over the bound is left out with a warning, and the config is still read', async () => {
+      const m = home()
+      write(m.claudeJson, ' '.repeat(MCP_FILE_MAX_BYTES + 1))
+      const c = buildShipConfig(await readLocalShipInput(m.home, null, m.claudeJson), PATHS)
+      expect(c.mcpRead).toBe(true)
+      expect(c.warnings).toEqual(['~/.claude.json is larger than 16 MB, so its MCP servers were not read.'])
+    })
+
+    it('CLAUDE_CONFIG_DIR moves ~/.claude.json with it', async () => {
+      const { claudeJsonPath } = await import('./discover')
+      const before = process.env.CLAUDE_CONFIG_DIR
+      process.env.CLAUDE_CONFIG_DIR = '/custom/dir'
+      try {
+        expect(claudeJsonPath()).toBe('/custom/dir/.claude.json')
+      } finally {
+        if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR
+        else process.env.CLAUDE_CONFIG_DIR = before
+      }
+    })
+  })
+
+  it('an SSH host reports the config as not read, never as empty', () => {
+    const nonce = newShipScriptNonce()
+    const parsed = parseRemoteShipOutput(nonce, `\n${nonce} home /h\n\n${nonce} end\n`, false)
+    const c = buildShipConfig(parsed.input, PATHS)
+    expect(c).toMatchObject({ mcpServers: [], mcpRead: false })
   })
 })

@@ -70,6 +70,8 @@ function ship(edges: ShipEdge[], stages = STAGES): ShipConfig {
     commands: [],
     workflows: [],
     skills: [],
+    mcpServers: [],
+    mcpRead: false,
     pipelines: [{
       id: 'ship-change',
       name: 'Ship change',

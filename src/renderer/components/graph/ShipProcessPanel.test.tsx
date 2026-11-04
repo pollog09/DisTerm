@@ -18,6 +18,8 @@ const config = (over: Partial<ShipConfig> = {}): ShipConfig => ({
   commands: ['ship-change'],
   workflows: [],
   skills: [],
+  mcpServers: [],
+  mcpRead: false,
   pipelines: [],
   graphSource: null,
   projectGraphPath: '/p/.claude/ship-graph.json',

@@ -12,7 +12,7 @@ pinNeutralMachineNoun()
 
 const graph = vi.hoisted(() => ({
   readShipConfig: vi.fn(async () => ({ ok: true, config: {
-    machine: { kind: 'local', label: '' }, agents: [{ name: 'implementer', scope: 'global' }], commands: [], workflows: [], skills: [],
+    machine: { kind: 'local', label: '' }, agents: [{ name: 'implementer', scope: 'global' }], commands: [], workflows: [], skills: [], mcpServers: [], mcpRead: false,
     pipelines: [], graphSource: null, projectGraphPath: '/p/x', globalGraphPath: '/g/x', projectGraphExists: true, globalGraphExists: false, warnings: []
   } })),
   createShipGraph: vi.fn(),

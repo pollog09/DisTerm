@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import fs from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { oneLine } from '../../shared/one-line'
 import { quoteRemotePath } from '../../shared/ssh'
@@ -9,6 +10,8 @@ import {
   type ShipAgentColor,
   type ShipConfig,
   type ShipMachine,
+  type ShipMcpServer,
+  type ShipMcpTransport,
   type ShipScope
 } from '../../shared/ship-config'
 import { parseFrontmatter } from '../chat-catalog'
@@ -52,9 +55,22 @@ export interface RawShipScope {
   graphProblem?: string
 }
 
+/** One file that can declare MCP servers, as text. Parsed in `buildShipConfig`, so the two readers
+ *  cannot disagree about what it means. */
+export interface RawMcpFile {
+  /** `claude-json` is `~/.claude.json` (servers at the top level and under `projects[cwd]`);
+   *  `mcp-json` is a project's `.mcp.json`. */
+  source: 'claude-json' | 'mcp-json'
+  text: string
+}
+
 export interface RawShipInput {
   global: RawShipScope
   project: RawShipScope | null
+  /** Absent = MCP config was not read on this machine (an SSH host). */
+  mcp?: { files: RawMcpFile[]; problems: string[] }
+  /** The project's folder, which keys its entry in `~/.claude.json`. */
+  projectCwd?: string | null
   /** What a reader had to leave out. */
   truncated: string[]
 }
@@ -111,6 +127,88 @@ function listedNames(lists: ReadonlyArray<readonly string[]>): string[] {
   return [...out].sort((a, b) => a.localeCompare(b))
 }
 
+// ── MCP servers ─────────────────────────────────────────────────────────────────────────────────
+
+/** `~/.claude.json` and a project's `.mcp.json` are read whole, so they are bounded. Over this, the
+ *  file is left out and a warning says so. */
+export const MCP_FILE_MAX_BYTES = 16 * 1024 * 1024
+const MAX_MCP_SERVERS = 100
+const MCP_NAME_RE = /^[A-Za-z0-9._-]{1,64}$/
+
+function transportOf(entry: unknown): ShipMcpTransport {
+  if (!entry || typeof entry !== 'object') return 'unknown'
+  const e = entry as Record<string, unknown>
+  const type = typeof e.type === 'string' ? e.type : ''
+  if (type === 'stdio' || type === 'http' || type === 'sse') return type
+  if (typeof e.command === 'string') return 'stdio'
+  if (typeof e.url === 'string') return 'http'
+  return 'unknown'
+}
+
+/**
+ * The servers one `mcpServers` object declares. THE ONLY THINGS THAT LEAVE ARE name AND transport:
+ * `command`, `args`, `env`, `url` and `headers` hold tokens, so they are looked at for the transport's
+ * sake and never copied. A name outside the closed alphabet is skipped and counted, never repaired.
+ */
+function serversOf(table: unknown, scope: ShipScope, skipped: { n: number }): ShipMcpServer[] {
+  if (!table || typeof table !== 'object' || Array.isArray(table)) return []
+  const out: ShipMcpServer[] = []
+  for (const [name, entry] of Object.entries(table as Record<string, unknown>)) {
+    if (!MCP_NAME_RE.test(name) || name === '__proto__') {
+      skipped.n++
+      continue
+    }
+    out.push({ name, scope, transport: transportOf(entry) })
+  }
+  return out
+}
+
+/** Every MCP server the raw files declare, the project's replacing the global one of the same name. */
+export function parseMcpServers(
+  files: readonly RawMcpFile[],
+  projectCwd: string | null,
+  warnings: string[]
+): ShipMcpServer[] {
+  const byName = new Map<string, ShipMcpServer>()
+  const skipped = { n: 0 }
+  const labelOf = (f: RawMcpFile): string => (f.source === 'claude-json' ? '~/.claude.json' : '.mcp.json')
+  // Global entries first so a project entry replaces them.
+  const found: ShipMcpServer[][] = [[], []]
+  for (const file of files) {
+    let doc: unknown
+    try {
+      doc = JSON.parse(file.text)
+    } catch {
+      // The parser's own message quotes the text it choked on, which can be a token.
+      warnings.push(`${labelOf(file)} is not valid JSON, so its MCP servers were not read.`)
+      continue
+    }
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+      warnings.push(`${labelOf(file)} is not a JSON object, so its MCP servers were not read.`)
+      continue
+    }
+    const root = doc as Record<string, unknown>
+    if (file.source === 'claude-json') {
+      found[0].push(...serversOf(root.mcpServers, 'global', skipped))
+      const projects = root.projects
+      if (projectCwd && projects && typeof projects === 'object' && Object.hasOwn(projects, projectCwd)) {
+        const mine = (projects as Record<string, unknown>)[projectCwd]
+        if (mine && typeof mine === 'object') found[1].push(...serversOf((mine as Record<string, unknown>).mcpServers, 'project', skipped))
+      }
+    } else {
+      found[1].push(...serversOf(root.mcpServers, 'project', skipped))
+    }
+  }
+  for (const list of found) for (const server of list) byName.set(server.name, server)
+  if (skipped.n) warnings.push(`Skipped ${skipped.n} MCP server${skipped.n === 1 ? '' : 's'} whose name is not plain text.`)
+  const all = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  if (all.length > MAX_MCP_SERVERS) {
+    warnings.push(`Only the first ${MAX_MCP_SERVERS} of ${all.length} MCP servers are listed.`)
+    return all.slice(0, MAX_MCP_SERVERS)
+  }
+  return all
+}
+
 export interface ShipPaths {
   machine: ShipMachine
   projectGraphPath: string | null
@@ -132,6 +230,8 @@ export function buildShipConfig(raw: RawShipInput, paths: ShipPaths): ShipConfig
     return out
   }
   const scopes = raw.project ? [raw.global, raw.project] : [raw.global]
+  if (raw.mcp) warnings.push(...raw.mcp.problems)
+  const mcpServers = raw.mcp ? parseMcpServers(raw.mcp.files, raw.projectCwd ?? null, warnings) : []
 
   // The project's file wins whole, not stage by stage: a process is one decision, and half of two
   // would be a graph nobody wrote. A project file that cannot be read says so and falls back, so a
@@ -161,6 +261,8 @@ export function buildShipConfig(raw: RawShipInput, paths: ShipPaths): ShipConfig
     commands: listedNames(scopes.map((s) => s.commands)),
     workflows: listedNames(scopes.map((s) => s.workflows)),
     skills: listedNames(scopes.map((s) => s.skills)),
+    mcpServers,
+    mcpRead: !!raw.mcp,
     pipelines,
     graphSource,
     projectGraphPath: paths.projectGraphPath,
@@ -243,12 +345,50 @@ async function readLocalScope(root: string, label: string, truncated: string[]):
   return { ...scope, ...(await readGraphFile(path.join(root, 'ship-graph.json'))) }
 }
 
-export async function readLocalShipInput(globalDir: string, projectCwd: string | null): Promise<RawShipInput> {
+/** Claude Code keeps its user-level config in `$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`
+ *  (beside, not inside, `~/.claude`). */
+export function claudeJsonPath(): string {
+  const dir = process.env.CLAUDE_CONFIG_DIR
+  return dir ? path.join(dir, '.claude.json') : path.join(homedir(), '.claude.json')
+}
+
+/** One file's text, or why not. A regular file only (a FIFO would hang the open), bounded, and the
+ *  reason carries no content. Absent is not a problem: most projects have no `.mcp.json`. */
+async function readMcpFile(file: string, source: RawMcpFile['source'], label: string): Promise<{ file?: RawMcpFile; problem?: string }> {
+  let stat: fs.Stats
+  try {
+    stat = await fs.promises.stat(file)
+  } catch {
+    return {}
+  }
+  if (!stat.isFile()) return { problem: `${label} is not a regular file, so its MCP servers were not read.` }
+  if (stat.size > MCP_FILE_MAX_BYTES) return { problem: `${label} is larger than ${MCP_FILE_MAX_BYTES / 1024 / 1024} MB, so its MCP servers were not read.` }
+  const text = await readHead(file, MCP_FILE_MAX_BYTES)
+  return text === null ? { problem: `${label} could not be read, so its MCP servers were not listed.` } : { file: { source, text } }
+}
+
+export async function readLocalShipInput(
+  globalDir: string,
+  projectCwd: string | null,
+  claudeJson: string = claudeJsonPath()
+): Promise<RawShipInput> {
   const truncated: string[] = []
+  const files: RawMcpFile[] = []
+  const problems: string[] = []
+  const reads = [
+    await readMcpFile(claudeJson, 'claude-json', '~/.claude.json'),
+    ...(projectCwd ? [await readMcpFile(path.join(projectCwd, '.mcp.json'), 'mcp-json', '.mcp.json')] : [])
+  ]
+  for (const r of reads) {
+    if (r.file) files.push(r.file)
+    if (r.problem) problems.push(r.problem)
+  }
   return {
     global: await readLocalScope(globalDir, 'Global .claude', truncated),
     project: projectCwd ? await readLocalScope(path.join(projectCwd, '.claude'), 'Project .claude', truncated) : null,
-    truncated
+    truncated,
+    mcp: { files, problems },
+    projectCwd
   }
 }
 

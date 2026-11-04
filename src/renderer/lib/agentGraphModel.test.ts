@@ -73,6 +73,8 @@ const ship = (over: Partial<ShipConfig> = {}): ShipConfig => ({
   commands: [],
   workflows: [],
   skills: [],
+  mcpServers: [],
+  mcpRead: false,
   pipelines: [PIPELINE],
   graphSource: 'global',
   projectGraphPath: null,

@@ -54,6 +54,8 @@ const SHIP: ShipConfig = {
   commands: [],
   workflows: [],
   skills: [],
+  mcpServers: [],
+  mcpRead: false,
   pipelines: [{ id: 'p', name: 'P', stages: STAGES, edges: EDGES }],
   graphSource: 'project',
   projectGraphPath: null,
