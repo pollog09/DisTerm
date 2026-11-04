@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useProjects } from '../state/projects'
-import { isOmniKanbanEnabled, showCanvas, showGraph, toggleBoardView, useViewMode, viewFor } from '../state/viewMode'
+import type { Project } from '@shared/types'
+import { showCanvas, showGraph, toggleBoardView, useViewMode, viewFor } from '../state/viewMode'
 import { useAgentStatusSig, type AgentStatusLookup } from '../session/agent-status-lookup'
 import { usePauseCounts } from '../state/pauseCounts'
 import { useSettings } from '../state/settings'
@@ -156,9 +157,7 @@ export function TabBar({
   // Closed projects are hidden here (reopen them from the start screen's "Recently closed").
   const projects = useMemo(() => allProjects.filter((p) => !p.closed), [allProjects])
   const activeId = useProjects((s) => s.activeProjectId)
-  const omniEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
-  const globalKanban = useViewMode((s) => s.globalKanban)
-  const isGlobal = omniEnabled && globalKanban
+  const isGlobal = useViewMode((s) => s.globalKanban)
   const perProjectKanban = useViewMode((s) => !!activeId && viewFor(s, activeId) === 'kanban')
   const kanbanActive = isGlobal || perProjectKanban
   const graphActive = useViewMode((s) => !isGlobal && !!activeId && viewFor(s, activeId) === 'graph')
@@ -238,6 +237,13 @@ export function TabBar({
         remoteClaudeVersionByProject[menuProject.id]
       )
     : null
+
+  // On the all-projects board the tab with these buttons follows the highlighted lane, which need
+  // not be the active project, so picking a view also has to take you to that project.
+  const showViewOf = (p: Project, show: (projectId: string) => unknown): void => {
+    show(p.id)
+    if (p.id !== activeId && tabClickAction(!!p.unavailable, sessionForProject(p.id).source) === 'switch') onSwitch(p.id)
+  }
 
   const closeMenu = () => {
     setMenuId(null)
@@ -386,14 +392,14 @@ export function TabBar({
         </div>
 
         {/* The board's tab: first after the brand and outside the strip, so it neither scrolls
-            away with the projects nor reorders among them. One decision with ⌘⇧B and the menu
-            (state/viewMode.ts): from any board to the canvas, from anywhere else into the board. */}
+            away with the projects nor reorders among them. It belongs to no project: it opens the
+            all-projects board. One decision with ⌘⇧B and the menu (state/viewMode.ts). */}
         <button
           type="button"
           className={`tab tab--kanban${kanbanActive ? ' active' : ''}`}
-          title={commandTooltip(kanbanActive ? 'Leave kanban board' : 'Kanban board', 'view.kanbanToggle')}
+          title={commandTooltip(kanbanActive ? 'Leave kanban board' : 'Kanban board, all projects', 'view.kanbanToggle')}
           aria-pressed={kanbanActive}
-          disabled={!activeId && !omniEnabled}
+          disabled={projects.length === 0 && !kanbanActive}
           onClick={() => toggleBoardView(activeId)}
         >
           <IconKanban />
@@ -562,7 +568,7 @@ export function TabBar({
                           aria-pressed={!kanbanActive && !graphActive}
                           onClick={(e) => {
                             e.stopPropagation() // a tab click switches projects, this picks the view
-                            showCanvas(p.id)
+                            showViewOf(p, showCanvas)
                           }}
                         >
                           <IconCanvasView />
@@ -574,7 +580,7 @@ export function TabBar({
                           aria-pressed={graphActive}
                           onClick={(e) => {
                             e.stopPropagation()
-                            showGraph(p.id)
+                            showViewOf(p, showGraph)
                           }}
                         >
                           <IconGraph />

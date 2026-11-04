@@ -841,7 +841,6 @@ import { useBoardLog } from '../state/boardLog'
 import {
   isGlobalKanbanOpen,
   isKanbanOpen,
-  isOmniKanbanEnabled,
   showCanvas,
   toggleAllProjectsBoard,
   isBoardView,
@@ -3625,8 +3624,7 @@ export function Canvas() {
   const perProjectKanbanOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'kanban')
   const graphOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'graph')
   const rawGlobalKanban = useViewMode((s) => s.globalKanban)
-  const omniEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
-  const globalKanbanOpen = rawGlobalKanban && omniEnabled
+  const globalKanbanOpen = rawGlobalKanban
   const kanbanOpen = globalKanbanOpen || perProjectKanbanOpen
   const projectKanban = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId)?.kanban)
   // The active project's lazy default board — deterministic per project (the same ids on every
@@ -3852,21 +3850,20 @@ export function Canvas() {
   // Single decision for "toggle the kanban board" — called from both the registry handler
   // (view.kanbanToggle, under terminal-first) and the desktop menu IPC receiver
   // (onToggleKanban, under app-first where the menu steals the accelerator). Must stay in one
-  // place: the IPC path bypasses the registry, so duplicating the omni/asDefault choice
-  // caused Cmd+Shift+B on desktop to ignore omniKanbanAsDefault and to toggle the per-project
-  // board underneath the global overlay.
+  // place: the IPC path bypasses the registry, so duplicating the choice caused Cmd+Shift+B on
+  // desktop to toggle the per-project board underneath the global overlay.
   // The decision itself is `toggleBoardView` / `toggleAllProjectsBoard` (state/viewMode.ts), which
-  // TabBar's board icon calls too. No commit is needed before Omni opens: its active lane reads
+  // TabBar's Kanban tab calls too. No commit is needed before Omni opens: its active lane reads
   // the live canvas (GlobalKanbanLive), and the effect above commits for the other readers.
-  const performKanbanToggle = useCallback(
-    () => toggleBoardView(useProjects.getState().activeProjectId),
-    []
-  )
+  const performKanbanToggle = useCallback(() => {
+    toggleBoardView(useProjects.getState().activeProjectId)
+    return true
+  }, [])
 
-  const performGlobalKanbanToggle = useCallback(
-    () => toggleAllProjectsBoard(useProjects.getState().activeProjectId),
-    []
-  )
+  const performGlobalKanbanToggle = useCallback(() => {
+    toggleAllProjectsBoard(useProjects.getState().activeProjectId)
+    return true
+  }, [])
 
   // Mirror `dirty` into a ref so the external-change listener (mounted once) reads the
   // live value without re-subscribing on every edit.

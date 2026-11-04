@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { readLocal, writeLocal } from '../lib/localStore'
-import { useSettings } from './settings'
 import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 
 // Which view each project shows (canvas, kanban or the agent graph) — PERSONAL, per machine: persisted in
@@ -77,17 +76,6 @@ interface ViewModeState {
 /** The resolved view for a project: its explicit entry, or the default. */
 export function viewFor(s: Pick<ViewModeState, 'viewByProject' | 'defaultView'>, projectId: string): ProjectView {
   return s.viewByProject[projectId] ?? s.defaultView
-}
-
-/**
- * Feature flag: does the global swimlane overview exist at all?
- * `settings.omniKanbanEnabled` is the *feature* toggle (Settings → Behavior → Omni Kanban,
- * default OFF — no silent behavior change for existing users). `globalKanban` below is the
- * *view* toggle (whether the overview is currently shown). Use this helper instead of
- * spelling the check inline.
- */
-export function isOmniKanbanEnabled(settings: { omniKanbanEnabled?: boolean }): boolean {
-  return settings.omniKanbanEnabled === true
 }
 
 function readGlobalKanban(): boolean {
@@ -187,21 +175,11 @@ export function toggleGraphView(projectId: string): boolean {
 
 /**
  * True when the global swimlane overview is *currently shown* (all projects as swimlanes).
- * Gated by the feature flag `omniKanbanEnabled` — when the feature is off, the view flag is
- * ignored and per-project tabs remain. `globalKanban` itself is persisted in localStorage
- * (`nodeterm.globalKanban`) so an explicit "open overview" survives a restart; this is
- * intentional (like `viewByProject`), not transient: a canvas lock that survives restart would
- * read as "frozen" (which is why `lib/canvasLock.ts` keeps it opt-in and default off), but a
- * board that survives restart reads as "you left it open". If that proves surprising, make this
- * transient; the call site is this one helper.
+ * `globalKanban` is persisted in localStorage (`nodeterm.globalKanban`) so an open overview survives
+ * a restart; this is intentional (like `viewByProject`): a board that survives restart reads as "you
+ * left it open". If that proves surprising, make this transient; the call site is this one helper.
  */
 export function isGlobalKanbanOpen(): boolean {
-  try {
-    if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
-  } catch {
-    // Fail closed — default OFF, so an unreadable settings store must not enable Omni.
-    return false
-  }
   return useViewMode.getState().globalKanban
 }
 
@@ -221,11 +199,9 @@ export function isGlobalKanbanOpen(): boolean {
  * all come through here, so the decision exists once.
  */
 
-/** Show the board with every project (Omni). No-op while the feature is off. */
-export function showAllProjectsBoard(): boolean {
-  if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
+/** Show the board with every project (Omni). */
+export function showAllProjectsBoard(): void {
   useViewMode.getState().setGlobalKanban(true)
-  return true
 }
 
 /** Show `projectId`'s own board — the scope switch's "This project", and where closing Omni lands. */
@@ -243,31 +219,19 @@ export function showCanvas(projectId: string): void {
 }
 
 /**
- * The view toggle (canvas ⇄ board). From any board it goes to the canvas; from the canvas it
- * opens the board in the scope `omniKanbanAsDefault` picks. Returns false when there is nothing
- * to toggle (no project and no Omni).
+ * The view toggle (canvas ⇄ board): from any board to the canvas, from anywhere else into the
+ * all-projects board. This project's own board is one step further, on the board's scope switch.
  */
-export function toggleBoardView(projectId: string): boolean {
-  if (isGlobalKanbanOpen() || (projectId && isBoardView(projectId))) {
-    showCanvas(projectId)
-    return true
-  }
-  const settings = useSettings.getState().settings
-  if (isOmniKanbanEnabled(settings) && settings.omniKanbanAsDefault === true) return showAllProjectsBoard()
-  if (!projectId) return false
-  showProjectBoard(projectId)
-  return true
+export function toggleBoardView(projectId: string): void {
+  if (isGlobalKanbanOpen() || (projectId && isBoardView(projectId))) showCanvas(projectId)
+  else showAllProjectsBoard()
 }
 
-/**
- * The dedicated "All projects" command: from Omni back to this project's board, from anywhere
- * else into Omni. False while the feature is off.
- */
-export function toggleAllProjectsBoard(projectId: string): boolean {
-  if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
+/** The dedicated "All projects" command: from Omni back to this project's board, from anywhere else
+ *  into Omni. */
+export function toggleAllProjectsBoard(projectId: string): void {
   if (isGlobalKanbanOpen()) showProjectBoard(projectId)
   else showAllProjectsBoard()
-  return true
 }
 
 /**
@@ -289,7 +253,7 @@ export function openIssueOnBoard(
     if (url) openExternal(url)
     return
   }
-  const vm = useViewMode.getState()
-  if (projectId && !isBoardView(projectId)) vm.setView(projectId, 'kanban')
+  // This project's own board, whichever scope is up: only it has the issue lane, and Omni has none.
+  showProjectBoard(projectId)
   useViewMode.getState().requestIssue(ref)
 }

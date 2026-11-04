@@ -13,7 +13,6 @@ describe('TerminalNode global kanban sizing', () => {
     // The modal is a co-attached viewer. If the hidden canvas node keeps voting, the PTY uses its
     // smaller grid (usually 80 columns) instead of the visible modal's measured width.
     expect(boardOpen).toContain('s.globalKanban')
-    expect(boardOpen).toContain('omniKanbanEnabled')
   })
 })
 

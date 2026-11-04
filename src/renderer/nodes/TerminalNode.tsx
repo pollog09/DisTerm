@@ -293,7 +293,7 @@ import { useTerminalFocus } from '../state/terminalFocus'
 import { useProjects } from '../state/projects'
 import { wslTerminalsForProject } from '../state/wslTerminals'
 import { markWorkspaceDirty } from '../state/workspaceDirty'
-import { isGlobalKanbanOpen, isKanbanOpen, isOmniKanbanEnabled, openIssueOnBoard, useViewMode, viewFor } from '../state/viewMode'
+import { isGlobalKanbanOpen, isKanbanOpen, openIssueOnBoard, useViewMode, viewFor } from '../state/viewMode'
 import { useSshConn } from '../state/sshConn'
 import { useWorktrees } from '../state/worktrees'
 import { isRemoteSessionNode } from '@shared/worktree'
@@ -1589,10 +1589,9 @@ export function TerminalNode({
   // an agent's input box off the bottom. So while the board is up we report "not viewing" (null),
   // exactly like a park, and the visible modal drives the shared grid. A node only ever lives in the
   // ACTIVE project's React Flow, so the active project's view is the one that matters.
-  const omniKanbanEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
   const boardOpen = useViewMode(
     (s) =>
-      (omniKanbanEnabled && s.globalKanban) ||
+      s.globalKanban ||
       viewFor(s, useProjects.getState().activeProjectId ?? '') !== 'canvas'
   )
   const boardOpenRef = useRef(boardOpen)

@@ -12,7 +12,6 @@ import { FLAG_CURSOR, readCell } from '../glyphgrid/cells'
 import type { GridHandle } from '../glyphgrid/engine'
 import { createFrameLoop, type FrameLoop, type FrameLoopHost } from '../glyphgrid/frame-driver'
 import { useProjects } from '../state/projects'
-import { useSettings } from '../state/settings'
 import { useViewMode } from '../state/viewMode'
 import {
   boardCoversCanvas,
@@ -1246,13 +1245,9 @@ describe('boardCoversCanvas', () => {
   // The predicate the board frame gate and the blink clock read. It must say "covered" for BOTH
   // full-page boards, because Canvas's `kanbanOpen` does: the Omni board was missing,
   // so the shared canvas kept drawing under the all-projects board.
-  const setOmni = (enabled: boolean): void => {
-    useSettings.setState((s) => ({ settings: { ...s.settings, omniKanbanEnabled: enabled } }))
-  }
   beforeEach(() => {
     useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', globalKanban: false })
     useProjects.setState({ activeProjectId: 'p1' })
-    setOmni(false)
   })
 
   it('is false on the canvas', () => {
@@ -1265,21 +1260,14 @@ describe('boardCoversCanvas', () => {
   })
 
   it('is true for the Omni (all-projects) board', () => {
-    setOmni(true)
     useViewMode.setState({ globalKanban: true })
     expect(boardCoversCanvas()).toBe(true)
   })
 
   it('is true for the Omni board with no active project — Canvas’s Omni term needs none either', () => {
-    setOmni(true)
     useViewMode.setState({ globalKanban: true })
     useProjects.setState({ activeProjectId: '' })
     expect(boardCoversCanvas()).toBe(true)
-  })
-
-  it('ignores a stale persisted Omni flag while the feature is off', () => {
-    useViewMode.setState({ globalKanban: true })
-    expect(boardCoversCanvas()).toBe(false)
   })
 
   it('is false with no active project even when the global default view is the board', () => {

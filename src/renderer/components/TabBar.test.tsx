@@ -289,13 +289,14 @@ describe('TabBar views', () => {
     expect(projectTab('Beta').querySelector('.tab__view-toggle')).toBeNull()
   })
 
-  it('opens the board from the Kanban tab and leaves it the same way', async () => {
+  it('opens the all-projects board from the Kanban tab and leaves it the same way', async () => {
     await click(kanban())
-    expect(view()).toBe('kanban')
+    expect(useViewMode.getState().globalKanban).toBe(true)
     expect(kanban().classList.contains('active')).toBe(true)
     expect(viewButton('Canvas view').getAttribute('aria-pressed')).toBe('false')
     expect(projectTab('Alpha').classList.contains('tab--on-board')).toBe(true)
     await click(kanban())
+    expect(useViewMode.getState().globalKanban).toBe(false)
     expect(view()).toBe('canvas')
     expect(kanban().classList.contains('active')).toBe(false)
     expect(projectTab('Alpha').classList.contains('tab--on-board')).toBe(false)
@@ -316,21 +317,40 @@ describe('TabBar views', () => {
   it('goes from the graph to the board without passing through the canvas', async () => {
     await click(viewButton('Agent graph'))
     await click(kanban())
-    expect(view()).toBe('kanban')
+    expect(useViewMode.getState().globalKanban).toBe(true)
   })
 
-  it('returns to the canvas when the active project tab is clicked with its board up', async () => {
+  it('jumps to a project lane when a project tab is clicked on the all-projects board', async () => {
     await click(kanban())
-    await click(projectTab('Alpha'))
-    expect(view()).toBe('canvas')
+    await click(projectTab('Beta'))
+    expect(useViewMode.getState().globalKanban).toBe(true)
+    expect(useViewMode.getState().highlightedSwimlaneId).toBe('p2')
     expect(onSwitch).not.toHaveBeenCalled()
   })
 
-  it('still switches projects when another tab is clicked with the board up', async () => {
+  it('takes you to the highlighted project when its view button is clicked on the all-projects board', async () => {
     await click(kanban())
     await click(projectTab('Beta'))
+    await click(viewButton('Canvas view'))
+    expect(useViewMode.getState().globalKanban).toBe(false)
     expect(onSwitch).toHaveBeenCalledWith('p2')
-    expect(view()).toBe('kanban')
+    expect(useViewMode.getState().viewByProject.p2).toBe('canvas')
+  })
+
+  describe("with one project's own board up", () => {
+    beforeEach(() => act(async () => useViewMode.getState().setView('p1', 'kanban')))
+
+    it('returns to the canvas when the active project tab is clicked', async () => {
+      await click(projectTab('Alpha'))
+      expect(view()).toBe('canvas')
+      expect(onSwitch).not.toHaveBeenCalled()
+    })
+
+    it('still switches projects when another tab is clicked', async () => {
+      await click(projectTab('Beta'))
+      expect(onSwitch).toHaveBeenCalledWith('p2')
+      expect(view()).toBe('kanban')
+    })
   })
 })
 
