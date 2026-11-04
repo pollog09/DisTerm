@@ -3,7 +3,7 @@ import { recordDelivery, resetAgentMessageTraceForTests } from '../agents/agent-
 import { AGENT_GRAPH_LABEL_MAX, deliveryClass, mergeAgentGraphEvents, type AgentGraphEvent } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import { normalizeClaude } from '../../shared/agents/normalize'
-import { ACTIVITY_COALESCE_MS, AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
+import { ACTIVITY_COALESCE_MS, MAX_ACCESS_KEYS, AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
 
 const delivery = (id: string, ts = 1): AgentGraphEvent => ({ kind: 'delivery', id, ts, from: 'a', to: 'b', outcome: 'delivered' })
 const agentEvent = (over: Partial<NormalizedAgentEvent>): NormalizedAgentEvent =>
@@ -158,5 +158,69 @@ describe('recordDelivery feeds the graph', () => {
     )
     const [e] = agentGraphLog.snapshot().events
     expect(e).toEqual({ kind: 'delivery', id: 'trace-1', ts: 42, from: 's', to: 't', outcome: 'notPermitted', reason: 'messaging-off' })
+  })
+})
+
+describe('AgentGraphLog.recordAccess', () => {
+  const skill = (name: string, over: Partial<import('../../shared/agents/tool-access').ToolAccess> = {}) =>
+    ({ target: 'skill' as const, name, ...over })
+
+  it('replaces one row per key and counts the calls, newest tool and time winning', () => {
+    const log = new AgentGraphLog()
+    log.recordAccess('n1', { target: 'mcp', name: 'demo', tool: 'echo_it' }, 10)
+    log.recordAccess('n1', { target: 'mcp', name: 'demo', tool: 'other' }, 20)
+    log.recordAccess('n1', { target: 'mcp', name: 'demo', tool: 'other' }, 30)
+    expect(log.snapshot().events).toEqual([
+      { kind: 'access', id: 'access:n1::mcp:demo', ts: 30, nodeId: 'n1', target: 'mcp', name: 'demo', tool: 'other', count: 3 }
+    ])
+  })
+
+  it('pushes every call to listeners, which is what drives one dot each', () => {
+    const log = new AgentGraphLog()
+    const seen: Array<[number, number]> = []
+    log.onEvent((e) => e.kind === 'access' && seen.push([e.ts, e.count]))
+    log.recordAccess('n1', skill('a'), 1)
+    log.recordAccess('n1', skill('a'), 2)
+    expect(seen).toEqual([[1, 1], [2, 2]])
+  })
+
+  it('keeps a subagent, a typed call and the session itself apart', () => {
+    const log = new AgentGraphLog()
+    log.recordAccess('n1', skill('a'), 1)
+    log.recordAccess('n1', skill('a', { subId: 'abc', subType: 'general-purpose' }), 2)
+    log.recordAccess('n2', skill('a'), 3)
+    expect(log.snapshot().events.map((e) => [e.id, (e as { count: number }).count])).toEqual([
+      ['access:n1::skill:a', 1],
+      ['access:n1:abc:skill:a', 1],
+      ['access:n2::skill:a', 1]
+    ])
+  })
+
+  it('forgets the oldest key and its row past the bound, and says it dropped one', () => {
+    const log = new AgentGraphLog()
+    for (let i = 0; i < MAX_ACCESS_KEYS + 1; i++) log.recordAccess('n', skill(`s${i}`), i)
+    const s = log.snapshot()
+    expect(s.events).toHaveLength(MAX_ACCESS_KEYS)
+    expect(s.events[0].id).toBe('access:n::skill:s1')
+    expect(s.dropped).toBe(1)
+    log.recordAccess('n', skill('s0'), 5000)
+    expect((log.snapshot().events.at(-1) as { count: number }).count).toBe(1)
+  })
+
+  it('a call refreshes its key, so the busy one is not the one forgotten', () => {
+    const log = new AgentGraphLog()
+    for (let i = 0; i < MAX_ACCESS_KEYS; i++) log.recordAccess('n', skill(`s${i}`), i)
+    log.recordAccess('n', skill('s0'), 5000)
+    log.recordAccess('n', skill('new'), 5001)
+    const ids = log.snapshot().events.map((e) => e.id)
+    expect(ids).toContain('access:n::skill:s0')
+    expect(ids).not.toContain('access:n::skill:s1')
+  })
+
+  it('is not a mirror event, and the other rows are untouched by it', () => {
+    const log = new AgentGraphLog()
+    log.recordAgentEvent(agentEvent({ kind: 'subagent-start', toolUseId: 't', subagentType: 'impl' }), 1)
+    log.recordAccess('n', skill('a'), 2)
+    expect(log.snapshot().events.map((e) => e.kind)).toEqual(['subagent-start', 'access'])
   })
 })

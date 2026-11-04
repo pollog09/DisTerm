@@ -89,8 +89,32 @@ export interface AgentGraphTurnStartEvent {
   nodeId: string
 }
 
+/** A session (or one of its subagents) used a skill or an MCP server. ONE row per key, replaced with a
+ *  running count, so a session that calls a tool a thousand times is one entry, not a thousand. Only
+ *  names are here: a tool's arguments and a prompt's text never reach this wire. */
+export interface AgentGraphAccessEvent {
+  kind: 'access'
+  /** `access:<nodeId>:<subId>:<target>:<name>`: stable, so the newest count replaces the older. */
+  id: string
+  /** The newest call. */
+  ts: number
+  nodeId: string
+  /** The subagent that made the calls, when they were not the session's own. */
+  subId?: string
+  subType?: string
+  target: 'skill' | 'mcp'
+  name: string
+  /** MCP only: the tool of the newest call. */
+  tool?: string
+  /** Typed by the person as `/name`, not called by the model. */
+  typed?: true
+  /** Calls since this process started, which is the horizon the view states. */
+  count: number
+}
+
 export type AgentGraphEvent =
   | AgentGraphDeliveryEvent
+  | AgentGraphAccessEvent
   | AgentGraphTurnStartEvent
   | AgentGraphSubagentStartEvent
   | AgentGraphSubagentEndEvent

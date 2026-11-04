@@ -5,12 +5,15 @@ import {
   type AgentGraphEvent
 } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
+import type { ToolAccess } from '../../shared/agents/tool-access'
 import { oneLine } from '../../shared/one-line'
 
 /** A tail chunk at most this often per subagent. Far inside the 20-minute staleness line. */
 export const ACTIVITY_COALESCE_MS = 30_000
 /** A killed child fires no end, so this is what bounds the open map. */
 const MAX_OPEN = 512
+/** Distinct (session, subagent, skill or server) rows kept. The oldest goes first, and is counted as dropped. */
+export const MAX_ACCESS_KEYS = 1024
 
 /**
  * What this process observed about how sessions talk to each other: deliveries (every outcome,
@@ -30,6 +33,8 @@ export class AgentGraphLog {
   /** Open subagents, id to parent, so a tail chunk (which knows only the id) can name its session. */
   private readonly open = new Map<string, string>()
   private readonly activityAt = new Map<string, number>()
+  /** Running count per access row, least recently called first, which is what bounds it. */
+  private readonly accessCounts = new Map<string, number>()
 
   constructor(readonly capacity = AGENT_GRAPH_LOG_CAPACITY) {}
 
@@ -81,6 +86,43 @@ export class AgentGraphLog {
     this.push({ kind: 'subagent-activity', id, ts: now, nodeId, subId })
   }
 
+  /**
+   * A session, or one of its subagents, used a skill or an MCP server. NOT a mirror event: the
+   * mirror's consumers (state, Eco, messaging, the renderer) must not hear of it. It is display data
+   * for this log only, fed by the hook server after the pane-origin gate.
+   *
+   * One replaced row per key with a running count, pushed every time: each push is what the view
+   * animates as one dot. The count is since this process started, and the key map is bounded; the
+   * oldest key's row goes with it and counts as dropped, so the view says its counts have a horizon.
+   */
+  recordAccess(nodeId: string, access: ToolAccess, now = Date.now()): void {
+    const id = `access:${nodeId}:${access.subId ?? ''}:${access.target}:${access.name}`
+    const count = (this.accessCounts.get(id) ?? 0) + 1
+    this.accessCounts.delete(id)
+    this.accessCounts.set(id, count)
+    while (this.accessCounts.size > MAX_ACCESS_KEYS) {
+      const oldest = this.accessCounts.keys().next().value!
+      this.accessCounts.delete(oldest)
+      const before = this.events.length
+      this.events = this.events.filter((e) => e.id !== oldest)
+      this.droppedCount += before - this.events.length
+    }
+    this.events = this.events.filter((e) => e.id !== id)
+    this.push({
+      kind: 'access',
+      id,
+      ts: now,
+      nodeId,
+      ...(access.subId ? { subId: access.subId } : {}),
+      ...(access.subType ? { subType: access.subType } : {}),
+      target: access.target,
+      name: access.name,
+      ...(access.tool ? { tool: access.tool } : {}),
+      ...(access.typed ? { typed: true as const } : {}),
+      count
+    })
+  }
+
   private forget(subId: string): void {
     this.open.delete(subId)
     this.activityAt.delete(subId)
@@ -101,6 +143,7 @@ export class AgentGraphLog {
     this.events = []
     this.open.clear()
     this.activityAt.clear()
+    this.accessCounts.clear()
     this.droppedCount = 0
   }
 }

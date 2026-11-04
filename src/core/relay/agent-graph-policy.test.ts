@@ -51,6 +51,14 @@ describe('agent graph at the viewer boundary', () => {
     expect(narrowed.dropped).toBe(3)
   })
 
+  it('an access event for a node that is not shared is dropped from the snapshot and the live stream', () => {
+    const access = (nodeId: string) => ({ kind: 'access', id: `access:${nodeId}::skill:s`, ts: 1, nodeId, target: 'skill', name: 's', count: 4 })
+    const narrowed = narrowResponseForRole(IPC.agentGraphSnapshot, { events: [access('mine'), access('theirs')] }, ctx('viewer')) as { events: Array<{ id: string }> }
+    expect(narrowed.events.map((e) => e.id)).toEqual(['access:mine::skill:s'])
+    expect(filterOutboundEvent(ev(access('mine')), ctx('viewer'))).toBe(true)
+    expect(filterOutboundEvent(ev(access('theirs')), ctx('viewer'))).toBe(false)
+  })
+
   it('an editor gets the response untouched', () => {
     const result = { events: [delivery('mine', 'theirs')] }
     expect(narrowResponseForRole(IPC.agentGraphSnapshot, result, ctx('editor'))).toBe(result)

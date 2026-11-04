@@ -62,6 +62,8 @@ import {
   type PersistedLedgerRow
 } from '../control-request-ledger'
 import { DurableFactFile } from '../durable-state'
+import { agentGraphLog } from '../agent-graph/event-log'
+import { claudeToolAccess } from '../../shared/agents/tool-access'
 import { createPaneOriginGate, parseClaudeHookOrigin, type PaneOriginGate } from './claude-pane-origin'
 
 // v2 advertises NODETERM_NODE_TOKEN_DIR so clients read their per-node capability from a file
@@ -1168,6 +1170,20 @@ export class HookServer {
             res.writeHead(204)
             res.end()
             return
+          }
+          // Which skill or MCP server this claude reached for goes to the agent graph's log and to
+          // nothing else: not the mirror and not a NormalizedAgentEvent, so state, Eco, messaging
+          // and the renderer never hear of it. AFTER the pane-origin gate, so a claude that merely
+          // inherited this node's id counts for nobody. Claude only: other agents' tool events are
+          // not measured, and a custom agent built on claude posts under `claude` already. A throw
+          // here must never fail the hook POST.
+          if (agentId === 'claude') {
+            try {
+              const access = claudeToolAccess(payload)
+              if (access) agentGraphLog.recordAccess(nodeId, access)
+            } catch {
+              /* a display stream must not cost the hook its delivery */
+            }
           }
           // Raw listener first: it drives the transcript-tailing features (which need
           // transcript_path). Inside the try so a throwing raw listener still ends 204.
