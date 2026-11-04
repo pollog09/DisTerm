@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useProjects } from '../state/projects'
-import { isOmniKanbanEnabled, toggleBoardView, toggleGraphView, useViewMode, viewFor } from '../state/viewMode'
+import { isOmniKanbanEnabled, showCanvas, showGraph, toggleBoardView, useViewMode, viewFor } from '../state/viewMode'
 import { useAgentStatusSig, type AgentStatusLookup } from '../session/agent-status-lookup'
 import { usePauseCounts } from '../state/pauseCounts'
 import { useSettings } from '../state/settings'
@@ -385,6 +385,21 @@ export function TabBar({
           <span className="brand__name">nodeterm</span>
         </div>
 
+        {/* The board's tab: first after the brand and outside the strip, so it neither scrolls
+            away with the projects nor reorders among them. One decision with ⌘⇧B and the menu
+            (state/viewMode.ts): from any board to the canvas, from anywhere else into the board. */}
+        <button
+          type="button"
+          className={`tab tab--kanban${kanbanActive ? ' active' : ''}`}
+          title={commandTooltip(kanbanActive ? 'Leave kanban board' : 'Kanban board', 'view.kanbanToggle')}
+          aria-pressed={kanbanActive}
+          disabled={!activeId && !omniEnabled}
+          onClick={() => toggleBoardView(activeId)}
+        >
+          <IconKanban />
+          <span className="tab__name">Kanban</span>
+        </button>
+
         {/* Projects group: the pill scrolls; the + is a SIBLING so it cannot scroll away
             with the tabs (issue #375). End-zone drop lives on this wrapper (covers the
             4px gap and the +); per-tab handlers still stopPropagation. */}
@@ -409,7 +424,7 @@ export function TabBar({
             return (
               <div
                 key={p.id}
-                className={`tab${active ? ' active' : ''}${swimlaneHighlight ? ' tab--swimlane-highlight' : ''}${p.unavailable ? ' unavailable' : ''}${dropId === p.id ? ' is-drop-before' : ''}${menuId === p.id ? ' tab--menu-open' : ''}`}
+                className={`tab${active ? ' active' : ''}${swimlaneHighlight ? ' tab--swimlane-highlight' : ''}${p.unavailable ? ' unavailable' : ''}${dropId === p.id ? ' is-drop-before' : ''}${menuId === p.id ? ' tab--menu-open' : ''}${active && kanbanActive ? ' tab--on-board' : ''}`}
                 // The project colour rides the GLYPH (below), not the label: `.tab.active` is
                 // neutral text on the page's own surface, like a browser tab. The one exception is
                 // the swimlane highlight, whose underline is `currentColor` and is meant to be the
@@ -463,7 +478,10 @@ export function TabBar({
                     return
                   }
                   const action = tabClickAction(!!p.unavailable, sessionForProject(p.id).source)
-                  if (action === 'switch') onSwitch(p.id)
+                  // With the Kanban tab up this project's tab is no longer the page you are on, so
+                  // clicking it comes back to the project rather than doing nothing.
+                  if (action === 'switch' && p.id === activeId && perProjectKanban) showCanvas(p.id)
+                  else if (action === 'switch') onSwitch(p.id)
                   else if (action === 'reconnect') onReconnect(p.id)
                 }}
               >
@@ -533,41 +551,35 @@ export function TabBar({
                   // name than the name's own parts sit from one another.
                   <span className="tab__actions">
                     {active && (
-                      // On the ACTIVE tab only: the toggle says which view you are looking at, and
-                      // on an inactive tab it would flip a project's view without taking you
-                      // there. The chord comes from `commandTooltip`, so a remap or an unbound
-                      // command is not advertised as a chord that no longer works.
-                      <button
-                        className="tab__board-toggle"
-                        title={commandTooltip(
-                          kanbanActive ? 'Canvas view' : 'Kanban view',
-                          'view.kanbanToggle'
-                        )}
-                        aria-label={kanbanActive ? 'Canvas view' : 'Kanban view'}
-                        onClick={(e) => {
-                          e.stopPropagation() // a tab click switches projects, this flips the view
-                          // One decision with ⌘⇧B and the menu (state/viewMode.ts): from any board
-                          // to the canvas, from the canvas into the board.
-                          toggleBoardView(p.id)
-                        }}
-                      >
-                        {kanbanActive ? <IconCanvasView /> : <IconKanban />}
-                      </button>
-                    )}
-                    {active && (
-                      // Its own control: the toggle above stays canvas ⇄ board, whatever this does.
-                      <button
-                        className="tab__board-toggle"
-                        title={commandTooltip(graphActive ? 'Canvas view' : 'Agent graph', 'view.graphToggle')}
-                        aria-label={graphActive ? 'Canvas view' : 'Agent graph'}
-                        aria-pressed={graphActive}
-                        onClick={(e) => {
-                          e.stopPropagation() // a tab click switches projects, this flips the view
-                          toggleGraphView(p.id)
-                        }}
-                      >
-                        {graphActive ? <IconCanvasView /> : <IconGraph />}
-                      </button>
+                      // On the ACTIVE tab only: these say which view you are looking at, and on an
+                      // inactive tab they would flip a project's view without taking you there. The
+                      // board is not one of them: it has its own tab, first in the bar.
+                      <>
+                        <button
+                          className="tab__view-toggle"
+                          title="Canvas view"
+                          aria-label="Canvas view"
+                          aria-pressed={!kanbanActive && !graphActive}
+                          onClick={(e) => {
+                            e.stopPropagation() // a tab click switches projects, this picks the view
+                            showCanvas(p.id)
+                          }}
+                        >
+                          <IconCanvasView />
+                        </button>
+                        <button
+                          className="tab__view-toggle"
+                          title={commandTooltip('Agent graph', 'view.graphToggle')}
+                          aria-label="Agent graph"
+                          aria-pressed={graphActive}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showGraph(p.id)
+                          }}
+                        >
+                          <IconGraph />
+                        </button>
+                      </>
                     )}
                     <button
                       className="tab__caret"

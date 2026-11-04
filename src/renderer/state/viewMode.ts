@@ -165,18 +165,24 @@ export function isGraphView(projectId: string): boolean {
   return !!projectId && viewFor(useViewMode.getState(), projectId) === 'graph'
 }
 
-/** The graph's own control, separate from the canvas ⇄ board toggle, which stays that pair: from the
- *  graph back to the canvas, from anywhere else (Omni included) into the graph. */
-export function toggleGraphView(projectId: string): boolean {
+/** Show `projectId`'s agent graph, whichever view is up (Omni included). */
+export function showGraph(projectId: string): boolean {
   if (!projectId) return false
   const vm = useViewMode.getState()
-  if (isGraphView(projectId) && !isGlobalKanbanOpen()) {
-    vm.setView(projectId, 'canvas')
-    return true
-  }
   vm.setGlobalKanban(false)
   vm.setView(projectId, 'graph')
   return true
+}
+
+/** The graph's command (`view.graphToggle`, ⌘K), separate from the canvas ⇄ board toggle, which stays
+ *  that pair: from the graph back to the canvas, from anywhere else into the graph. */
+export function toggleGraphView(projectId: string): boolean {
+  if (!projectId) return false
+  if (isGraphView(projectId) && !isGlobalKanbanOpen()) {
+    useViewMode.getState().setView(projectId, 'canvas')
+    return true
+  }
+  return showGraph(projectId)
 }
 
 /**
@@ -200,7 +206,7 @@ export function isGlobalKanbanOpen(): boolean {
 }
 
 /**
- * OMNI IS A SCOPE OF THE KANBAN SIDE, NOT A THIRD VIEW. The view toggle (tab icon, ⌘⇧B, the
+ * OMNI IS A SCOPE OF THE KANBAN SIDE, NOT A THIRD VIEW. The view toggle (Kanban tab, ⌘⇧B, the
  * menu) flips canvas ⇄ board, and the board shows either this project or all projects. So:
  * leaving Omni through the scope switch lands on THIS project's board, and the view toggle from
  * Omni lands on the canvas. It used to be an overlay independent of the per-project view, so its

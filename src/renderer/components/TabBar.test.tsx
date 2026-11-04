@@ -226,6 +226,114 @@ describe('TabBar New-project pin', () => {
   })
 })
 
+describe('TabBar views', () => {
+  let root: Root
+  let host: HTMLElement
+  let onSwitch: ReturnType<typeof vi.fn<(id: string) => void>>
+  let useViewMode: typeof import('../state/viewMode').useViewMode
+
+  beforeEach(async () => {
+    const { TabBar, useProjects } = await load()
+    useViewMode = (await import('../state/viewMode')).useViewMode
+    const session = await import('../session/session')
+    session.setActiveSession(session.createSession('local', window.nodeTerminal, 'local').id)
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    useProjects.setState({ projects: [project(), project({ id: 'p2', name: 'Beta' })], activeProjectId: 'p1' })
+    onSwitch = vi.fn()
+    root = createRoot(host)
+    await act(async () => {
+      root.render(
+        <TabBar
+          onSwitch={onSwitch}
+          onReconnect={vi.fn()}
+          onReorder={vi.fn()}
+          onOpenWelcome={vi.fn()}
+          onRename={vi.fn()}
+          onSetFolder={vi.fn()}
+          onCloseProject={vi.fn()}
+          onRemoteAccess={vi.fn()}
+          onSetDefaultAccount={vi.fn()}
+          onSetDefaultPermissionMode={vi.fn()}
+          onOpenProjectSettings={vi.fn()}
+          onPauseProject={vi.fn()}
+          onCancelPendingPauses={vi.fn()}
+          onResumeAllProject={vi.fn()}
+        />
+      )
+    })
+  })
+
+  afterEach(() => {
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  const kanban = (): HTMLButtonElement => host.querySelector<HTMLButtonElement>('.tab--kanban')!
+  const viewButton = (label: string): HTMLButtonElement =>
+    host.querySelector<HTMLButtonElement>(`.tab__view-toggle[aria-label="${label}"]`)!
+  const projectTab = (name: string): HTMLElement =>
+    [...host.querySelectorAll<HTMLElement>('.tabbar__tabs .tab')].find((t) => t.textContent?.includes(name))!
+  const click = (el: HTMLElement): Promise<void> => act(async () => el.click())
+  const view = (): string | undefined => useViewMode.getState().viewByProject.p1
+
+  it('puts the Kanban tab right after the brand, outside the project strip', () => {
+    expect(kanban().previousElementSibling?.className).toBe('brand')
+    expect(host.querySelector('.tabbar__tabs')!.contains(kanban())).toBe(false)
+    expect(kanban().textContent).toBe('Kanban')
+  })
+
+  it('leaves a project tab only the canvas and graph views, on the active tab', () => {
+    const labels = [...projectTab('Alpha').querySelectorAll('.tab__view-toggle')].map((b) => b.getAttribute('aria-label'))
+    expect(labels).toEqual(['Canvas view', 'Agent graph'])
+    expect(projectTab('Beta').querySelector('.tab__view-toggle')).toBeNull()
+  })
+
+  it('opens the board from the Kanban tab and leaves it the same way', async () => {
+    await click(kanban())
+    expect(view()).toBe('kanban')
+    expect(kanban().classList.contains('active')).toBe(true)
+    expect(viewButton('Canvas view').getAttribute('aria-pressed')).toBe('false')
+    expect(projectTab('Alpha').classList.contains('tab--on-board')).toBe(true)
+    await click(kanban())
+    expect(view()).toBe('canvas')
+    expect(kanban().classList.contains('active')).toBe(false)
+    expect(projectTab('Alpha').classList.contains('tab--on-board')).toBe(false)
+  })
+
+  it('marks the view on screen, and a click on it keeps that view', async () => {
+    expect(viewButton('Canvas view').getAttribute('aria-pressed')).toBe('true')
+    await click(viewButton('Agent graph'))
+    expect(view()).toBe('graph')
+    expect(viewButton('Agent graph').getAttribute('aria-pressed')).toBe('true')
+    expect(viewButton('Canvas view').getAttribute('aria-pressed')).toBe('false')
+    await click(viewButton('Agent graph'))
+    expect(view()).toBe('graph')
+    await click(viewButton('Canvas view'))
+    expect(view()).toBe('canvas')
+  })
+
+  it('goes from the graph to the board without passing through the canvas', async () => {
+    await click(viewButton('Agent graph'))
+    await click(kanban())
+    expect(view()).toBe('kanban')
+  })
+
+  it('returns to the canvas when the active project tab is clicked with its board up', async () => {
+    await click(kanban())
+    await click(projectTab('Alpha'))
+    expect(view()).toBe('canvas')
+    expect(onSwitch).not.toHaveBeenCalled()
+  })
+
+  it('still switches projects when another tab is clicked with the board up', async () => {
+    await click(kanban())
+    await click(projectTab('Beta'))
+    expect(onSwitch).toHaveBeenCalledWith('p2')
+    expect(view()).toBe('kanban')
+  })
+})
+
 describe('TabBar drag-reorder', () => {
   let root: Root
   let host: HTMLElement
@@ -241,7 +349,7 @@ describe('TabBar drag-reorder', () => {
     })
   }
 
-  const tabs = (): Element[] => Array.from(host.querySelectorAll('.tab'))
+  const tabs = (): Element[] => Array.from(host.querySelectorAll('.tabbar__tabs .tab'))
 
   beforeEach(async () => {
     const { TabBar, useProjects } = await load()

@@ -7,7 +7,7 @@ export type KanbanScope = 'project' | 'all'
 /**
  * The board's scope: this project's board or every project's (Omni). Omni is a scope of the
  * kanban side, so this switch — not a close button — is how the two boards reach each other;
- * leaving the board for the canvas stays the view toggle's job (tab icon, ⌘⇧B). Renders nothing
+ * leaving the board for the canvas stays the view toggle's job (Kanban tab, ⌘⇧B). Renders nothing
  * while the Omni feature is off, so a user who never enabled it sees the board exactly as before.
  */
 export function KanbanScopeSwitch({ scope }: { scope: KanbanScope }): React.JSX.Element | null {

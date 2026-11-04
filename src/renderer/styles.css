@@ -606,6 +606,40 @@ body,
       right / var(--tab-flare) var(--tab-flare) no-repeat;
 }
 
+/* The board's own tab, first after the brand and outside the scrolling strip. It is a button where
+   a project tab is a div, so it resets what a button brings. Reaching the bar's bottom when active
+   needs the stretch the strip gives its tabs. */
+.tab.tab--kanban {
+  align-self: stretch;
+  margin-left: var(--tab-flare);
+  padding: 0 10px;
+  border: none;
+  background-image: none;
+  font-family: inherit;
+}
+.tab.tab--kanban:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.tab.tab--kanban.active {
+  background: var(--canvas-bg);
+}
+/* The divider between it and the first project, which is its strip's first child and so has none. */
+.tab--kanban:not(.active, :hover) + .tabbar__projects .tab:first-child:not(.active, :hover) {
+  background-image: linear-gradient(var(--border), var(--border));
+}
+
+/* With the board up the Kanban tab is the one merged into the page. The active project's tab still
+   says which project's board this is, as a lifted pill. */
+.tab.active.tab--on-board {
+  background: rgba(var(--tint-rgb), 0.16);
+  margin-bottom: var(--tab-inset);
+  border-radius: var(--tab-radius);
+}
+.tab.active.tab--on-board::after {
+  content: none;
+}
+
 /* In the all-projects board the highlighted tab follows the selected swimlane, not necessarily
    the project whose canvas is mounted underneath. Keep that selection visible in the tab strip. */
 .tab.tab--swimlane-highlight {
@@ -725,7 +759,7 @@ body,
   margin-left: 2px;
 }
 
-.tab__board-toggle,
+.tab__view-toggle,
 .tab__caret {
   display: inline-flex;
   align-items: center;
@@ -736,7 +770,7 @@ body,
   cursor: pointer;
   line-height: 1;
   /* A fixed box, not padding around the glyph: these two sit side by side and their glyphs fill
-     very different amounts of a 14px square — the board's bars run edge to edge, the three dots
+     very different amounts of a 14px square — the view glyphs run edge to edge, the three dots
      stand alone in the middle — so a padded box would give them hover plates of two widths and
      read as two kinds of control. */
   width: 22px;
@@ -749,16 +783,23 @@ body,
   transition: background 0.12s ease, opacity 0.12s ease;
 }
 
-.tab:hover .tab__board-toggle,
+.tab:hover .tab__view-toggle,
 .tab:hover .tab__caret {
   opacity: 0.7;
 }
 
 /* Same answer a node's header buttons give (`.term-node__refresh` and friends): a tinted plate
    under the glyph, not just a brighter glyph. */
-.tab__board-toggle:hover,
+.tab__view-toggle:hover,
 .tab__caret:hover {
   background: rgba(var(--tint-rgb), 0.1);
+  color: var(--text);
+  opacity: 1;
+}
+
+/* The view on screen. */
+.tab__view-toggle[aria-pressed='true'] {
+  background: rgba(var(--tint-rgb), 0.14);
   color: var(--text);
   opacity: 1;
 }
@@ -2469,7 +2510,7 @@ body,
 /* Icon sizing for the boxes that are smaller than the shared 16px glyph. The icon set is one
    family on one viewBox (see icons.tsx); where a button is tight, the BUTTON scales it down
    rather than the icon carrying a second size of its own. */
-.tab__board-toggle svg,
+.tab__view-toggle svg,
 .tab__caret svg,
 .sessmem-row__kill svg,
 .welcome__recent-del svg {
@@ -17900,7 +17941,7 @@ body.focus-mode .dock:hover {
 }
 /* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45; 0.8 still
    measured 2.90:1 over Sunrise at Clear, round 3 NL7). */
-:root[data-nt-glass='on'] .tab.active :is(.tab__board-toggle, .tab__caret) {
+:root[data-nt-glass='on'] .tab.active :is(.tab__view-toggle, .tab__caret) {
   opacity: 0.9;
 }
 
