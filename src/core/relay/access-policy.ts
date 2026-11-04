@@ -493,6 +493,7 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   // viewer's graph is observation only. Create writes a file on the host.
   IPC.shipConfigRead,
   IPC.shipGraphCreate,
+  IPC.shipTemplateCreate,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
   // Server→client events (see the doc comment): what a non-editor receives is VIEW_EVENTS.

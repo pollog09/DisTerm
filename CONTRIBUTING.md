@@ -278,7 +278,7 @@ anything else. Board-level fields survive every transform — `pullLinks` is one
 ## The agent graph view
 
 The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
-Three things to know before touching a view:
+Four things to know before touching a view:
 
 - **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
   the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
@@ -289,6 +289,12 @@ Three things to know before touching a view:
   a peer can read from it must be narrowed to its shared nodes, and machine config stays Editor-only.
   `.claude/ship-graph.json` arrives in a clone: display only, never executed, and every field read
   one by one in `core/ship-config/sanitize.ts`.
+- **A new loop in the graph must be earned.** The covered-canvas rule pauses every `.react-flow`, the
+  graph's own included, so `agent-graph.css` sets `--nt-anim-state` back on `.agent-graph .react-flow`,
+  following the window alone. An `infinite` animation there still needs
+  `animation-play-state: var(--nt-anim-state);` (the animation-gate test reads that sheet too) and a
+  still form under Reduce Motion. What moves is decided by `edgeInTransit` in the model: a moving line
+  keeps the window at display rate, so a line moves only while something is passing along it.
 
 Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
 and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to

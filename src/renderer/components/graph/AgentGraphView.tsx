@@ -28,6 +28,7 @@ import { thisMachine } from '../../lib/machineName'
 import {
   agentGraphStructureKey,
   buildAgentGraphModel,
+  edgeShowsDirection,
   type DeliveryCounts,
   type GraphEdge,
   type GraphLinkInput,
@@ -37,7 +38,17 @@ import {
   type GraphSessionInput
 } from '../../lib/agentGraphModel'
 import { DELIVERY_COLOR, graphEdgeColor, graphEdgeLabel, graphEdgeTitle, graphLegend } from '../../lib/agentGraphEdgeText'
-import { agentGraphNodeSize, layoutAgentGraph, routeMidpoint, routeToPath, type GraphPoint } from '../../lib/agentGraphLayout'
+import {
+  agentGraphNodeSize,
+  chevronDuration,
+  chevronStops,
+  layoutAgentGraph,
+  routeLength,
+  routeMidpoint,
+  routeToPath,
+  type GraphPoint
+} from '../../lib/agentGraphLayout'
+import { SHIP_TEMPLATE_ACTION, SHIP_TEMPLATE_DESCRIPTION, shipTemplateCreatedText, shipTemplateOffer } from '../../lib/shipTemplate'
 import { kanbanSessionsFrom } from '../../canvas/toKanbanSession'
 import { ProjectSessionScope } from '../../session/owning-project'
 import { SessionContext, useSessionStores } from '../../session/session'
@@ -48,7 +59,7 @@ import { showCanvas, useViewMode } from '../../state/viewMode'
 import type { CanvasNode } from '../../state/workspace'
 import { ShipProcessPanel } from './ShipProcessPanel'
 import { GraphTerminalModal } from './GraphTerminalModal'
-import { useAgentGraphEvents, useShipConfig } from './useAgentGraphData'
+import { useAgentGraphEvents, useEdgesInTransit, useShipConfig, useShipTemplate } from './useAgentGraphData'
 import './agent-graph.css'
 
 /**
@@ -61,8 +72,9 @@ import './agent-graph.css'
  * that store is read to decide which project a mounting node belongs to, and handing it these boxes
  * would hand that decision nodes from no project at all.
  *
- * Activity is a FINITE pulse on arrival, never an infinite animation: the first running animation in
- * a window is what costs (CLAUDE.md, "Idle energy"), and an open graph must idle like a closed one.
+ * Arrival is a FINITE pulse. The one loop here is the marks moving along a line, and only while
+ * something is passing along it (`edgeInTransit`): the first running animation in a window is what costs
+ * (CLAUDE.md, "Idle energy"), and an open graph with nothing happening must idle like a closed one.
  */
 
 const STATE_LABEL: Readonly<Record<string, string>> = {
@@ -81,7 +93,7 @@ function graphEdgeLabelWidth(edge: GraphEdge): number {
 }
 
 type GraphFlowNode = Node<{ node: GraphNode; pulseKey: number; showMachine: boolean }, 'graphNode'>
-type GraphFlowEdge = Edge<{ edge: GraphEdge; route: GraphPoint[]; pulseKey: number }, 'graphEdge'>
+type GraphFlowEdge = Edge<{ edge: GraphEdge; route: GraphPoint[]; pulseKey: number; inTransit: boolean }, 'graphEdge'>
 
 function agentLabel(agentId: string): string {
   return AGENT_CONFIG[agentId as BuiltinAgentId]?.label ?? agentId
@@ -139,9 +151,39 @@ export function MessageCounts({ counts }: { counts: DeliveryCounts }) {
   )
 }
 
-const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeProps<GraphFlowEdge>) {
+/** Drawn pointing along +x; `offset-rotate: auto` turns it to follow the line. */
+const CHEVRON_PATH = 'M -3 -3.5 L 2 0 L -3 3.5'
+
+/**
+ * The marks that say which way a line runs. They are placed with CSS `offset-path`, not SMIL
+ * (`animateMotion`), because `animation-play-state` cannot pause SMIL. Each one rests at its stop, and
+ * the negative delay starts a moving one from that same place, so a paused line still reads the same.
+ */
+function EdgeChevrons({ path, route, color, moving }: { path: string; route: readonly GraphPoint[]; color: string; moving: boolean }) {
+  const duration = chevronDuration(routeLength(route))
+  return (
+    <>
+      {chevronStops().map((stop) => (
+        <path
+          key={stop}
+          d={CHEVRON_PATH}
+          className="agent-graph-edge__chevron"
+          data-moving={moving || undefined}
+          style={{
+            stroke: color,
+            offsetPath: `path("${path}")`,
+            offsetDistance: `${stop * 100}%`,
+            ...(moving ? { animationDuration: `${duration}s`, animationDelay: `${-stop * duration}s` } : {})
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
+export const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeProps<GraphFlowEdge>) {
   if (!data || data.route.length < 2) return null
-  const { edge, route, pulseKey } = data
+  const { edge, route, pulseKey, inTransit } = data
   const path = routeToPath(route)
   const mid = routeMidpoint(route)
   const color = graphEdgeColor(edge)
@@ -155,6 +197,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
         markerEnd={markerEnd}
         style={{ stroke: color, strokeWidth: edge.loop ? 2.25 : 1.5, strokeDasharray: dashed ? '5 4' : undefined }}
       />
+      {edgeShowsDirection(edge) && routeLength(route) > 0 && <EdgeChevrons path={path} route={route} color={color} moving={inTransit} />}
       {pulseKey > 0 && <path key={pulseKey} d={path} className="agent-graph-edge__pulse" style={{ stroke: color }} />}
       {label && (
         <EdgeLabelRenderer>
@@ -226,6 +269,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const handovers = useStationHandovers((s) => s.byId)
   const { snapshot, mountedAt } = useAgentGraphEvents(api, projectId)
   const { result: shipResult, reload: reloadShip } = useShipConfig(api, projectId)
+  const template = useShipTemplate(api, projectId, reloadShip)
   const [panelOpen, setPanelOpen] = useState(false)
   const [modalId, setModalId] = useState<string | null>(null)
   const ship = shipResult?.ok ? shipResult.config : null
@@ -324,6 +368,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const showMachine = machines.size > 1
   const onlyMachine = machines.size === 1 ? [...machines.values()][0] : undefined
 
+  const moving = useEdgesInTransit(model.edges)
+
   const pulseOf = useCallback((ts: number | undefined): number => (ts !== undefined && ts > mountedAt ? ts : 0), [mountedAt])
 
   const flowNodes = useMemo(
@@ -348,9 +394,9 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
       deletable: false,
       selectable: false,
       markerEnd: { type: MarkerType.ArrowClosed, color: graphEdgeColor(edge), width: 14, height: 14 },
-      data: { edge, route: layout.routes.get(edge.id) ?? [], pulseKey: pulseOf(edge.lastEventTs) }
+      data: { edge, route: layout.routes.get(edge.id) ?? [], pulseKey: pulseOf(edge.lastEventTs), inTransit: moving.has(edge.id) }
     })),
-    [model.edges, layout, pulseOf]
+    [model.edges, layout, pulseOf, moving]
   )
 
   const terminals = useMemo(
@@ -390,6 +436,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const warnings = shipResult?.ok ? shipResult.config.warnings.length : 0
   const shipNotice = shipResult && !shipResult.ok ? `Ship config: ${shipResult.reason}` : null
   const isEmpty = model.nodes.length === 0
+  const offer = isEmpty ? shipTemplateOffer(shipResult) : ({ kind: 'none' } as const)
+  const templateFailure = template.result && !template.result.ok ? template.result.message : null
   // What the model notes is about what is drawn, so with nothing drawn only a config failure is left.
   const notices = [...(shipNotice ? [shipNotice] : []), ...(isEmpty ? [] : model.notices)]
   const legend = useMemo(() => graphLegend(model.edges), [model.edges])
@@ -429,6 +477,13 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           {notices.map((n) => <li key={n}>{n}</li>)}
         </ul>
       )}
+      {/* Here, not in the empty state: success ends the empty state, and a failure can too if it got far enough. */}
+      {template.result && (template.result.ok || !isEmpty) && (
+        <div className="agent-graph__template-note" role={template.result.ok ? 'status' : 'alert'}>
+          <span>{template.result.ok ? shipTemplateCreatedText(template.result) : templateFailure}</span>
+          <button className="agent-graph__button" onClick={template.dismiss}>Dismiss</button>
+        </div>
+      )}
       <div className="agent-graph__body">
         <div className="agent-graph__flow">
           {isEmpty ? (
@@ -436,9 +491,23 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
               <span className="agent-graph__empty-icon"><IconGraph /></span>
               <p className="agent-graph__empty-title">No agents on this canvas yet</p>
               <p>Start one and it appears here, with its messages, its subagents and how it moves through your ship process.</p>
-              <button className="agent-graph__button" onClick={() => showCanvas(projectId)}>
-                <IconCanvasView /> Go to canvas
-              </button>
+              <div className="agent-graph__empty-actions">
+                <button className="agent-graph__button" onClick={() => showCanvas(projectId)}>
+                  <IconCanvasView /> Go to canvas
+                </button>
+                {offer.kind !== 'none' && (
+                  <button
+                    className="agent-graph__button"
+                    disabled={offer.kind === 'disabled' || template.busy}
+                    onClick={template.create}
+                  >
+                    {template.busy ? 'Setting up…' : SHIP_TEMPLATE_ACTION}
+                  </button>
+                )}
+              </div>
+              {offer.kind !== 'none' && <p className="agent-graph__empty-note">{SHIP_TEMPLATE_DESCRIPTION}</p>}
+              {offer.kind === 'disabled' && <p className="agent-graph__empty-note" data-role="reason">{offer.reason}</p>}
+              {templateFailure && <p className="agent-graph__empty-note" data-role="failure" role="alert">{templateFailure}</p>}
             </div>
           ) : (
             <ReactFlow

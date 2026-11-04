@@ -112,6 +112,19 @@ export type ShipGraphCreateResult =
   | { ok: true; path: string }
   | { ok: false; reason: 'exists' | 'unsupported' | 'failed'; message: string }
 
+export type ShipTemplateCreateResult =
+  /** `created` and `kept` are paths inside `root`, the project's `.claude` as the machine resolved it. */
+  | { ok: true; root: string; created: string[]; kept: string[] }
+  | { ok: false; reason: 'unsupported' | 'failed'; message: string }
+
+/** Why a canvas cannot hold project config. The offer shows it; the core refuses with it. */
+export const SHIP_NO_FOLDER_MESSAGE = 'This canvas has no project folder.'
+
+/** Why a project whose `.claude` is part of the machine's Claude config cannot take project files: a new
+ *  SSH project's folder is `~`, and anything written there reaches every project on that machine. */
+export const SHIP_SHARED_CONFIG_MESSAGE =
+  "This project's .claude folder is part of the Claude config every project on this machine uses, so nothing was added. Open a project in its own folder instead."
+
 /** A view's hold on config polling. Renewed while the view lives, and left to expire if it dies with
  *  its renderer or its relay peer, which send no goodbye. Generous, because Chromium throttles a hidden
  *  window's timers to about one a minute; a renewal after an expiry simply starts the poll again. */

@@ -8,7 +8,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentGraphEvent, AgentGraphSnapshot } from '@shared/agent-graph'
 import { WORKING_STALE_MS } from '@shared/agents/stale'
-import type { ShipConfig, ShipConfigResult, ShipPipeline } from '@shared/ship-config'
+import type { ShipConfig, ShipConfigResult, ShipPipeline, ShipTemplateCreateResult } from '@shared/ship-config'
+import { ReactFlowProvider } from '@xyflow/react'
 import type { Edge } from '@xyflow/react'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -35,6 +36,7 @@ const api = {
     }),
     readShipConfig: vi.fn(async () => shipResult.current),
     createShipGraph: vi.fn(),
+    createShipTemplate: vi.fn(async (): Promise<ShipTemplateCreateResult> => ({ ok: true, root: '/p/.claude', created: ['agents/implementer.md', 'ship-graph.json'], kept: ['agents/doc-writer.md'] })),
     onShipConfigChanged: vi.fn(() => offShip)
   },
   boardLog: { onChanged: vi.fn(() => offLog) }
@@ -44,6 +46,8 @@ let AgentGraphView: typeof import('./AgentGraphView').AgentGraphView
 let graphEdgeLabel: typeof import('./AgentGraphView').graphEdgeLabel
 let graphEdgeColor: typeof import('./AgentGraphView').graphEdgeColor
 let MessageCounts: typeof import('./AgentGraphView').MessageCounts
+let GraphEdgeLine: typeof import('./AgentGraphView').GraphEdgeLine
+let useEdgesInTransit: typeof import('./useAgentGraphData').useEdgesInTransit
 let useViewMode: typeof import('../../state/viewMode').useViewMode
 let canvasCoveredDepth: typeof import('../../lib/canvasCovered').canvasCoveredDepth
 let resetCanvasCoveredForTest: typeof import('../../lib/canvasCovered').resetCanvasCoveredForTest
@@ -59,7 +63,8 @@ beforeAll(async () => {
   )
   ;(window as unknown as { nodeTerminal: unknown }).nodeTerminal = api
   await import('../../session/localSession')
-  ;({ AgentGraphView, graphEdgeLabel, graphEdgeColor, MessageCounts } = await import('./AgentGraphView'))
+  ;({ AgentGraphView, graphEdgeLabel, graphEdgeColor, MessageCounts, GraphEdgeLine } = await import('./AgentGraphView'))
+  ;({ useEdgesInTransit } = await import('./useAgentGraphData'))
   ;({ useViewMode } = await import('../../state/viewMode'))
   ;({ canvasCoveredDepth, resetCanvasCoveredForTest } = await import('../../lib/canvasCovered'))
 })
@@ -124,6 +129,7 @@ beforeEach(() => {
   resetCanvasCoveredForTest()
   relationListeners.length = 0
   vi.clearAllMocks()
+  api.agentGraph.createShipTemplate.mockClear()
   snapshotResult.current = { events: [], dropped: 0, capacity: 2000, history: 'board-log', historyTruncated: false }
   shipResult.current = { ok: false, reason: 'unset' }
   useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', requestedCardNodeId: null })
@@ -456,7 +462,186 @@ describe('what an edge says', () => {
     expect(graphEdgeLabel({ ...base, kind: 'ship-reject', traversals: 2, loop: true })).toBe('re-entered ×2')
     expect(graphEdgeLabel({ ...base, kind: 'observed', undeclared: true, traversals: 1 })).toBe('not declared ×1')
     expect(graphEdgeLabel({ ...base, kind: 'ship-next' })).toBe('')
-    expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, traversals: 1 })).toBe('went back ×1')
+    expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, traversals: 1 })).toBe('×1')
     expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, undeclared: true, traversals: 1 })).toBe('re-entered ×1')
+  })
+})
+
+describe('the marks along a line', () => {
+  const ROUTE = [{ x: 0, y: 0 }, { x: 600, y: 0 }]
+  const renderLine = async (edge: object, inTransit: boolean): Promise<void> => {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    const Line = GraphEdgeLine as unknown as (p: { id: string; data: object }) => React.JSX.Element
+    await act(async () => root.render(
+      <ReactFlowProvider>
+        <svg><Line id="e" data={{ edge: { id: 'e', source: 'a', target: 'b', ...edge }, route: ROUTE, pulseKey: 0, inTransit }} /></svg>
+      </ReactFlowProvider>
+    ))
+  }
+  const marks = (): SVGPathElement[] => [...document.querySelectorAll<SVGPathElement>('.agent-graph-edge__chevron')]
+
+  it('a still line shows its direction with no animation', async () => {
+    await renderLine({ kind: 'ship-next' }, false)
+    expect(marks().length).toBe(3)
+    expect(marks().every((m) => !m.hasAttribute('data-moving'))).toBe(true)
+  })
+
+  it('a line in use moves its marks, in its own colour, at a pace from its length', async () => {
+    await renderLine({ kind: 'observed', traversals: 1, loop: true }, true)
+    expect(marks().length).toBe(3)
+    expect(marks().every((m) => m.hasAttribute('data-moving'))).toBe(true)
+    expect(marks()[0].style.stroke).toBe('var(--state-warning)')
+    expect(marks()[0].style.animationDuration).toBe('10s')
+    expect(marks().map((m) => parseFloat(m.style.animationDelay))).toEqual([-10 / 6, -5, -50 / 6].map((d) => expect.closeTo(d)))
+  })
+
+  it('a context link gets none', async () => {
+    await renderLine({ kind: 'context' }, false)
+    expect(marks()).toEqual([])
+  })
+})
+
+describe('useEdgesInTransit', () => {
+  const edge = (ts: number) => ({ id: 'm', source: 'a', target: 'b', kind: 'message' as const, latest: 'delivered' as const, lastEventTs: ts })
+  let seen: string[] = []
+  function Probe({ edges }: { edges: never[] }) {
+    seen = [...useEdgesInTransit(edges)]
+    return null
+  }
+
+  it('stops a moment of transit when its window ends, with no event to prompt it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const edges = [edge(Date.now())] as never[]
+      host = document.createElement('div')
+      root = createRoot(host)
+      await act(async () => root.render(<Probe edges={edges} />))
+      expect(seen).toEqual(['m'])
+      await act(async () => { await vi.advanceTimersByTimeAsync(14_000) })
+      expect(seen).toEqual(['m'])
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+      expect(seen).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('with nothing recent, arms no timer at all', async () => {
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    host = document.createElement('div')
+    root = createRoot(host)
+    spy.mockClear()
+    await act(async () => root.render(<Probe edges={[edge(1)] as never[]} />))
+    const ours = spy.mock.calls.filter(([, ms]) => ms !== undefined && ms > 1000)
+    spy.mockRestore()
+    expect(seen).toEqual([])
+    expect(ours).toEqual([])
+  })
+})
+
+describe('setting a project up from the empty graph', () => {
+  const button = (): HTMLButtonElement | undefined =>
+    [...document.querySelectorAll<HTMLButtonElement>('.agent-graph__empty button')].find((b) => /graph engineering|Setting up/.test(b.textContent ?? ''))
+
+  it('offers it, says what it adds, and keeps the way to the canvas', async () => {
+    shipResult.current = configWith()
+    await mount([])
+    expect(button()?.disabled).toBe(false)
+    const text = document.querySelector('.agent-graph__empty')!.textContent
+    expect(text).toContain('three agents, a /ship-change command and ship-graph.json')
+    expect(text).toContain('Go to canvas')
+    expect(api.agentGraph.createShipTemplate).not.toHaveBeenCalled()
+  })
+
+  it('while the machine has not answered, or could not, it claims nothing', async () => {
+    api.agentGraph.readShipConfig.mockImplementationOnce(() => new Promise<ShipConfigResult>(() => {}))
+    await mount([])
+    expect(button()).toBeUndefined()
+    await act(async () => root.unmount())
+    host.remove()
+
+    shipResult.current = { ok: false, reason: 'This SSH project is not connected.' }
+    await mount([])
+    expect(button()).toBeUndefined()
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('not connected')
+  })
+
+  it('a canvas with no folder shows it disabled, with the reason', async () => {
+    shipResult.current = configWith({ projectGraphPath: null })
+    await mount([])
+    expect(button()?.disabled).toBe(true)
+    expect(document.querySelector('[data-role="reason"]')?.textContent).toBe('This canvas has no project folder.')
+  })
+
+  it('a project with a routing file is not offered it', async () => {
+    for (const over of [{ projectGraphExists: true }, { projectGraphBlocked: true as const }, { graphSource: 'global' as const }]) {
+      shipResult.current = configWith(over)
+      await mount([])
+      expect(button(), JSON.stringify(over)).toBeUndefined()
+      await act(async () => root.unmount())
+      host.remove()
+    }
+    await mount([])
+  })
+
+  it('on success the pipeline appears at once, and a line says what was made and how to run it', async () => {
+    shipResult.current = configWith()
+    await mount([])
+    shipResult.current = configWith({ pipelines: [PIPELINE], graphSource: 'project', projectGraphExists: true })
+    await act(async () => button()!.click())
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+    expect(api.agentGraph.createShipTemplate).toHaveBeenCalledWith('P')
+    expect(document.querySelector('.agent-graph__empty')).toBeNull()
+    expect(document.querySelector('.agent-graph-node--stage')).not.toBeNull()
+    const note = document.querySelector('.agent-graph__template-note')!
+    expect(note.getAttribute('role')).toBe('status')
+    expect(note.textContent).toContain('Created 2 files in /p/.claude.')
+    expect(note.textContent).toContain('agents/doc-writer.md')
+    expect(note.textContent).toContain('/ship-change <task>')
+    await act(async () => (note.querySelector('button') as HTMLButtonElement).click())
+    expect(document.querySelector('.agent-graph__template-note')).toBeNull()
+  })
+
+  it('a failure is said in place, the offer stays, and it does not reject', async () => {
+    shipResult.current = configWith()
+    api.agentGraph.createShipTemplate.mockResolvedValueOnce({ ok: false, reason: 'failed', message: 'Could not write it.' })
+    await mount([])
+    await act(async () => button()!.click())
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+    expect(document.querySelector('.agent-graph__empty [role="alert"]')?.textContent).toBe('Could not write it.')
+    expect(button()?.disabled).toBe(false)
+
+    api.agentGraph.createShipTemplate.mockRejectedValueOnce(new Error('refused by the host'))
+    await act(async () => button()!.click())
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+    expect(document.querySelector('.agent-graph__empty [role="alert"]')?.textContent).toContain('refused by the host')
+  })
+
+  it('is disabled while it runs, so a second click cannot start another', async () => {
+    shipResult.current = configWith()
+    let finish: (r: ShipTemplateCreateResult) => void = () => {}
+    api.agentGraph.createShipTemplate.mockImplementationOnce(() => new Promise<ShipTemplateCreateResult>((r) => { finish = r }))
+    await mount([])
+    await act(async () => button()!.click())
+    expect(button()?.disabled).toBe(true)
+    expect(button()?.textContent).toBe('Setting up…')
+    await act(async () => finish({ ok: false, reason: 'failed', message: 'x' }))
+  })
+
+  it("an answer for a project switched away from stays off this one", async () => {
+    shipResult.current = configWith()
+    let finish: (r: ShipTemplateCreateResult) => void = () => {}
+    api.agentGraph.createShipTemplate.mockImplementationOnce(() => new Promise<ShipTemplateCreateResult>((r) => { finish = r }))
+    await mount([])
+    await act(async () => button()!.click())
+    await act(async () => root.render(view([], 'B')))
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+    const reads = api.agentGraph.readShipConfig.mock.calls.length
+    await act(async () => finish({ ok: true, root: '/a/.claude', created: ['x'], kept: [] }))
+    expect(document.querySelector('.agent-graph__template-note')).toBeNull()
+    expect(api.agentGraph.readShipConfig.mock.calls.length).toBe(reads)
+    expect(button()?.disabled).toBe(false)
   })
 })

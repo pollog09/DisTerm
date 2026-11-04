@@ -1,5 +1,5 @@
 import type { AgentGraphSnapshot } from '../../shared/agent-graph'
-import { holdShipConfigLease, type ShipConfigResult, type ShipGraphCreateResult } from '../../shared/ship-config'
+import { holdShipConfigLease, type ShipConfigResult, type ShipGraphCreateResult, type ShipTemplateCreateResult } from '../../shared/ship-config'
 import type { ChatCatalog } from '@shared/chat-catalog'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import type { AgentStatusSnapshotEntry } from '../../shared/agent-status-snapshot'
@@ -866,6 +866,7 @@ export function buildAgentApi(
       readShipConfig: (projectId) => client.request(IPC.shipConfigRead, projectId) as Promise<ShipConfigResult>,
       createShipGraph: (projectId, scope) =>
         client.request(IPC.shipGraphCreate, projectId, scope) as Promise<ShipGraphCreateResult>,
+      createShipTemplate: (projectId) => client.request(IPC.shipTemplateCreate, projectId) as Promise<ShipTemplateCreateResult>,
       onShipConfigChanged: (projectId, cb) => {
         const unsub = client.subscribe(IPC.shipConfigChanged(projectId), cb as Listener)
         const release = holdShipConfigLease({

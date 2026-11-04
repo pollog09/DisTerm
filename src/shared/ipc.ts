@@ -354,6 +354,8 @@ export const IPC = {
   shipConfigRead: 'ship-config:read',
   /** Write the example `ship-graph.json`, only where no file exists. */
   shipGraphCreate: 'ship-config:create-graph',
+  /** Add the starter pipeline to a project's `.claude`, keeping everything already there. */
+  shipTemplateCreate: 'ship-config:create-template',
   /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while a view holds one, the core re-reads
    *  the config on a timer and pushes `shipConfigChanged` on a real change. */
   shipConfigSubscribe: 'ship-config:subscribe',

@@ -5,7 +5,11 @@ import type { ShipConfig, ShipPipeline } from '@shared/ship-config'
 import {
   agentGraphStructureKey,
   buildAgentGraphModel,
+  edgeInTransit,
+  edgeShowsDirection,
+  nextTransitChangeAt,
   reduceSubagents,
+  TRANSIT_WINDOW_MS,
   type AgentGraphInput,
   type GraphEdge,
   type GraphSessionInput
@@ -411,5 +415,164 @@ describe('agentGraphStructureKey', () => {
     expect(agentGraphStructureKey(two)).toBe(agentGraphStructureKey(one))
     expect(agentGraphStructureKey(stateChanged)).toBe(agentGraphStructureKey(one))
     expect(agentGraphStructureKey(newLine)).not.toBe(agentGraphStructureKey(one))
+  })
+})
+
+describe('what is in transit', () => {
+  const NOW = 1_000_000
+  const old = NOW - TRANSIT_WINDOW_MS - 1
+  const base = { id: 'e', source: 'a', target: 'b' }
+  const delivered = (lastEventTs: number): GraphEdge => ({ ...base, kind: 'message', latest: 'delivered', lastEventTs })
+
+  it('a landed message moves for a moment, then stops', () => {
+    expect(edgeInTransit(delivered(NOW - 1000), NOW)).toBe(true)
+    expect(edgeInTransit(delivered(old), NOW)).toBe(false)
+  })
+
+  it('a queued, failed or refused message has not passed along the line', () => {
+    for (const latest of ['queued', 'failed', 'refused'] as const) {
+      expect(edgeInTransit({ ...base, kind: 'message', latest, lastEventTs: NOW }, NOW), latest).toBe(false)
+    }
+  })
+
+  it('relations never move, whatever their clock says', () => {
+    for (const kind of ['context', 'dependency', 'opened'] as const) {
+      expect(edgeInTransit({ ...base, kind, lastEventTs: NOW, running: true, traversals: 1 }, NOW), kind).toBe(false)
+    }
+  })
+
+  it('a declared line nothing used does not move, and a maybe does not claim the route', () => {
+    expect(edgeInTransit({ ...base, kind: 'ship-next' }, NOW)).toBe(false)
+    expect(edgeInTransit({ ...base, kind: 'ship-reject', maybe: 1, lastEventTs: NOW }, NOW)).toBe(false)
+    expect(edgeInTransit({ ...base, kind: 'ship-next', traversals: 1, maybe: 1, running: true, lastEventTs: NOW }, NOW)).toBe(false)
+  })
+
+  it('a used line moves while its run goes on, and for a moment after it started', () => {
+    expect(edgeInTransit({ ...base, kind: 'ship-next', traversals: 1, running: true, movedAt: old }, NOW)).toBe(true)
+    expect(edgeInTransit({ ...base, kind: 'observed', traversals: 1, movedAt: NOW - 1 }, NOW)).toBe(true)
+    expect(edgeInTransit({ ...base, kind: 'ship-reject', traversals: 2, movedAt: old }, NOW)).toBe(false)
+  })
+
+  it('any later event on a line is a pulse, not a reason to move: motion reads only a confirmed move', () => {
+    expect(edgeInTransit({ ...base, kind: 'ship-next', traversals: 1, lastEventTs: NOW }, NOW)).toBe(false)
+    expect(nextTransitChangeAt([{ ...base, kind: 'observed', traversals: 1, movedAt: NOW - 1000, lastEventTs: NOW }], NOW)).toBe(NOW - 1000 + TRANSIT_WINDOW_MS)
+  })
+
+  it('a clock far ahead does not move a line for as long as the skew lasts', () => {
+    expect(edgeInTransit(delivered(NOW + TRANSIT_WINDOW_MS + 1), NOW)).toBe(false)
+  })
+
+  it('only a context link has no direction to show', () => {
+    expect(edgeShowsDirection({ kind: 'context' })).toBe(false)
+    for (const kind of ['message', 'dependency', 'opened', 'spawned', 'observed', 'ship-next', 'ship-reject'] as const) {
+      expect(edgeShowsDirection({ kind }), kind).toBe(true)
+    }
+  })
+
+  it('arms for the first moment to end, and not for a line a run is holding or one already still', () => {
+    expect(nextTransitChangeAt([], NOW)).toBeUndefined()
+    expect(nextTransitChangeAt([delivered(old)], NOW)).toBeUndefined()
+    expect(nextTransitChangeAt([{ ...base, kind: 'observed', traversals: 1, running: true, movedAt: NOW }], NOW)).toBeUndefined()
+    expect(nextTransitChangeAt([delivered(NOW - 5000), delivered(NOW - 1000)], NOW)).toBe(NOW - 5000 + TRANSIT_WINDOW_MS)
+  })
+
+  describe('from a real run', () => {
+    const pipeline: ShipPipeline = {
+      id: 'p', name: 'P',
+      stages: [{ id: 'i', agent: 'I' }, { id: 'd', agent: 'D' }, { id: 'r', agent: 'R' }],
+      edges: [{ from: 'i', to: 'd', kind: 'next' }, { from: 'd', to: 'r', kind: 'next' }, { from: 'r', to: 'i', kind: 'reject' }]
+    }
+    const ship: ShipConfig = {
+      machine: { kind: 'local', label: '' }, agents: [], commands: [], workflows: [], skills: [],
+      pipelines: [pipeline], graphSource: 'project', projectGraphPath: null, globalGraphPath: '/g',
+      projectGraphExists: true, globalGraphExists: false, warnings: []
+    }
+    const started = (id: string, type: string, ts: number): AgentGraphEvent => ({ kind: 'subagent-start', id: `s${id}`, ts, nodeId: 'a', subId: id, subagentType: type })
+    const ended = (id: string, ts: number): AgentGraphEvent => ({ kind: 'subagent-end', id: `e${id}`, ts, nodeId: 'a', subId: id })
+    const moving = (events: AgentGraphEvent[], now: number): string[] => {
+      const m = buildAgentGraphModel({ sessions: [session('a')], links: [], ropes: [], snapshot: snap(events), ship, now })
+      return m.edges.filter((e) => edgeInTransit(e, now)).map((e) => `${e.source.split(':').pop()}>${e.target.split(':').pop()}`).sort()
+    }
+    const LONG = TRANSIT_WINDOW_MS * 4
+
+    it('the line into the running stage moves, and the ones behind it do not', () => {
+      const now = LONG * 3
+      expect(moving([started('1', 'I', now - LONG)], now)).toEqual(['a>i'])
+      expect(moving([started('1', 'I', now - LONG * 2), ended('1', now - LONG), started('2', 'D', now - LONG + 1)], now)).toEqual(['i>d'])
+    })
+
+    it('a second entry into a stage moves only the line it came along', () => {
+      const now = LONG * 9
+      const t = now - LONG * 6
+      const events = [
+        started('1', 'I', t), ended('1', t + 1),
+        started('2', 'D', t + 2), ended('2', t + 3),
+        started('3', 'R', t + 4), ended('3', t + 5),
+        started('4', 'I', now - LONG)
+      ]
+      expect(moving(events, now)).toEqual(['r>i'])
+    })
+
+    it('nothing moves once it is over, and a stale run stops holding its line', () => {
+      const now = WORKING_STALE_MS * 3
+      expect(moving([started('1', 'I', 1), ended('1', 2)], now)).toEqual([])
+      expect(moving([started('1', 'I', 1)], now)).toEqual([])
+    })
+
+    describe('a run placed by a guess', () => {
+      // Two next stages share an agent, so `resolve` picks one, and nothing confirms which.
+      const fork: ShipPipeline = {
+        id: 'f', name: 'F',
+        stages: [{ id: 'a', agent: 'A' }, { id: 'b1', agent: 'B' }, { id: 'b2', agent: 'B' }, { id: 'c', agent: 'C' }],
+        edges: [{ from: 'a', to: 'b1', kind: 'next' }, { from: 'a', to: 'b2', kind: 'next' }, { from: 'b1', to: 'c', kind: 'next' }, { from: 'b2', to: 'c', kind: 'next' }]
+      }
+      const modelOf = (pipelines: ShipPipeline[], events: AgentGraphEvent[], now: number): GraphEdge[] =>
+        buildAgentGraphModel({ sessions: [session('a')], links: [], ropes: [], snapshot: snap(events), ship: { ...ship, pipelines }, now }).edges
+      const line = (edges: GraphEdge[], from: string, to: string): GraphEdge | undefined =>
+        edges.find((e) => e.source.endsWith(`:${from}`) && e.target.endsWith(`:${to}`))
+
+      it('counts the line into it and does not move it, running or just started', () => {
+        const now = LONG * 3
+        const edges = modelOf([fork], [started('1', 'A', now - 3), ended('1', now - 2), started('2', 'B', now - 1)], now)
+        const into = line(edges, 'a', 'b1')!
+        expect(into.traversals).toBe(1)
+        expect(into.running).toBeUndefined()
+        expect(into.movedAt).toBeUndefined()
+        expect(into.lastEventTs).toBe(now - 1) // the pulse keeps its event
+        expect(edgeInTransit(into, now)).toBe(false)
+        expect(nextTransitChangeAt(edges.filter((e) => e === into), now)).toBeUndefined()
+      })
+
+      it('does not move the line out of it either, though the run after it is certain', () => {
+        const now = LONG * 3
+        const events = [started('1', 'A', now - 5), ended('1', now - 4), started('2', 'B', now - 3), ended('2', now - 2), started('3', 'C', now - 1)]
+        const out = line(modelOf([fork], events, now), 'b1', 'c')!
+        expect(out.traversals).toBe(1)
+        expect(edgeInTransit(out, now)).toBe(false)
+      })
+
+      it('does not move the entry into a stage picked between two with no order', () => {
+        const now = LONG * 3
+        const twins: ShipPipeline = { id: 't', name: 'T', stages: [{ id: 'x1', agent: 'X' }, { id: 'x2', agent: 'X' }], edges: [] }
+        const entry = modelOf([twins], [started('1', 'X', now - 1)], now).find((e) => e.kind === 'spawned')!
+        expect(entry.traversals).toBe(1)
+        expect(edgeInTransit(entry, now)).toBe(false)
+      })
+
+      it('an unambiguous stage still moves, so the rule is not simply off', () => {
+        const now = LONG * 3
+        const edges = modelOf([pipeline], [started('1', 'I', now - 2), ended('1', now - 1)], now)
+        expect(edgeInTransit(edges.find((e) => e.kind === 'spawned')!, now)).toBe(true)
+      })
+    })
+
+    it('with no file, the observed line moves the same way, and the unattached template never', () => {
+      const now = LONG * 3
+      const noFile = (events: AgentGraphEvent[]): GraphEdge[] =>
+        buildAgentGraphModel({ sessions: [session('a')], links: [], ropes: [], snapshot: snap(events), ship: null, now }).edges
+      const observed = noFile([started('1', 'x', now - LONG), ended('1', now - LONG + 1), started('2', 'y', now - LONG + 2)])
+      expect(observed.filter((e) => edgeInTransit(e, now)).map((e) => e.id)).toEqual(['seq:a:x:y'])
+      expect(moving([], now)).toEqual([])
+    })
   })
 })

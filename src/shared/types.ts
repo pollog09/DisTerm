@@ -1117,6 +1117,7 @@ export interface AgentGraphApi {
   onEvent(listener: (event: import('./agent-graph').AgentGraphEvent) => void): () => void
   readShipConfig(projectId: string): Promise<import('./ship-config').ShipConfigResult>
   createShipGraph(projectId: string, scope: import('./ship-config').ShipScope): Promise<import('./ship-config').ShipGraphCreateResult>
+  createShipTemplate(projectId: string): Promise<import('./ship-config').ShipTemplateCreateResult>
   /** Subscribe to config changes on the machine this project runs on; returns an unsubscribe. */
   onShipConfigChanged(projectId: string, cb: () => void): () => void
 }
