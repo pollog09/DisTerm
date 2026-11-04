@@ -96,7 +96,9 @@ export class AgentGraphLog {
    * oldest key's row goes with it and counts as dropped, so the view says its counts have a horizon.
    */
   recordAccess(nodeId: string, access: ToolAccess, now = Date.now()): void {
-    const id = `access:${nodeId}:${access.subId ?? ''}:${access.target}:${access.name}`
+    // A typed `/name` is its own row: the person typing it and the model calling it are different
+    // facts, and the view only draws the typed kind when the machine says it is a skill or command.
+    const id = `access:${nodeId}:${access.subId ?? ''}:${access.target}:${access.name}${access.typed ? ':typed' : ''}`
     const count = (this.accessCounts.get(id) ?? 0) + 1
     this.accessCounts.delete(id)
     this.accessCounts.set(id, count)

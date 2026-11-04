@@ -85,8 +85,14 @@ const ship = (over: Partial<ShipConfig> = {}): ShipConfig => ({
   ...over
 })
 
-const build = (over: Partial<AgentGraphInput>) =>
+const buildWithHarness = (over: Partial<AgentGraphInput>) =>
   buildAgentGraphModel({ sessions: [], links: [], ropes: [], snapshot: snap([]), ship: null, now: 1000, ...over })
+/** Most of these tests are about the sessions, subagents and lines. The Harness box and its lines are
+ *  asserted in their own describe, and left out here so those counts stay about one thing each. */
+const build = (over: Partial<AgentGraphInput>) => {
+  const m = buildWithHarness(over)
+  return { ...m, nodes: m.nodes.filter((n) => n.kind !== 'harness'), edges: m.edges.filter((e) => e.kind !== 'harness') }
+}
 const edge = (edges: GraphEdge[], id: string): GraphEdge | undefined => edges.find((e) => e.id === id)
 
 describe('messages', () => {
@@ -396,9 +402,9 @@ describe('notices', () => {
     expect(build({ snapshot: snap([]) }).notices).toEqual([])
   })
 
-  it('names the Claude-only and shipit limits, when they apply', () => {
-    expect(build({ sessions: [session('a', { agentId: 'codex' })] }).notices.join()).toMatch(/Claude-only/)
-    expect(build({ sessions: [session('a')] }).notices.join()).not.toMatch(/Claude-only/)
+  it('names the Claude-hooks-only and shipit limits, when they apply', () => {
+    expect(build({ sessions: [session('a', { agentId: 'codex' })] }).notices.join()).toMatch(/Claude hooks only/)
+    expect(build({ sessions: [session('a')] }).notices.join()).not.toMatch(/Claude hooks only/)
     expect(build({ sessions: [session('a')], snapshot: snap([start('a', '1', 'shipit-agent', 1)]) }).notices.join()).toMatch(/shipit/)
   })
 })
@@ -413,5 +419,216 @@ describe('agentGraphStructureKey', () => {
     expect(agentGraphStructureKey(two)).toBe(agentGraphStructureKey(one))
     expect(agentGraphStructureKey(stateChanged)).toBe(agentGraphStructureKey(one))
     expect(agentGraphStructureKey(newLine)).not.toBe(agentGraphStructureKey(one))
+  })
+})
+
+const access = (
+  nodeId: string,
+  target: 'skill' | 'mcp',
+  name: string,
+  count: number,
+  ts: number,
+  extra: Partial<Extract<AgentGraphEvent, { kind: 'access' }>> = {}
+): AgentGraphEvent => ({
+  kind: 'access',
+  id: `access:${nodeId}:${extra.subId ?? ''}:${target}:${name}${extra.typed ? ':typed' : ''}`,
+  ts,
+  nodeId,
+  target,
+  name,
+  count,
+  ...extra
+})
+
+describe('skills and MCP servers that were used', () => {
+  it('one box per skill or server, shared by every session that used it, with summed counts', () => {
+    const m = build({
+      sessions: [session('a'), session('b')],
+      snapshot: snap([
+        access('a', 'skill', 'grill', 2, 10),
+        access('b', 'skill', 'grill', 3, 30),
+        access('a', 'mcp', 'demo', 4, 20, { tool: 'echo_it' }),
+        access('b', 'mcp', 'demo', 1, 40, { tool: 'other' })
+      ])
+    })
+    expect(m.nodes.filter((n) => n.kind === 'skill' || n.kind === 'mcp')).toEqual([
+      { id: 'skill:grill', kind: 'skill', title: 'grill', runs: 5, lastEventTs: 30 },
+      { id: 'mcp:demo', kind: 'mcp', title: 'demo', subtitle: 'other', runs: 5, lastEventTs: 40 }
+    ])
+    expect(edge(m.edges, 'uses:session:a:skill:grill')).toMatchObject({ kind: 'uses-skill', traversals: 2, lastEventTs: 10, subject: 'grill' })
+    expect(edge(m.edges, 'uses:session:b:skill:grill')).toMatchObject({ traversals: 3 })
+    expect(edge(m.edges, 'uses:session:a:mcp:demo')).toMatchObject({ kind: 'uses-mcp', traversals: 4, tool: 'echo_it' })
+  })
+
+  it('a session that used one gets a pulse from it', () => {
+    const m = build({ sessions: [session('a')], snapshot: snap([access('a', 'skill', 'grill', 1, 77)]) })
+    expect(m.nodes.find((n) => n.id === 'session:a')!.lastEventTs).toBe(77)
+  })
+
+  it('what is only installed is not a box: nothing drawn without a call', () => {
+    const m = build({ sessions: [session('a')], ship: ship({ skills: ['grill', 'tdd'], mcpServers: [{ name: 'demo', scope: 'global', transport: 'stdio' }], mcpRead: true }) })
+    expect(m.nodes.some((n) => n.kind === 'skill' || n.kind === 'mcp')).toBe(false)
+    expect(m.notices.join()).not.toMatch(/app run/)
+  })
+
+  it('a subagent drawn on a stage makes its calls leave that stage', () => {
+    const m = build({
+      sessions: [session('p')],
+      ship: ship(),
+      snapshot: snap([start('p', 'sub1', 'implementer', 10), end('p', 'sub1', 20), access('p', 'mcp', 'demo', 2, 15, { subId: 'sub1', subType: 'implementer' })])
+    })
+    expect(edge(m.edges, 'uses:stage:p:ship-change:impl:mcp:demo')).toMatchObject({ source: 'stage:p:ship-change:impl', traversals: 2 })
+    expect(edge(m.edges, 'uses:session:p:mcp:demo')).toBeUndefined()
+  })
+
+  it('an observed subagent box is the caller when there is no pipeline', () => {
+    const m = build({
+      sessions: [session('p')],
+      snapshot: snap([start('p', 'sub1', 'general-purpose', 10), access('p', 'skill', 'grill', 1, 15, { subId: 'sub1' })])
+    })
+    expect(edge(m.edges, 'uses:sub:p:general-purpose:skill:grill')).toMatchObject({ source: 'sub:p:general-purpose' })
+  })
+
+  it('an uncertain run, an unknown subagent and a subagent drawn twice fall back to the session', () => {
+    const twoStages = ship({
+      pipelines: [{
+        id: 'x', name: 'X',
+        stages: [{ id: 'impl', agent: 'implementer' }, { id: 'r1', agent: 'reviewer' }, { id: 'fix', agent: 'implementer' }, { id: 'r2', agent: 'reviewer' }],
+        edges: [{ from: 'impl', to: 'r1', kind: 'next' }, { from: 'r1', to: 'fix', kind: 'next' }, { from: 'fix', to: 'r2', kind: 'next' }, { from: 'r1', to: 'impl', kind: 'reject' }]
+      }]
+    })
+    const m = build({
+      sessions: [session('p')],
+      ship: twoStages,
+      snapshot: snap([
+        start('p', 'a', 'implementer', 10), end('p', 'a', 11),
+        start('p', 'b', 'reviewer', 12), end('p', 'b', 13),
+        start('p', 'c', 'implementer', 14), end('p', 'c', 15), // after r1: a rejection or the next stage, hooks cannot tell
+        access('p', 'skill', 'grill', 1, 20, { subId: 'c' }),
+        access('p', 'skill', 'grill', 1, 21, { subId: 'never-seen' })
+      ])
+    })
+    expect(edge(m.edges, 'uses:session:p:skill:grill')).toMatchObject({ traversals: 2 })
+    expect(m.edges.filter((e) => e.kind === 'uses-skill')).toHaveLength(1)
+  })
+
+  it('a typed /name is drawn only when the machine has that skill or command', () => {
+    const events = [
+      access('a', 'skill', 'grill', 1, 10, { typed: true }),
+      access('a', 'skill', 'clear', 1, 11, { typed: true }),
+      access('a', 'skill', 'ship-change', 2, 12, { typed: true })
+    ]
+    expect(build({ sessions: [session('a')], snapshot: snap(events) }).nodes.some((n) => n.kind === 'skill')).toBe(false)
+    const m = build({ sessions: [session('a')], ship: ship({ skills: ['grill'], commands: ['ship-change'] }), snapshot: snap(events) })
+    expect(m.nodes.filter((n) => n.kind === 'skill').map((n) => n.title).sort()).toEqual(['grill', 'ship-change'])
+    expect(edge(m.edges, 'uses:session:a:skill:ship-change')).toMatchObject({ typedCalls: 2, traversals: 2 })
+  })
+
+  it('a typed call and the model calling the same skill are one box with both counted', () => {
+    const m = build({
+      sessions: [session('a')],
+      ship: ship({ skills: ['grill'] }),
+      snapshot: snap([access('a', 'skill', 'grill', 1, 10), access('a', 'skill', 'grill', 2, 20, { typed: true })])
+    })
+    expect(m.nodes.find((n) => n.id === 'skill:grill')).toMatchObject({ runs: 3 })
+    expect(edge(m.edges, 'uses:session:a:skill:grill')).toMatchObject({ traversals: 3, typedCalls: 2 })
+    expect(m.usage.skills).toEqual([{ name: 'grill', calls: 3, lastEventTs: 20, typedCalls: 2 }])
+  })
+
+  it('an event of a session this canvas does not hold draws nothing', () => {
+    const m = build({ sessions: [session('a')], snapshot: snap([access('elsewhere', 'skill', 'grill', 5, 10)]) })
+    expect(m.nodes.some((n) => n.kind === 'skill')).toBe(false)
+    expect(m.usage).toEqual({ skills: [], mcp: [] })
+  })
+
+  it('keeps the newest 40 boxes, names the rest, and still lists them all in the usage', () => {
+    const events = Array.from({ length: 43 }, (_, i) => access('a', 'skill', `s${String(i).padStart(2, '0')}`, 1, 100 + i))
+    const m = build({ sessions: [session('a')], snapshot: snap(events) })
+    expect(m.nodes.filter((n) => n.kind === 'skill')).toHaveLength(40)
+    expect(m.nodes.some((n) => n.id === 'skill:s00')).toBe(false)
+    expect(m.nodes.some((n) => n.id === 'skill:s42')).toBe(true)
+    expect(m.notices).toContain('Only the 40 most recently used skills and MCP servers are drawn; 3 more are not: s02, s01, s00.')
+    expect(m.edges.filter((e) => e.kind === 'uses-skill')).toHaveLength(40)
+    expect(m.usage.skills).toHaveLength(43)
+  })
+
+  it('says the counts cover this app run only when something is drawn', () => {
+    const m = build({ sessions: [session('a')], snapshot: snap([access('a', 'mcp', 'demo', 1, 5)]) })
+    expect(m.notices).toContain('Skill and MCP counts cover this app run.')
+  })
+})
+
+describe('the Harness box', () => {
+  const harness = (m: ReturnType<typeof buildWithHarness>) => m.nodes.filter((n) => n.kind === 'harness')
+
+  it('is one per machine, linked to every session on it, pointing at the session', () => {
+    const remote = { kind: 'ssh' as const, label: 'box.example' }
+    const m = buildWithHarness({ sessions: [session('a'), session('b'), session('c', { machine: remote })] })
+    expect(harness(m).map((n) => n.id)).toEqual(['harness:local:this computer', 'harness:ssh:box.example'])
+    expect(m.edges.filter((e) => e.kind === 'harness').map((e) => [e.id, e.source, e.target, e.flow])).toEqual([
+      ['harness:harness:local:this computer:session:a', 'harness:local:this computer', 'session:a', 'reverse'],
+      ['harness:harness:local:this computer:session:b', 'harness:local:this computer', 'session:b', 'reverse'],
+      ['harness:harness:ssh:box.example:session:c', 'harness:ssh:box.example', 'session:c', 'reverse']
+    ])
+  })
+
+  it('does not exist with no session box on the machine', () => {
+    expect(harness(buildWithHarness({ sessions: [] }))).toEqual([])
+    expect(harness(buildWithHarness({ sessions: [], ship: ship() }))).toEqual([])
+  })
+
+  it('never links a note, a ghost or a template', () => {
+    const m = buildWithHarness({
+      sessions: [session('a'), session('n', { kind: 'note', agentId: undefined })],
+      ship: ship(),
+      links: [{ source: 'a', target: 'n' }],
+      snapshot: snap([msg('a', 'gone', 'delivered')])
+    })
+    expect(m.edges.filter((e) => e.kind === 'harness').map((e) => e.target)).toEqual(['session:a'])
+  })
+
+  it('counts sessions and the running ones, and states the config only where it is known', () => {
+    const sessions = [session('a', { state: 'working' }), session('b', { state: 'done' }), session('c')]
+    const none = harness(buildWithHarness({ sessions }))[0]
+    expect(none.harness).toEqual({ sessions: 3, running: 1 })
+    const known = harness(buildWithHarness({ sessions, ship: ship({ skills: ['grill', 'tdd'], mcpServers: [{ name: 'demo', scope: 'global', transport: 'stdio' }], mcpRead: true }) }))[0]
+    expect(known.harness).toEqual({ sessions: 3, running: 1, skillsInstalled: 2, mcpConfigured: 1 })
+    const unread = harness(buildWithHarness({ sessions, ship: ship({ skills: ['grill'], mcpRead: false }) }))[0]
+    expect(unread.harness).toEqual({ sessions: 3, running: 1, skillsInstalled: 1 })
+  })
+
+  it('does not claim another machine\'s config for a session elsewhere', () => {
+    const remote = { kind: 'ssh' as const, label: 'box.example' }
+    const m = buildWithHarness({ sessions: [session('a'), session('c', { machine: remote })], ship: ship({ skills: ['grill'], mcpRead: true }) })
+    expect(harness(m).map((n) => n.harness)).toEqual([
+      { sessions: 1, running: 0, skillsInstalled: 1, mcpConfigured: 0 },
+      { sessions: 1, running: 0 }
+    ])
+    const hosted = buildWithHarness({
+      sessions: [session('c', { machine: remote }), session('d', { machine: { kind: 'ssh', label: 'other' } })],
+      ship: ship({ machine: { kind: 'ssh', label: 'box.example' }, skills: ['grill', 'tdd'] })
+    })
+    expect(harness(hosted).map((n) => [n.subtitle, n.harness!.skillsInstalled])).toEqual([['box.example', 2], ['other', undefined]])
+  })
+
+  it('moves on the newest of the session\'s events and the status clock', () => {
+    const m = buildWithHarness({
+      sessions: [session('a', { lastStateAt: 900 })],
+      snapshot: snap([access('a', 'skill', 'grill', 1, 500)])
+    })
+    expect(m.edges.find((e) => e.kind === 'harness')!.lastEventTs).toBe(900)
+    expect(harness(m)[0].lastEventTs).toBe(900)
+    const quiet = buildWithHarness({ sessions: [session('a')] })
+    expect(quiet.edges.find((e) => e.kind === 'harness')!.lastEventTs).toBeUndefined()
+  })
+
+  it('does not change a session box\'s own pulse', () => {
+    const m = buildWithHarness({ sessions: [session('a', { lastStateAt: 900 })] })
+    expect(m.nodes.find((n) => n.id === 'session:a')!.lastEventTs).toBeUndefined()
+  })
+
+  it('a plain terminal nobody touches stays off the graph, so no harness appears for it', () => {
+    const m = buildWithHarness({ sessions: [session('plain', { agentId: undefined })] })
+    expect(m.nodes).toEqual([])
   })
 })

@@ -31,6 +31,7 @@
  */
 import {
   deliveryClass,
+  type AgentGraphAccessEvent,
   type AgentGraphEvent,
   type AgentGraphSnapshot,
   type DeliveryClass
@@ -38,7 +39,7 @@ import {
 import { WORKING_STALE_MS } from '@shared/agents/stale'
 import { splitNextCycle, type ShipAgent, type ShipAgentColor, type ShipConfig, type ShipPipeline, type ShipStage } from '@shared/ship-config'
 
-export type GraphNodeKind = 'session' | 'note' | 'ghost' | 'subagent' | 'stage'
+export type GraphNodeKind = 'session' | 'note' | 'ghost' | 'subagent' | 'stage' | 'harness' | 'skill' | 'mcp'
 
 export type GraphActivity = 'idle' | 'running' | 'done' | 'stale'
 
@@ -59,6 +60,9 @@ export interface GraphSessionInput {
   outcome?: 'succeeded' | 'failed'
   /** It was handed new work it has not finished (`station-handover`). */
   handedOver?: boolean
+  /** When the status store last saw a hook event or a transition for this session: the clock the
+   *  Harness line moves on. Absent = none this app run. */
+  lastStateAt?: number
 }
 
 export interface GraphLinkInput {
@@ -98,6 +102,18 @@ export interface GraphNode {
   description?: string
   /** Newest event that touched this node, for the arrival pulse. */
   lastEventTs?: number
+  /** `harness` only. A figure the machine's config could not state is absent, never 0. */
+  harness?: HarnessFacts
+}
+
+/** What the Harness box says about one machine. */
+export interface HarnessFacts {
+  sessions: number
+  running: number
+  /** Skills installed on that machine; absent when the config is not known for it. */
+  skillsInstalled?: number
+  /** MCP servers its config declares; absent when the config was not read for it. */
+  mcpConfigured?: number
 }
 
 export type GraphEdgeKind =
@@ -109,6 +125,9 @@ export type GraphEdgeKind =
   | 'observed'
   | 'ship-next'
   | 'ship-reject'
+  | 'harness'
+  | 'uses-skill'
+  | 'uses-mcp'
 
 export type DeliveryCounts = Record<DeliveryClass, number>
 
@@ -132,11 +151,31 @@ export interface GraphEdge {
   /** Work moved along a route the ship-graph file does not declare. */
   undeclared?: boolean
   lastEventTs?: number
+  /** Which way the dot runs when it differs from the way the line points. A harness line points from
+   *  the harness to its sessions, which ranks the harness leftmost, but the hooks flow the other way. */
+  flow?: 'reverse'
+  /** `uses-*` only: the skill or server name, the newest MCP tool called, and how many of the calls
+   *  the person typed as `/name` rather than the model calling them. */
+  subject?: string
+  tool?: string
+  typedCalls?: number
+}
+
+/** One skill or MCP server that was used, whether or not it is drawn as a box. */
+export interface GraphUsage {
+  name: string
+  calls: number
+  lastEventTs: number
+  /** MCP only: the newest tool called. */
+  tool?: string
+  typedCalls: number
 }
 
 export interface AgentGraphModel {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  /** Everything used this app run in this project, uncapped, for the Harness panel. */
+  usage: { skills: GraphUsage[]; mcp: GraphUsage[] }
   notices: string[]
   /** When the next open run stops being claimed as running. Absent = nothing is open, so nothing
    *  about this picture can change until an event arrives. */
@@ -155,6 +194,10 @@ export interface AgentGraphInput {
 /** A session that started more distinct agent types than this is someone's outlier, and the box per
  *  type would bury the graph. What is dropped is named in a notice. */
 export const MAX_OBSERVED_TYPES = 24
+
+/** Skill and MCP boxes drawn. They converge from every session, so they grow with what is used, not
+ *  with the canvas. The newest are kept and what is dropped is named. */
+export const MAX_ACCESS_TARGETS = 40
 
 const UNKNOWN_SUBAGENT = 'subagent'
 
@@ -471,13 +514,30 @@ function placeRuns(
   return placement
 }
 
+/** Where the graph is being built: boxes, lines, notices, and which box each subagent was drawn in, so
+ *  a skill it called can be drawn leaving that box. A subagent drawn in two places, or in none, or only
+ *  as a guess, is recorded as `null` and its calls leave its session instead. */
+interface GraphBuild {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  notices: string[]
+  subBox: Map<string, Set<string | null>>
+}
+
+function noteSubBox(out: GraphBuild, parent: string, subId: string, box: string | null): void {
+  const key = `${parent}:${subId}`
+  const set = out.subBox.get(key) ?? new Set<string | null>()
+  set.add(box)
+  out.subBox.set(key, set)
+}
+
 const stageNodeId = (scope: string, pipelineId: string, stageId: string): string =>
   `stage:${scope}:${pipelineId}:${stageId}`
 
 /** One pipeline as boxes and declared edges, lit by the runs a session made of it (none = a template
  *  showing the configured process before anything has run). */
 function addPipeline(
-  out: { nodes: GraphNode[]; edges: GraphEdge[]; notices: string[] },
+  out: GraphBuild,
   pipeline: ShipPipeline,
   scope: string,
   sessionId: string | null,
@@ -490,6 +550,13 @@ function addPipeline(
   const declared = new Set(pipeline.edges.map((e) => `${e.from}>${e.to}`))
   const placement = placeRuns(pipeline, runs, preds, order, out.notices)
   const stageOfRun = placement.certain
+  if (sessionId) {
+    // A guess is a stage drawn for want of a better one: a skill called from it is the session's.
+    for (const run of runs) {
+      const stage = stageOfRun.get(run)
+      noteSubBox(out, sessionId, run.subId, stage && !placement.guessed.has(run) ? stageNodeId(scope, pipeline.id, stage.id) : null)
+    }
+  }
 
   // Walk the runs: which stage followed which, and whether a move went backwards.
   const traversals = new Map<string, { from: string; to: string; count: number; loop: boolean; ts: number }>()
@@ -602,7 +669,7 @@ function addPipeline(
 
 /** Subagents with no pipeline to map onto: one box per agent type, joined by what was observed. */
 function addObserved(
-  out: { nodes: GraphNode[]; edges: GraphEdge[]; notices: string[] },
+  out: GraphBuild,
   sessionId: string,
   runs: readonly SubRun[],
   agents: ReadonlyMap<string, ShipAgent>,
@@ -614,6 +681,7 @@ function addObserved(
     out.notices.push(`A session started ${types.length} agent types; only the first ${MAX_OBSERVED_TYPES} are drawn.`)
   }
   const nodeId = (type: string): string => `sub:${sessionId}:${type}`
+  for (const run of runs) noteSubBox(out, sessionId, run.subId, shown.has(run.type) ? nodeId(run.type) : null)
   for (const type of shown) {
     const typeRuns = runs.filter((r) => r.type === type)
     const agent = agents.get(type)
@@ -661,13 +729,181 @@ function addObserved(
   out.edges.push(...edges.values())
 }
 
+const skillBoxId = (name: string): string => `skill:${name}`
+const mcpBoxId = (server: string): string => `mcp:${server}`
+
+interface AccessResult {
+  usage: AgentGraphModel['usage']
+  /** The newest drawn call per session, for that session's own pulse. */
+  newestBySession: Map<string, number>
+}
+
+/**
+ * Skills and MCP servers that were used, as boxes shared by every session of the project, with a line
+ * from whoever called them. A session's box is the fallback caller; a subagent's calls leave the box
+ * its run was drawn in, when that is certain.
+ *
+ * A typed `/name` is no tool call: it is drawn only when the machine's config says it is a skill or a
+ * command, so a built-in like /clear and a stray token draw nothing. With no config, none are.
+ */
+function addAccess(
+  out: GraphBuild,
+  events: readonly AgentGraphEvent[],
+  known: ReadonlyMap<string, GraphSessionInput>,
+  ship: ShipConfig | null
+): AccessResult {
+  const installed = new Set([...(ship?.skills ?? []), ...(ship?.commands ?? [])])
+  const accesses = events.filter(
+    (e): e is AgentGraphAccessEvent => e.kind === 'access' && known.has(e.nodeId) && (!e.typed || installed.has(e.name))
+  )
+  interface Target { kind: 'skill' | 'mcp'; name: string; calls: number; typedCalls: number; ts: number; tool?: string; toolTs: number }
+  const targets = new Map<string, Target>()
+  for (const e of accesses) {
+    const id = e.target === 'skill' ? skillBoxId(e.name) : mcpBoxId(e.name)
+    const t = targets.get(id) ?? { kind: e.target, name: e.name, calls: 0, typedCalls: 0, ts: 0, toolTs: 0 }
+    t.calls += e.count
+    if (e.typed) t.typedCalls += e.count
+    t.ts = Math.max(t.ts, e.ts)
+    if (e.tool && e.ts >= t.toolTs) {
+      t.tool = e.tool
+      t.toolTs = e.ts
+    }
+    targets.set(id, t)
+  }
+  const usageOf = (kind: 'skill' | 'mcp'): GraphUsage[] =>
+    [...targets.values()]
+      .filter((t) => t.kind === kind)
+      .map((t) => ({ name: t.name, calls: t.calls, lastEventTs: t.ts, typedCalls: t.typedCalls, ...(t.tool ? { tool: t.tool } : {}) }))
+      .sort((a, b) => b.lastEventTs - a.lastEventTs || a.name.localeCompare(b.name))
+  const usage = { skills: usageOf('skill'), mcp: usageOf('mcp') }
+
+  const drawn = new Set([...targets.entries()].sort((a, b) => b[1].ts - a[1].ts).slice(0, MAX_ACCESS_TARGETS).map(([id]) => id))
+  if (targets.size > drawn.size) {
+    const left = [...targets.entries()].filter(([id]) => !drawn.has(id)).sort((a, b) => b[1].ts - a[1].ts).map(([, t]) => t.name)
+    out.notices.push(`Only the ${MAX_ACCESS_TARGETS} most recently used skills and MCP servers are drawn; ${targets.size - drawn.size} more are not: ${left.slice(0, 8).join(', ')}${left.length > 8 ? ', …' : ''}.`)
+  }
+  for (const [id, t] of targets) {
+    if (!drawn.has(id)) continue
+    out.nodes.push({
+      id,
+      kind: t.kind,
+      title: t.name,
+      ...(t.kind === 'mcp' && t.tool ? { subtitle: t.tool } : {}),
+      runs: t.calls,
+      lastEventTs: t.ts
+    })
+  }
+
+  const boxOf = (e: AgentGraphAccessEvent): string => {
+    const own = `session:${e.nodeId}`
+    if (!e.subId) return own
+    const boxes = out.subBox.get(`${e.nodeId}:${e.subId}`)
+    return boxes && boxes.size === 1 && !boxes.has(null) ? [...boxes][0]! : own
+  }
+  const lines = new Map<string, GraphEdge>()
+  const newestBySession = new Map<string, number>()
+  for (const e of accesses) {
+    const to = e.target === 'skill' ? skillBoxId(e.name) : mcpBoxId(e.name)
+    if (!drawn.has(to)) continue
+    const from = boxOf(e)
+    const id = `uses:${from}:${to}`
+    const line = lines.get(id) ?? {
+      id,
+      source: from,
+      target: to,
+      kind: e.target === 'skill' ? ('uses-skill' as const) : ('uses-mcp' as const),
+      traversals: 0,
+      subject: e.name,
+      typedCalls: 0
+    }
+    line.traversals! += e.count
+    if (e.typed) line.typedCalls! += e.count
+    if (e.ts >= (line.lastEventTs ?? 0)) {
+      line.lastEventTs = e.ts
+      if (e.tool) line.tool = e.tool
+    }
+    lines.set(id, line)
+    newestBySession.set(e.nodeId, Math.max(newestBySession.get(e.nodeId) ?? 0, e.ts))
+  }
+  out.edges.push(...lines.values())
+  if (drawn.size) out.notices.push('Skill and MCP counts cover this app run.')
+  return { usage, newestBySession }
+}
+
+/** The machine a session box belongs to, as the Harness box is keyed. */
+const machineKey = (m: GraphMachine): string => `${m.kind}:${m.label}`
+
+/** Does a ship config describe this machine? It is read through the project's own session, so an SSH
+ *  project's is the host's, and everything else is the core the session talks to. */
+function shipDescribes(ship: ShipConfig | null, machine: GraphMachine): ship is ShipConfig {
+  if (!ship) return false
+  return ship.machine.kind === 'ssh' ? machine.kind === 'ssh' && machine.label === ship.machine.label : machine.kind !== 'ssh'
+}
+
+/**
+ * One Harness box per machine that has a session box, linked to each of them. Sessions only: a note,
+ * a ghost and a template are not running anything. A figure the config cannot state for that machine
+ * is left off the box rather than shown as zero.
+ */
+function addHarness(
+  out: GraphBuild,
+  sessionBoxes: ReadonlyArray<{ node: GraphNode; stateAt: number }>,
+  ship: ShipConfig | null
+): void {
+  const byMachine = new Map<string, { machine: GraphMachine; members: typeof sessionBoxes[number][] }>()
+  for (const entry of sessionBoxes) {
+    const machine = entry.node.machine
+    if (!machine) continue
+    const cur = byMachine.get(machineKey(machine)) ?? { machine, members: [] }
+    cur.members.push(entry)
+    byMachine.set(machineKey(machine), cur)
+  }
+  // Harness boxes and their lines first, so the layout ranks them leftmost.
+  const harnessNodes: GraphNode[] = []
+  const harnessEdges: GraphEdge[] = []
+  for (const [key, { machine, members }] of byMachine) {
+    const id = `harness:${key}`
+    const known = shipDescribes(ship, machine)
+    const facts: HarnessFacts = {
+      sessions: members.length,
+      running: members.filter((m) => m.node.state === 'working').length,
+      ...(known ? { skillsInstalled: ship.skills.length } : {}),
+      ...(known && ship.mcpRead ? { mcpConfigured: ship.mcpServers.length } : {})
+    }
+    let newest = 0
+    for (const { node, stateAt } of members) {
+      const ts = Math.max(node.lastEventTs ?? 0, stateAt)
+      newest = Math.max(newest, ts)
+      harnessEdges.push({
+        id: `harness:${id}:${node.id}`,
+        source: id,
+        target: node.id,
+        kind: 'harness',
+        flow: 'reverse',
+        ...(ts ? { lastEventTs: ts } : {})
+      })
+    }
+    harnessNodes.push({
+      id,
+      kind: 'harness',
+      title: 'Harness',
+      subtitle: machine.label,
+      machine,
+      harness: facts,
+      ...(newest ? { lastEventTs: newest } : {})
+    })
+  }
+  out.nodes.push(...harnessNodes)
+  out.edges.unshift(...harnessEdges)
+}
+
 const zeroCounts = (): DeliveryCounts => ({ delivered: 0, queued: 0, failed: 0, refused: 0 })
 
 export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
   const { sessions, links, ropes, snapshot, ship, now } = input
   const known = new Map(sessions.map((s) => [s.id, s]))
   const nodeFor = (id: string): string => `session:${id}`
-  const out: { nodes: GraphNode[]; edges: GraphEdge[]; notices: string[] } = { nodes: [], edges: [], notices: [] }
+  const out: GraphBuild = { nodes: [], edges: [], notices: [], subBox: new Map() }
   const events = snapshot?.events ?? []
 
   // Messages. The buffer spans every project of this core, so a line is kept only if it touches this
@@ -763,6 +999,8 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
     if (!pipeline.stages.some((st) => ranTypes.has(st.agent))) addPipeline(out, pipeline, 'template', null, [], agents, now)
   }
 
+  const access = addAccess(out, events, known, ship)
+
   // Which sessions get a box: every agent, plus anything a line touches. A plain terminal nobody
   // talks to is canvas furniture, not a participant.
   const touched = new Set<string>()
@@ -770,6 +1008,7 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
     touched.add(e.source)
     touched.add(e.target)
   }
+  const sessionBoxes: Array<{ node: GraphNode; stateAt: number }> = []
   for (const s of sessions) {
     if (!s.agentId && !touched.has(nodeFor(s.id))) continue
     const lastDelivery = Math.max(
@@ -778,8 +1017,8 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
         .filter((m) => m.source === nodeFor(s.id) || m.target === nodeFor(s.id))
         .map((m) => m.lastEventTs ?? 0)
     )
-    const last = Math.max(lastDelivery, lastTsBySession.get(s.id) ?? 0)
-    out.nodes.push({
+    const last = Math.max(lastDelivery, lastTsBySession.get(s.id) ?? 0, access.newestBySession.get(s.id) ?? 0)
+    const box: GraphNode = {
       id: nodeFor(s.id),
       kind: s.kind === 'note' ? 'note' : 'session',
       title: s.title || s.id,
@@ -790,8 +1029,11 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
       ...(s.outcome ? { outcome: s.outcome } : {}),
       ...(s.handedOver ? { handedOver: true } : {}),
       ...(last ? { lastEventTs: last } : {})
-    })
+    }
+    out.nodes.push(box)
+    if (box.kind === 'session') sessionBoxes.push({ node: box, stateAt: s.lastStateAt ?? 0 })
   }
+  addHarness(out, sessionBoxes, ship)
   for (const id of ghosts) {
     // Deleted, or alive in another project of this core: the id cannot say which, so neither is claimed.
     out.nodes.push({ id: nodeFor(id), kind: 'ghost', title: 'Session outside this project', subtitle: id.slice(0, 16) })
@@ -807,7 +1049,7 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
   }
   const others = sessions.filter((s) => s.agentId && s.agentId !== 'claude')
   if (others.length) {
-    out.notices.push('Subagents are Claude-only: other CLIs appear as sessions and message lines.')
+    out.notices.push('Subagents, skills and MCP calls are read from Claude hooks only: other CLIs appear as sessions and message lines.')
   }
   if ([...runsByParent].some(([parent, runs]) => known.has(parent) && runs.some((r) => r.type === 'shipit-agent'))) {
     out.notices.push('/shipit delegates share one agent type (shipit-agent), so they cannot be told apart by stage.')
@@ -818,7 +1060,8 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
     .filter((at) => at > now)
   // One notice however many sessions hit it, and React keys the list on the text.
   const notices = [...new Set(out.notices)]
-  return staleAt.length ? { ...out, notices, nextStaleAt: Math.min(...staleAt) } : { ...out, notices }
+  const model = { nodes: out.nodes, edges: out.edges, usage: access.usage, notices }
+  return staleAt.length ? { ...model, nextStaleAt: Math.min(...staleAt) } : model
 }
 
 /**

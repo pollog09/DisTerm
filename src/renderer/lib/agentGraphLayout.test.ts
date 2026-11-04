@@ -106,3 +106,28 @@ describe('routeMidpoint', () => {
     expect(routeMidpoint([])).toEqual({ x: 0, y: 0 })
   })
 })
+
+describe('the harness, and what is used', () => {
+  const kinds = (...pairs: Array<[string, GraphNodeKind]>) => pairs.map(([id, kind]) => ({ id, kind }))
+
+  it('the harness ranks left of its sessions and what they use ranks right, however the edges are listed', () => {
+    const graphNodes = kinds(['skill', 'skill'], ['s1', 'session'], ['h', 'harness'], ['s2', 'session'])
+    const edges = [e('s1', 'skill', 'uses-skill'), e('s2', 'skill', 'uses-skill'), e('h', 's1', 'harness'), e('h', 's2', 'harness')]
+    const { positions } = layoutAgentGraph(graphNodes, edges)
+    expect(positions.get('h')!.x).toBeLessThan(positions.get('s1')!.x)
+    expect(positions.get('h')!.x).toBeLessThan(positions.get('s2')!.x)
+    expect(positions.get('s1')!.x).toBeLessThan(positions.get('skill')!.x)
+  })
+
+  it('the harness stays left of an orchestrator and its station, which the opened line still orders', () => {
+    const graphNodes = kinds(['orch', 'session'], ['work', 'session'], ['h', 'harness'])
+    const edges = [e('orch', 'work', 'opened'), e('h', 'orch', 'harness'), e('h', 'work', 'harness')]
+    const { positions } = layoutAgentGraph(graphNodes, edges)
+    expect(positions.get('h')!.x).toBeLessThan(positions.get('orch')!.x)
+    expect(positions.get('orch')!.x).toBeLessThan(positions.get('work')!.x)
+  })
+
+  it('every new kind has a size', () => {
+    for (const kind of ['harness', 'skill', 'mcp'] as const) expect(agentGraphNodeSize(kind).width).toBeGreaterThan(100)
+  })
+})

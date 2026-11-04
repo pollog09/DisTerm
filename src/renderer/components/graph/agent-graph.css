@@ -242,6 +242,27 @@
   opacity: 0.6;
   cursor: default;
 }
+/* What was used, and where it runs. Border hues are the line hues (agentGraphEdgeText), so a box and the
+   lines into it read as one thing. */
+.agent-graph-node--skill {
+  border-color: color-mix(in srgb, var(--sys-teal) 60%, var(--border));
+}
+.agent-graph-node--mcp {
+  border-color: color-mix(in srgb, var(--sys-indigo) 60%, var(--border));
+}
+.agent-graph-node--harness {
+  border-style: dotted;
+  background: color-mix(in srgb, var(--panel) 92%, rgb(var(--tint-rgb)));
+}
+.agent-graph-node--skill .agent-graph-node__dot {
+  background: var(--sys-teal);
+}
+.agent-graph-node--mcp .agent-graph-node__dot {
+  background: var(--sys-indigo);
+}
+.agent-graph-node--harness .agent-graph-node__dot {
+  background: rgba(var(--tint-rgb), 0.45);
+}
 .agent-graph-node--note {
   background: color-mix(in srgb, var(--state-automation) 8%, var(--panel));
 }
@@ -374,6 +395,37 @@
   animation: agent-graph-arrive 900ms ease-out 1;
   pointer-events: none;
 }
+/* One dot per real event, once. FINITE, and deliberately NOT reading --nt-anim-state: the covered-canvas
+   gate sets it on this .react-flow too, and would freeze a dot in the middle of its line. The circle
+   sits at the origin of its own coordinate space and the motion path carries it. */
+.agent-graph-edge__dot {
+  offset-rotate: 0deg;
+  offset-distance: 0%;
+  opacity: 0;
+  animation: agent-graph-dot 900ms ease-in-out 1 forwards;
+  pointer-events: none;
+}
+.agent-graph-edge__dot[data-reverse] {
+  animation-name: agent-graph-dot-back;
+}
+@keyframes agent-graph-dot {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+@keyframes agent-graph-dot-back {
+  0% { offset-distance: 100%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { offset-distance: 0%; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-graph-edge__dot {
+    display: none;
+  }
+}
+
 @keyframes agent-graph-arrive {
   0% { opacity: 0.9; }
   100% { opacity: 0; }
@@ -478,4 +530,41 @@
 .ship-panel__agent-meta {
   flex-shrink: 0;
   color: var(--muted);
+}
+
+/* Harness panel */
+.harness-panel__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.harness-panel__list {
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.harness-panel__list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.harness-panel__list li[data-used] .harness-panel__name {
+  font-weight: 600;
+}
+.harness-panel__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.harness-panel__meta {
+  flex-shrink: 0;
+  max-width: 62%;
+  text-align: right;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.harness-panel__meta[data-status='enabled'] {
+  color: var(--success);
 }

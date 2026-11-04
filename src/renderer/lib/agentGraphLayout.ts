@@ -25,7 +25,10 @@ const NODE_SIZE: Readonly<Record<GraphNodeKind, { width: number; height: number 
   stage: { width: 196, height: 68 },
   subagent: { width: 196, height: 68 },
   note: { width: 168, height: 48 },
-  ghost: { width: 168, height: 48 }
+  ghost: { width: 168, height: 48 },
+  harness: { width: 196, height: 92 },
+  skill: { width: 168, height: 52 },
+  mcp: { width: 168, height: 52 }
 }
 
 export function agentGraphNodeSize(kind: GraphNodeKind): { width: number; height: number } {
@@ -50,7 +53,14 @@ export function layoutAgentGraph(
   const reversed = new Set<string>()
   const placed = new Set<string>()
   const lastPlaced = (kind?: GraphEdgeKind): boolean => kind === 'message'
-  const ordered = [...edges.filter((e) => !lastPlaced(e.kind)), ...edges.filter((e) => lastPlaced(e.kind))]
+  // The harness comes first of all: its lines point at every session, which ranks it leftmost, and
+  // what is used (skills, MCP) points away from sessions, so it lands to their right.
+  const firstPlaced = (kind?: GraphEdgeKind): boolean => kind === 'harness'
+  const ordered = [
+    ...edges.filter((e) => firstPlaced(e.kind)),
+    ...edges.filter((e) => !lastPlaced(e.kind) && !firstPlaced(e.kind)),
+    ...edges.filter((e) => lastPlaced(e.kind))
+  ]
   for (const e of ordered) {
     // An edge to a box that is not drawn would make dagre invent a zero-sized node for it.
     if (!ids.has(e.source) || !ids.has(e.target)) continue

@@ -141,7 +141,7 @@ describe('AgentGraphView', () => {
   it('draws a box per agent session, under its title', async () => {
     await mount()
     const names = [...document.querySelectorAll('.agent-graph-node__name')].map((n) => n.textContent)
-    expect(names.sort()).toEqual(['Orchestrator', 'Worker'])
+    expect(names.sort()).toEqual(['Harness', 'Orchestrator', 'Worker'])
   })
 
   it('reads through the session api, and lets go of every subscription on unmount', async () => {
@@ -205,7 +205,7 @@ describe('AgentGraphView', () => {
     shipResult.current = { ok: false, reason: 'This SSH project is not connected.' }
     await mount()
     expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('This SSH project is not connected.')
-    expect(document.querySelectorAll('.agent-graph-node').length).toBe(2)
+    expect(document.querySelectorAll('.agent-graph-node').length).toBe(3) // two sessions and their harness
   })
 
   it('a rejected read degrades to empty, no unhandled rejection', async () => {
@@ -462,5 +462,135 @@ describe('what an edge says', () => {
     expect(graphEdgeLabel({ ...base, kind: 'ship-next' })).toBe('')
     expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, traversals: 1 })).toBe('went back ×1')
     expect(graphEdgeLabel({ ...base, kind: 'observed', loop: true, undeclared: true, traversals: 1 })).toBe('re-entered ×1')
+  })
+})
+
+describe('harness, skills and MCP in the view', () => {
+  const accessEvent = (nodeId: string, target: 'skill' | 'mcp', name: string, count: number, tool?: string): AgentGraphEvent => ({
+    kind: 'access', id: `access:${nodeId}::${target}:${name}`, ts: 5, nodeId, target, name, count, ...(tool ? { tool } : {})
+  })
+  const click = async (el: Element | null) => {
+    expect(el).not.toBeNull()
+    await act(async () => (el as HTMLElement).click())
+  }
+  const headerButton = (text: string) =>
+    [...document.querySelectorAll('.agent-graph__button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement
+
+  it('draws one Harness box for the machine, with what it can say', async () => {
+    shipResult.current = configWith({ skills: ['grill', 'tdd'], mcpServers: [{ name: 'demo', scope: 'global', transport: 'stdio' }], mcpRead: true })
+    await mount()
+    const harness = document.querySelector('.agent-graph-node--harness')!
+    expect(harness.querySelector('.agent-graph-node__name')?.textContent).toBe('Harness')
+    expect([...harness.querySelectorAll('.agent-graph-badge')].map((b) => b.textContent)).toEqual(['2 sessions', '0 running', '2 skills installed', '1 MCP configured'])
+  })
+
+  it('leaves a figure off the Harness box when the config could not state it', async () => {
+    shipResult.current = { ok: false, reason: 'unset' }
+    await mount()
+    expect([...document.querySelectorAll('.agent-graph-node--harness .agent-graph-badge')].map((b) => b.textContent)).toEqual(['2 sessions', '0 running'])
+  })
+
+  it('a skill and an MCP server that were used become boxes, with their counts', async () => {
+    snapshotResult.current.events = [accessEvent('a', 'skill', 'grill', 3), accessEvent('b', 'mcp', 'demo', 2, 'echo_it')]
+    await mount()
+    const skill = document.querySelector('.agent-graph-node--skill')!
+    expect(skill.textContent).toContain('grill')
+    expect(skill.querySelector('.agent-graph-node__runs')?.textContent).toBe('×3')
+    const mcp = document.querySelector('.agent-graph-node--mcp')!
+    expect(mcp.textContent).toContain('echo_it')
+  })
+
+  it('the Harness button opens the inventory, and only one side panel shows at a time', async () => {
+    shipResult.current = configWith({ skills: ['grill', 'tdd'], agents: [{ name: 'implementer', scope: 'global' }] })
+    snapshotResult.current.events = [accessEvent('a', 'skill', 'grill', 3)]
+    await mount()
+    expect(document.querySelector('.harness-panel')).toBeNull()
+    await click(headerButton('Harness'))
+    expect(document.querySelector('.harness-panel')?.textContent).toContain('2 installed, 1 used this app run.')
+    expect(headerButton('Harness').getAttribute('aria-pressed')).toBe('true')
+    await click(headerButton('Ship process'))
+    expect(document.querySelector('.harness-panel')).toBeNull()
+    expect(document.querySelector('.ship-panel')?.textContent).toContain('implementer')
+    await click(headerButton('Ship process'))
+    expect(document.querySelector('.ship-panel')).toBeNull()
+  })
+
+  it('a click on a skill, an MCP or a Harness box opens the Harness panel, not a terminal', async () => {
+    snapshotResult.current.events = [accessEvent('a', 'skill', 'grill', 3), accessEvent('a', 'mcp', 'demo', 1)]
+    await mount()
+    for (const id of ['skill:grill', 'mcp:demo', 'harness:local:this computer']) {
+      await click(null === document.querySelector(`.react-flow__node[data-id="${id}"]`) ? null : document.querySelector(`.react-flow__node[data-id="${id}"]`))
+      expect(document.querySelector('.harness-panel'), id).not.toBeNull()
+      expect(document.querySelector('[data-testid="modal-terminal"]'), id).toBeNull()
+      await click(headerButton('Harness'))
+      expect(document.querySelector('.harness-panel')).toBeNull()
+    }
+  })
+
+  it('has no running animation of its own when idle: no dot until an event arrives', async () => {
+    snapshotResult.current.events = [accessEvent('a', 'skill', 'grill', 3)]
+    await mount()
+    expect(document.querySelector('.agent-graph-edge__dot')).toBeNull()
+  })
+})
+
+describe('FlowDots', () => {
+  let FlowDots: typeof import('./AgentGraphView').FlowDots
+  let MAX_FLOW_DOTS: number
+  beforeAll(async () => {
+    ;({ FlowDots, MAX_FLOW_DOTS } = await import('./AgentGraphView'))
+  })
+  const dots = (): SVGCircleElement[] => [...document.querySelectorAll<SVGCircleElement>('.agent-graph-edge__dot')]
+  const render = async (ts: number, extra: { reverse?: boolean } = {}) => {
+    await act(async () => root.render(<svg><FlowDots ts={ts} path="M 0 0 L 10 0" color="red" {...extra} /></svg>))
+  }
+  beforeEach(() => {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+  })
+
+  it('draws nothing for no event', async () => {
+    await render(0)
+    expect(dots()).toHaveLength(0)
+  })
+
+  it('draws one dot for an event, on the line\'s own path and in its colour', async () => {
+    await render(1000)
+    expect(dots()).toHaveLength(1)
+    expect(dots()[0].style.fill).toBe('red')
+    expect(dots()[0].style.offsetPath).toContain('M 0 0 L 10 0')
+    expect(dots()[0].hasAttribute('data-reverse')).toBe(false)
+  })
+
+  it('does not draw a second for the same event, and one more for each new one', async () => {
+    await render(1000)
+    await render(1000)
+    expect(dots()).toHaveLength(1)
+    await render(2000)
+    expect(dots()).toHaveLength(2)
+  })
+
+  it('keeps at most three at once, the newest', async () => {
+    for (const ts of [1, 2, 3, 4, 5]) await render(ts)
+    expect(MAX_FLOW_DOTS).toBe(3)
+    expect(dots()).toHaveLength(3)
+  })
+
+  it('a dot is removed when its animation ends, and only that one', async () => {
+    await render(1)
+    await render(2)
+    // React listens for the vendor-prefixed name where the DOM has only that (jsdom); a browser fires
+    // the plain one. Sending both reaches whichever it chose.
+    const first = dots()[0]
+    await act(async () => {
+      for (const name of ['animationend', 'webkitAnimationEnd']) first.dispatchEvent(new Event(name, { bubbles: true }))
+    })
+    expect(dots()).toHaveLength(1)
+  })
+
+  it('runs backwards on a line whose data flows against the way it points', async () => {
+    await render(1000, { reverse: true })
+    expect(dots()[0].hasAttribute('data-reverse')).toBe(true)
   })
 })

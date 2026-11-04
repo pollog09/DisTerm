@@ -224,3 +224,16 @@ describe('AgentGraphLog.recordAccess', () => {
     expect(log.snapshot().events.map((e) => e.kind)).toEqual(['subagent-start', 'access'])
   })
 })
+
+describe('AgentGraphLog.recordAccess, typed and called', () => {
+  it('keeps a typed /name apart from the model calling the same skill', () => {
+    const log = new AgentGraphLog()
+    log.recordAccess('n', { target: 'skill', name: 'grill' }, 1)
+    log.recordAccess('n', { target: 'skill', name: 'grill', typed: true }, 2)
+    log.recordAccess('n', { target: 'skill', name: 'grill' }, 3)
+    expect(log.snapshot().events).toMatchObject([
+      { id: 'access:n::skill:grill:typed', count: 1, typed: true },
+      { id: 'access:n::skill:grill', count: 2 }
+    ])
+  })
+})

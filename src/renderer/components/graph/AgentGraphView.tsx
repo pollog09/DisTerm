@@ -46,6 +46,10 @@ import { useStationHandovers, isHandedOver } from '../../state/stationHandovers'
 import { useStationOutcomes } from '../../state/stationOutcomes'
 import { showCanvas, useViewMode } from '../../state/viewMode'
 import type { CanvasNode } from '../../state/workspace'
+import { integrationsOf } from '@shared/agent-integrations'
+import { sshHostKey as sshHostKeyOf } from '@shared/ssh'
+import { useSettings } from '../../state/settings'
+import { HarnessPanel } from './HarnessPanel'
 import { ShipProcessPanel } from './ShipProcessPanel'
 import { GraphTerminalModal } from './GraphTerminalModal'
 import { useAgentGraphEvents, useShipConfig } from './useAgentGraphData'
@@ -87,6 +91,18 @@ function agentLabel(agentId: string): string {
   return AGENT_CONFIG[agentId as BuiltinAgentId]?.label ?? agentId
 }
 
+/** What the Harness box says. A figure the config could not state is not there, never a zero. */
+function HarnessFacts({ facts }: { facts: NonNullable<GraphNode['harness']> }) {
+  return (
+    <>
+      <span className="agent-graph-badge">{facts.sessions} session{facts.sessions === 1 ? '' : 's'}</span>
+      <span className="agent-graph-badge">{facts.running} running</span>
+      {facts.skillsInstalled !== undefined && <span className="agent-graph-badge">{facts.skillsInstalled} skills installed</span>}
+      {facts.mcpConfigured !== undefined && <span className="agent-graph-badge">{facts.mcpConfigured} MCP configured</span>}
+    </>
+  )
+}
+
 const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNode>) {
   const { node, pulseKey, showMachine } = data
   const activity = node.state === 'working' ? 'running' : node.activity
@@ -109,8 +125,9 @@ const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNod
       </div>
       {node.subtitle && <div className="agent-graph-node__subtitle">{node.subtitle}</div>}
       <div className="agent-graph-node__badges">
+        {node.harness && <HarnessFacts facts={node.harness} />}
         {node.agentId && <span className="agent-graph-badge">{agentLabel(node.agentId)}</span>}
-        {showMachine && node.machine && <span className="agent-graph-badge" data-machine={node.machine.kind}>{node.machine.label}</span>}
+        {showMachine && node.machine && node.kind !== 'harness' && <span className="agent-graph-badge" data-machine={node.machine.kind}>{node.machine.label}</span>}
         {node.state && <span className="agent-graph-badge" data-role="state">{STATE_LABEL[node.state] ?? node.state}</span>}
         {node.handedOver && <span className="agent-graph-badge">handed work</span>}
         {node.outcome && <span className="agent-graph-badge" data-outcome={node.outcome}>{node.outcome}</span>}
@@ -139,6 +156,46 @@ export function MessageCounts({ counts }: { counts: DeliveryCounts }) {
   )
 }
 
+/** At most this many dots on one line at once: a burst of calls is a few dots, not a queue. */
+export const MAX_FLOW_DOTS = 3
+
+/**
+ * One dot travels along a line per REAL event, once, and stops. Motion means data moved, so there is
+ * nothing here that runs on its own: an idle graph has no running animation at all.
+ *
+ * `ts` is the line's newest event, already refused when older than the view (`pulseOf`), so opening the
+ * view flashes nothing. A new `ts` adds a dot; the animation's end removes it. Under reduced motion
+ * the dots are not drawn and so never end, which is why the list is capped by what it holds rather than
+ * by what has finished.
+ *
+ * The animation is finite, so it must not read `--nt-anim-state` (CLAUDE.md, "Idle energy"): the
+ * covered-canvas gate would freeze a dot mid-line.
+ */
+export function FlowDots({ ts, path, color, reverse }: { ts: number; path: string; color: string; reverse?: boolean }) {
+  const [dots, setDots] = useState<number[]>([])
+  const seen = useRef(0)
+  useEffect(() => {
+    if (ts <= 0 || ts === seen.current) return
+    seen.current = ts
+    setDots((d) => [...d.filter((k) => k !== ts), ts].slice(-MAX_FLOW_DOTS))
+  }, [ts])
+  if (dots.length === 0) return null
+  return (
+    <>
+      {dots.map((k) => (
+        <circle
+          key={k}
+          r={3.5}
+          className="agent-graph-edge__dot"
+          data-reverse={reverse || undefined}
+          style={{ fill: color, offsetPath: `path("${path}")` }}
+          onAnimationEnd={() => setDots((d) => d.filter((x) => x !== k))}
+        />
+      ))}
+    </>
+  )
+}
+
 const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeProps<GraphFlowEdge>) {
   if (!data || data.route.length < 2) return null
   const { edge, route, pulseKey } = data
@@ -156,6 +213,7 @@ const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }: EdgeP
         style={{ stroke: color, strokeWidth: edge.loop ? 2.25 : 1.5, strokeDasharray: dashed ? '5 4' : undefined }}
       />
       {pulseKey > 0 && <path key={pulseKey} d={path} className="agent-graph-edge__pulse" style={{ stroke: color }} />}
+      <FlowDots ts={pulseKey} path={path} color={color} reverse={edge.flow === 'reverse'} />
       {label && (
         <EdgeLabelRenderer>
           <div
@@ -226,7 +284,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const handovers = useStationHandovers((s) => s.byId)
   const { snapshot, mountedAt } = useAgentGraphEvents(api, projectId)
   const { result: shipResult, reload: reloadShip } = useShipConfig(api, projectId)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panel, setPanel] = useState<null | 'harness' | 'ship'>(null)
+  const integrations = useSettings((st) => st.settings.agentIntegrations)
   const [modalId, setModalId] = useState<string | null>(null)
   const ship = shipResult?.ok ? shipResult.config : null
 
@@ -244,7 +303,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   // The status map changes on every hook of every node. Only the states of THIS project's sessions
   // reach the model, as one string, the `teamProgressSig` discipline.
   const statusSig = useZustandStore(statusStore, (s) =>
-    nodes.filter((n) => n.type === 'terminal').map((n) => `${n.id}=${s.byId[n.id]?.state ?? ''}:${s.byId[n.id]?.agentId ?? ''}`).join('|')
+    nodes.filter((n) => n.type === 'terminal').map((n) => `${n.id}=${s.byId[n.id]?.state ?? ''}:${s.byId[n.id]?.agentId ?? ''}:${s.byId[n.id]?.lastEventAt ?? ''}`).join('|')
   )
 
   const sessions = useMemo((): GraphSessionInput[] => {
@@ -262,6 +321,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           ...(agentId ? { agentId } : {}),
           machine: machineOf(n),
           ...(status?.state ? { state: status.state } : {}),
+          ...(status?.lastEventAt ? { lastStateAt: status.lastEventAt } : {}),
           ...(outcome ? { outcome } : {}),
           ...(isHandedOver(handovers, n.id) ? { handedOver: true } : {})
         })
@@ -347,7 +407,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
       target: edge.target,
       deletable: false,
       selectable: false,
-      markerEnd: { type: MarkerType.ArrowClosed, color: graphEdgeColor(edge), width: 14, height: 14 },
+      // The harness line is a quiet fact about where a session runs, not a flow with a direction.
+      ...(edge.kind === 'harness' ? {} : { markerEnd: { type: MarkerType.ArrowClosed, color: graphEdgeColor(edge), width: 14, height: 14 } }),
       data: { edge, route: layout.routes.get(edge.id) ?? [], pulseKey: pulseOf(edge.lastEventTs) }
     })),
     [model.edges, layout, pulseOf]
@@ -377,7 +438,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const onNodeClick = useCallback(
     (_e: unknown, flowNode: Node) => {
       const node = (flowNode as GraphFlowNode).data.node
-      if (node.sessionId) setModalId(node.sessionId)
+      if (node.kind === 'harness' || node.kind === 'skill' || node.kind === 'mcp') setPanel('harness')
+      else if (node.sessionId) setModalId(node.sessionId)
       else if (node.kind === 'note') onShowOnCanvas(node.id.replace(/^session:/, ''))
     },
     [onShowOnCanvas]
@@ -416,7 +478,10 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           )}
         </div>
         <span className="agent-graph__spacer" />
-        <button className="agent-graph__button" aria-pressed={panelOpen} onClick={() => setPanelOpen((v) => !v)}>
+        <button className="agent-graph__button" aria-pressed={panel === 'harness'} onClick={() => setPanel((p) => (p === 'harness' ? null : 'harness'))}>
+          Harness
+        </button>
+        <button className="agent-graph__button" aria-pressed={panel === 'ship'} onClick={() => setPanel((p) => (p === 'ship' ? null : 'ship'))}>
           Ship process{warnings ? ` (${warnings} warning${warnings === 1 ? '' : 's'})` : ''}
         </button>
         <button className="agent-graph__button" onClick={() => showCanvas(projectId)}>
@@ -471,9 +536,21 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
             </ul>
           )}
         </div>
-        {panelOpen && (
+        {panel === 'ship' && (
           <aside className="agent-graph__panel">
             <ShipProcessPanel projectId={projectId} result={shipResult} api={api?.agentGraph} session={session} onReload={reloadShip} onOpenFile={openFile} />
+          </aside>
+        )}
+        {panel === 'harness' && (
+          <aside className="agent-graph__panel" aria-label="Harness">
+            <HarnessPanel
+              model={model}
+              result={shipResult}
+              session={session}
+              integrations={integrationsOf({ agentIntegrations: integrations })}
+              sshHostKey={projectSsh?.server ? sshHostKeyOf(projectSsh.server) : null}
+              onReload={reloadShip}
+            />
           </aside>
         )}
       </div>

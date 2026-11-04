@@ -12,8 +12,18 @@ export const DELIVERY_COLOR: Readonly<Record<DeliveryClass, string>> = {
   refused: 'var(--state-error)'
 }
 
+/** A skill call, an MCP call and the harness link each get a hue none of the process or message lines
+ *  uses, from the system palette: nothing here is a state, so no state role stands for it. */
+export const SKILL_LINE = 'var(--sys-teal)'
+export const MCP_LINE = 'var(--sys-indigo)'
+/** Quiet: every session has one, and it says only "this runs on this machine". */
+export const HARNESS_LINE = 'rgba(var(--tint-rgb), 0.28)'
+
 /** The line's colour, as a role token (a var on a DOM style, per CLAUDE.md "Semantic colours"). */
 export function graphEdgeColor(edge: GraphEdge): string {
+  if (edge.kind === 'uses-skill') return SKILL_LINE
+  if (edge.kind === 'uses-mcp') return MCP_LINE
+  if (edge.kind === 'harness') return HARNESS_LINE
   if (edge.kind === 'message') return DELIVERY_COLOR[edge.latest ?? 'delivered']
   // Uncertain lines first: "maybe" and an observed "went back" assert no rejection, so they must not
   // wear its colour, including on a declared reject edge that may have been taken.
@@ -36,7 +46,9 @@ const LINE_LEGEND: readonly GraphLegendEntry[] = [
   { label: 'context link', color: 'var(--state-automation)', dashed: true },
   { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
   { label: 'maybe, went back or not declared', color: 'var(--state-warning)', dashed: true },
-  { label: 'opened, then, spawned, next', color: OTHER_LINE }
+  { label: 'opened, then, spawned, next', color: OTHER_LINE },
+  { label: 'skill call', color: SKILL_LINE },
+  { label: 'MCP call', color: MCP_LINE }
 ]
 
 /** The legend for the lines actually drawn, read through `graphEdgeColor` so it cannot disagree with
@@ -45,6 +57,8 @@ export function graphLegend(edges: readonly GraphEdge[]): GraphLegendEntry[] {
   const outcomes = new Set<DeliveryClass>()
   const lineColors = new Set<string>()
   for (const edge of edges) {
+    // Every session has a harness line, and the Harness box already says what it is.
+    if (edge.kind === 'harness') continue
     if (edge.kind !== 'message') {
       lineColors.add(graphEdgeColor(edge))
       continue
@@ -71,6 +85,8 @@ export function graphEdgeLabel(edge: GraphEdge): string {
     return parts.join(' · ')
   }
   const times = edge.traversals ? ` ×${edge.traversals}` : ''
+  if (edge.kind === 'harness') return ''
+  if (edge.kind === 'uses-skill' || edge.kind === 'uses-mcp') return `×${edge.traversals ?? 0}`
   if (edge.maybe) return edge.traversals ? `×${edge.traversals} + maybe ×${edge.maybe}` : `maybe ×${edge.maybe}`
   // With no file there is no order to have gone against: this could be a rejection or a second run.
   if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return `went back${times}`
@@ -89,6 +105,14 @@ const MAYBE_HINT = 'This agent could have taken this route or another declared o
 
 /** The hover text of a line, where its words alone would overclaim. */
 export function graphEdgeTitle(edge: GraphEdge): string | undefined {
+  if (edge.kind === 'uses-skill' || edge.kind === 'uses-mcp') {
+    const n = edge.traversals ?? 0
+    const what = edge.kind === 'uses-skill' ? 'skill' : 'mcp'
+    const typed = edge.typedCalls ? ` (${edge.typedCalls} typed as /${edge.subject})` : ''
+    const newest = edge.tool ? `, newest ${edge.tool}` : ''
+    return `${n} ${n === 1 ? 'call' : 'calls'} to ${what} ${edge.subject} this app run${typed}${newest}`
+  }
+  if (edge.kind === 'harness') return 'This session runs on this machine\'s harness. A dot moves when it reports something.'
   if (edge.reason) return `Refused: ${edge.reason}`
   if (edge.maybe) return MAYBE_HINT
   if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return OBSERVED_LOOP_HINT
