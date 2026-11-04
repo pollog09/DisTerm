@@ -153,6 +153,22 @@ describe('linkMenuItems — file', () => {
 })
 
 describe('linkMenuItems — folder', () => {
+  it('offers a WSL terminal there per distribution, and none when the list is empty', () => {
+    const { act } = recorder()
+    const opened: Array<[string, string | undefined]> = []
+    const acting = { ...act, openTerminal: (dir: string, shell?: string) => void opened.push([dir, shell]) }
+    const target = { kind: 'file', abs: 'C:\\proj', dir: true } as const
+    const ctx = { ...SSH_DESKTOP, wslTerminals: [{ label: 'WSL: Ubuntu', shell: 'wsl:Ubuntu' }] }
+    const rows = linkMenuItems(target, ctx, acting)
+    expect(labels(rows)).toContain('New terminal here: WSL: Ubuntu')
+    const row = rows.find((r) => 'label' in r && r.label === 'New terminal here: WSL: Ubuntu')
+    ;(row as { onClick: () => void }).onClick()
+    expect(opened).toEqual([['C:\\proj', 'wsl:Ubuntu']])
+    expect(labels(linkMenuItems(target, { ...SSH_DESKTOP, wslTerminals: [] }, act))).not.toContain(
+      'New terminal here: WSL: Ubuntu'
+    )
+  })
+
   it('reveals, opens a terminal there, downloads the folder', () => {
     const { calls, act } = recorder()
     const items = linkMenuItems({ kind: 'file', abs: '~/proj/out', dir: true }, SSH_DESKTOP, act)

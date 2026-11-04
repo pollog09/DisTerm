@@ -15,6 +15,8 @@ import type { NodeIcon } from '@shared/node-icon'
 import { AGENT_CONFIG, BUILTIN_AGENT_IDS, type AgentId } from '@shared/agents/config'
 import { useViewMode } from '../../state/viewMode'
 import { useProjects } from '../../state/projects'
+import { useWslTerminalsFor } from '../../state/wslTerminals'
+import { wslCreateOptions } from './wslCreateOptions'
 import { useSettings } from '../../state/settings'
 import { useBoardWallpaperStyle } from '../../state/wallpaper'
 import { AerialWallpaper } from '../AerialWallpaper'
@@ -104,7 +106,7 @@ export interface KanbanSession {
 
 /** What the per-column "+ New" menu can create. */
 export type KanbanCreateChoice =
-  | { kind: 'terminal' }
+  | { kind: 'terminal'; shell?: string }
   | { kind: 'sticky' }
   | { kind: 'browser' }
   | { kind: 'agent'; agentId: AgentId }
@@ -516,6 +518,7 @@ export const KanbanView = memo(function KanbanView({
   // (same universe as the dock's add menu, minus canvas-only kinds). Memoized — a fresh array
   // (with fresh icon elements) per render would re-render every memoized column.
   // Respects Settings → Agents → Enabled/Disabled (like the dock, the pane menu and the palette).
+  const wslTerminals = useWslTerminalsFor(projectId)
   const createOptions: KanbanCreateOption[] = useMemo(
     () => [
       ...BUILTIN_AGENT_IDS.filter((id) => !disabledAgents.includes(id)).map((id) => ({
@@ -531,10 +534,11 @@ export const KanbanView = memo(function KanbanView({
         icon: <IconAgent />
       })),
       { key: 'terminal', label: 'Terminal', choice: { kind: 'terminal' }, icon: <IconTerminal /> },
+      ...wslCreateOptions(wslTerminals),
       { key: 'browser', label: 'Browser', choice: { kind: 'browser' }, icon: <IconWeb /> },
       { key: 'sticky', label: 'Sticky note', choice: { kind: 'sticky' }, icon: <IconNote /> }
     ],
-    [customAgents, disabledAgents]
+    [customAgents, disabledAgents, wslTerminals]
   )
   const byId = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions])
   // Who a comment in the card modal may @mention — built exactly as the canvas node's flyout

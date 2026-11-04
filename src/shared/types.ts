@@ -1426,6 +1426,8 @@ export interface PtyApi {
   /** Is tmux available on this host (else the silent plain-shell fallback), plus a suggested
    *  install command for the "tmux not found" banner. */
   tmuxStatus(): Promise<TmuxStatus>
+  /** The shell picker's rows; empty on a non-Windows core. */
+  terminalProfiles(): Promise<import('./terminal-profiles').TerminalProfile[]>
   /** The command currently in the foreground of a node's tmux pane (e.g. 'claude', 'zsh'), by
    *  node persistKey. null when it is unknown — no session, no tmux, or the query failed — which
    *  callers must read as "not observed", never as evidence of a particular command. */
@@ -2878,6 +2880,8 @@ export interface GitFileChange {
 
 export interface GitStatus {
   hasRepo: boolean
+  /** With `hasRepo` false: git could not answer, so whether a repository exists is unknown. */
+  readError?: string
   /** "owner/repo" from the origin remote, else the folder name. */
   repoName: string
   branch: string

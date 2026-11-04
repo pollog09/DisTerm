@@ -184,6 +184,21 @@ describe('access policy: the fs jail', () => {
 })
 
 describe('access policy: argument checks that "read" alone would not make safe', () => {
+  it('an editor cannot store a WSL distribution in a project’s local settings', () => {
+    const save = (shell: string) =>
+      decideAccess('req', IPC.projectSettingsUpdateLocal, ['P', { terminal: { shell } }], ctx('editor'))
+    expect(save('/bin/zsh')).toEqual({ allow: true })
+    expect(save('wsl:Ubuntu').allow).toBe(false)
+  })
+
+  it('an editor’s pty:create keeps its shell, but cannot name a WSL distribution', () => {
+    const plain = [{ persistKey: 'n1', shell: '/bin/zsh' }]
+    expect(decideAccess('req', IPC.ptyCreate, plain, ctx('editor'))).toEqual({ allow: true })
+    expect(
+      decideAccess('req', IPC.ptyCreate, [{ persistKey: 'n1', shell: 'wsl:Ubuntu' }], ctx('editor'))
+    ).toEqual({ allow: true, args: [{ persistKey: 'n1' }] })
+  })
+
   it('viewer pty:create keeps ONLY the join fields — no ssh route, shell, account or env', () => {
     const d = decideAccess(
       'req',

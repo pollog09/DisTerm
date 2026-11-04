@@ -30,6 +30,8 @@ import { useBoardLog } from '../../state/boardLog'
 import { boardLogEvents } from '../../lib/boardLogDiff'
 import { markWorkspaceDirty } from '../../state/workspaceDirty'
 import type { KanbanCreateChoice, KanbanSession } from './KanbanView'
+import { wslCreateOptions } from './wslCreateOptions'
+import { useWslTerminalsFor } from '../../state/wslTerminals'
 import type { NodeIcon } from '@shared/node-icon'
 import { columnCategory } from '@shared/kanban-category'
 import { NO_STATIONS, stationsByOpener, type TeamStation } from '../../lib/teamProgress'
@@ -187,6 +189,8 @@ const Swimlane = memo(function Swimlane({
     onChangeBoard(pruneAssignments(next, sessionIds))
   }, [onChangeBoard, sessionIds])
 
+  // Per lane: another project on this board may be an SSH project or a relay tab.
+  const wslTerminals = useWslTerminalsFor(projectId)
   const createOptions = useMemo(() => [
     ...BUILTIN_AGENT_IDS.filter(id => !disabledAgents.includes(id)).map(id => ({
       key: id, label: AGENT_CONFIG[id].label, choice: { kind: 'agent', agentId: id } as KanbanCreateChoice, icon: <IconAgent />
@@ -195,9 +199,10 @@ const Swimlane = memo(function Swimlane({
       key: a.id, label: a.label, choice: { kind: 'agent', agentId: a.id } as KanbanCreateChoice, icon: <IconAgent />
     })),
     { key: 'terminal', label: 'Terminal', choice: { kind: 'terminal' } as KanbanCreateChoice, icon: <IconTerminal /> },
+    ...wslCreateOptions(wslTerminals),
     { key: 'browser', label: 'Browser', choice: { kind: 'browser' } as KanbanCreateChoice, icon: <IconWeb /> },
     { key: 'sticky', label: 'Sticky note', choice: { kind: 'sticky' } as KanbanCreateChoice, icon: <IconNote /> }
-  ], [customAgents, disabledAgents])
+  ], [customAgents, disabledAgents, wslTerminals])
 
   const columnCards = useMemo(() => {
     const vis = (ids: string[]) => activeLocalFilter.length ? ids.filter(id => cardMatchesLabelFilter(board, id, activeLocalFilter)) : ids

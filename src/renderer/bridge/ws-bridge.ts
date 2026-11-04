@@ -1,4 +1,5 @@
 import type { ChatCatalog } from '@shared/chat-catalog'
+import type { TerminalProfile } from '@shared/terminal-profiles'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import type { AgentStatusSnapshotEntry } from '../../shared/agent-status-snapshot'
 import { subscribeAgentReplay } from '../../shared/agent-replay-subscription'
@@ -303,6 +304,8 @@ export function buildRealApi(
       client.request(IPC.ptySendChatPrompt, persistKey, text, agentId) as Promise<ChatPromptResult>,
     sendToEmptyPrompt: (persistKey, text, agentId) =>
       client.request(IPC.ptySendToEmptyPrompt, persistKey, text, agentId) as Promise<EmptyPromptResult>,
+    terminalProfiles: () =>
+      (client.request(IPC.ptyTerminalProfiles) as Promise<TerminalProfile[]>).catch(() => []),
     // A failed read is unknown, never evidence that persistence is available.
     tmuxStatus: () =>
       client

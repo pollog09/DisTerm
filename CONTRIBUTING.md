@@ -68,6 +68,11 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+**Local git goes through `localGitCommand`** (`src/core/wsl-git.ts`), never a bare `run('git', …)`. On
+Windows a project in a WSL distribution must run git inside that distribution: Git for Windows refuses
+the folder, and once told to trust it reports every executable as changed, so a "stage all" commit
+strips exec bits. Do not add `safe.directory`.
+
 **Windows agent messaging:** direct ConPTY terminals are looked up by the runtime node index,
 not the persistence key. `NativeWindowsPane` checks console membership, the unambiguous native
 process chain and process birth times, and frames paste only after the terminal requested it.
@@ -274,6 +279,12 @@ Three rules for any new GitHub call (CLAUDE.md's kanban section, "Sync foundatio
 Do not add a field inside `ProjectKanban.meta[]` entries: every card-meta setter (assignees, due,
 priority, labels, the phone's label verb) rebuilds the entry from a fixed list and silently drops
 anything else. Board-level fields survive every transform — `pullLinks` is one.
+
+**A new way to start a terminal owes the WSL rows.** A menu that creates a terminal offers each
+distribution from `useWslTerminalsFor` / `wslTerminalsForProject` (`state/wslTerminals.ts`), and
+passes the row's `shell` to the node. That list is already empty off Windows and for SSH and relay
+projects, so do not add a platform check, and do not list distributions yourself: that starts
+`wsl.exe`. No test can catch a new menu that forgets this.
 
 ## House rules
 

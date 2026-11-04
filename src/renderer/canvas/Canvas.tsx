@@ -848,6 +848,13 @@ import {
   viewFor
 } from '../state/viewMode'
 import { GlobalKanbanView } from '../components/kanban/GlobalKanbanView'
+import { useTerminalProfiles } from '../terminal/use-terminal-profiles'
+import {
+  mayStartWslTerminal,
+  useWslTerminals,
+  useWslTerminalsFor,
+  wslTerminalsForProject
+} from '../state/wslTerminals'
 import { useFocusNode, FOCUS_SURFACE_ID } from '../state/focusNode'
 import { focusTargetId } from '../lib/focusTarget'
 import {
@@ -1429,6 +1436,9 @@ function runReclaimLevers(): void {
   releaseAllHiddenGrants()
   disposeAllParkedTerminals()
 }
+
+/** A WSL row whose project turned out not to be on this machine, e.g. a menu left open across a switch. */
+const WSL_TERMINAL_REFUSED = 'WSL terminals can only start in a project on this machine. Nothing was opened.'
 
 export function Canvas() {
   // This canvas's core api (a context read — stable for the session, no store subscription).
@@ -5603,7 +5613,9 @@ export function Canvas() {
       /** Force the working directory (e.g. a Source Control action running in a worktree scope). */
       cwdOverride?: string,
       /** A title for the node (a `nodeterm://open` link's `title`). */
-      title?: string
+      title?: string,
+      /** This node's session program (a `wsl:<distro>` row of the add menu). */
+      shell?: string
     ) => {
       // Live read + epoch guard: same rule as addAgentNode (issue #443) — a menu closure built
       // under the previous project must not root a terminal in that project's folder.
@@ -5619,6 +5631,11 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
+      // A menu built before a project switch can still be open. Never another shell in its place.
+      if (shell && !mayStartWslTerminal(project)) {
+        setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
+        return
+      }
       const cwd = cwdOverride ?? cwdForNewNodeIn(groupId) ?? project?.cwd
       console.info(
         `[nodeterm] node-create agent=- project=${targetProjectId} group=${groupId ?? '-'} cwd=${cwd ?? '-'}`
@@ -5635,7 +5652,8 @@ export function Canvas() {
       const ssh = nodeSshFor(project?.ssh, cwdOverride)
       setNodes((ns) => {
         const made = createTerminalNode(ns.length, cwd, center ?? emptyNodePos(), initialCommand, ssh)
-        const node = title ? { ...made, data: { ...made.data, title } } : made
+        const titled = title ? { ...made, data: { ...made.data, title } } : made
+        const node = shell ? { ...titled, data: { ...titled.data, shell } } : titled
         return [...ns, groupId ? parentInto(node, groupId) : node]
       })
       markDirty()
@@ -6217,8 +6235,8 @@ export function Canvas() {
     // A file-manager node asking for a terminal in the folder it is showing. Same
     // no-direct-line-to-the-canvas pattern as the two above.
     const onTerminal = (e: Event): void => {
-      const d = (e as CustomEvent<{ cwd?: string }>).detail
-      if (d?.cwd) addTerminal(undefined, undefined, undefined, d.cwd)
+      const d = (e as CustomEvent<{ cwd?: string; shell?: string }>).detail
+      if (d?.cwd) addTerminal(undefined, undefined, undefined, d.cwd, undefined, d.shell)
     }
     window.addEventListener('nodeterm:open-file', onOpen)
     window.addEventListener('nodeterm:reveal-file', onReveal)
@@ -11550,6 +11568,13 @@ export function Canvas() {
           icon: <IconTerminal />,
           onClick: () => addTerminal(at, undefined, groupId)
         },
+        ...wslTerminalsForProject(useProjects.getState().activeProjectId).map(
+          (wsl): MenuItem => ({
+            label: `New terminal: ${wsl.label}`,
+            icon: <IconTerminal />,
+            onClick: () => addTerminal(at, undefined, groupId, undefined, undefined, wsl.shell)
+          })
+        ),
         // Same agent grouping as the pane menu (`New agent ▸` behind the account-capable rows), so
         // one canvas does not show two different shapes for the same list. This menu's three
         // content rows are hand-written and deliberately left alone — a frame offers the kinds
@@ -11675,19 +11700,25 @@ export function Canvas() {
   // project-header "+", and any other ContextMenu-based surface pass the same handlers and can no
   // longer drift on which kinds are addable. Agent entries are layered on by each surface from
   // `agentCreationEntries` (already shared) — the spec owns the content list only.
+  // Listed once for this machine and published to every surface. Each one asks `useWslTerminalsFor`,
+  // since the distributions belong to this desktop and not to an SSH or relay project's core.
+  const terminalProfiles = useTerminalProfiles(isWindowsCore)
+  useEffect(() => useWslTerminals.getState().publish(terminalProfiles), [terminalProfiles])
+  const wslTerminals = useWslTerminalsFor(activeProjectId)
   const addCtx = useMemo(
     () => ({
       hasCwd: !!(useProjects.getState().getProject(activeProjectId)?.ssh?.remoteCwd ??
         useProjects.getState().getProject(activeProjectId)?.cwd),
       isSshProject,
       isWindowsCore,
-      isRelayTab: sessionForProject(activeProjectId || '').source === 'relay'
+      isRelayTab: sessionForProject(activeProjectId || '').source === 'relay',
+      wslTerminals
     }),
-    [activeProjectId, isSshProject, isWindowsCore]
+    [activeProjectId, isSshProject, isWindowsCore, wslTerminals]
   )
   const addHandlers = useMemo<AddHandlers>(
     () => ({
-      terminal: (at) => addTerminal(at),
+      terminal: (at, shell) => addTerminal(at, undefined, undefined, undefined, undefined, shell),
       remote: (screenPos) => openRemotePicker(screenPos),
       browser: (at) => addBrowser(at),
       web: (at) => void addWebView(at),
@@ -12114,9 +12145,15 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
+      const wslShell = choice.kind === 'terminal' ? choice.shell : undefined
+      // The Omni board creates after a project switch, so this is asked of the project it landed on.
+      if (wslShell && !mayStartWslTerminal(project)) {
+        setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
+        return
+      }
       const index = nodesRef.current.length
       const at = emptyNodePos() // board has no cursor — drop it in free canvas space, not on a pile
-      const node =
+      const made =
         choice.kind === 'terminal'
           ? createTerminalNode(index, project?.cwd, at, undefined, project?.ssh)
           : choice.kind === 'sticky'
@@ -12139,6 +12176,7 @@ export function Canvas() {
                 // Board-created nodes belong to the active project like any other.
                 targetProjectId
               )
+      const node = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
       setNodes((ns) => [...ns, node])
       const board = project?.kanban ?? defaultKanban(targetProjectId)
       if (columnId) {
@@ -17091,7 +17129,8 @@ export function Canvas() {
         items: buildGroupedAddMenu(
           CONTENT_ADD_ITEMS,
           addHandlers,
-          addCtx,
+          // This "+" can belong to another project than the one `addCtx` was built for.
+          { ...addCtx, wslTerminals: wslTerminalsForProject(projectId) },
           agentCreationEntries(),
           undefined,
           pos
@@ -19088,6 +19127,15 @@ export function Canvas() {
     const newFileHasCwd = !!(activeProject?.ssh?.remoteCwd ?? activeProject?.cwd)
     const cmds: Command[] = [
       { id: 'new-term', label: 'New terminal', section: 'Create', icon: <IconTerminal />, run: () => addTerminal() },
+      ...wslTerminals.map(
+        (wsl): Command => ({
+          id: `new-term-${wsl.shell}`,
+          label: `New terminal: ${wsl.label}`,
+          section: 'Create',
+          icon: <IconTerminal />,
+          run: () => addTerminal(undefined, undefined, undefined, undefined, undefined, wsl.shell)
+        })
+      ),
       ...BUILTIN_AGENT_IDS.filter((aid) => !disabled.includes(aid)).map(
         (aid): Command => ({
           id: `new-${aid}`,
@@ -19476,6 +19524,7 @@ export function Canvas() {
     openWorktreeDialog,
     isSshProject,
     isWindowsCore,
+    wslTerminals,
     newProjectFile,
     addProject,
     fitView,
@@ -20860,6 +20909,9 @@ export function Canvas() {
         onGoBack={goBack}
         onGoForward={goForward}
         onAddTerminal={addTerminal}
+        onAddWslTerminal={(shell) =>
+          addTerminal(undefined, undefined, undefined, undefined, undefined, shell)
+        }
         onAddSticky={addSticky}
         onSpawnTeam={() => setSpawnTeamDialog({})}
         onAddDino={addDino}

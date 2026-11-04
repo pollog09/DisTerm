@@ -89,30 +89,61 @@ path; a bundle being present is not proof an individual session attached success
 
 ## Windows profile resolution
 
-The profile catalog is a trusted desktop service. Its public API returns only a stable `id`,
-display label, kind, availability, and an optional unavailable reason. Executable paths and argv
-remain private. `PtyCreateOptions.profileId` crosses the desktop bridge; the trusted core validates
-and resolves it immediately before either `node-pty` or the session host spawns a process.
+The picker (Settings → Shell, and a WSL row wherever the UI can start a terminal) comes from
+`pty:terminal-profiles`, which lists system default, PowerShell 7, Windows PowerShell, Command Prompt
+and one row per installed WSL distribution. It is a host-only channel. A free-text custom shell is
+still accepted.
 
-Stable ids are `auto`, `pwsh`, `windows-powershell`, `cmd`, `git-bash`, `custom`, and one
-`wsl:<distribution>` per installed WSL distribution. `auto` is the only profile allowed to search
-down a precedence list: PowerShell 7, then Windows PowerShell, then `%COMSPEC%`/`cmd.exe`. An
-explicit unavailable or malformed profile fails; it never becomes a different shell.
+A profile is a value of the existing `shell` / `settings.defaultShell` fields, so it keeps their trust
+boundary (`shared/node-exec.ts`): machine-local, removed from shared project files and portable
+exports, and dropped from inbound canvas traffic. A WSL distribution is spelled `wsl:<encoded name>`
+(`shared/terminal-profiles.ts`); a name with spaces is percent-encoded so it passes
+`safeSessionProgram`, and a leading `-` or a control character is refused.
 
-For WSL, distribution discovery parses the UTF-16/NUL-padded output of
-`wsl.exe --list --quiet`. The selected distribution's own `wslpath` translates the Windows project
-directory, after which launch keeps the structured `wsl.exe -d <distribution> --cd <linux-path>`
-prefix and runs a trusted distro-side cwd guard before replacing it with the configured default
-shell. The guard independently changes to the positional Linux path so a directory removed after
-translation cannot silently open in `/`. Enumeration,
-translation, and launch failures keep their real reason and perform no fallback spawn. A
-distribution name containing spaces remains one argv element.
+`spawnNew` resolves a `wsl:` value (`core/terminal-profiles.ts`) before the synchronous spawn, and the
+plan reaches `spawnSession` on a symbol, so argv can never come from a wire payload:
 
-The profile id is a machine-local snapshot, not project content. `terminalProfileId`, legacy
-custom `shell`, and advanced SSH execution values are removed from shared project files, portable
-exports, and inbound canvas traffic. A shared file or peer can therefore neither inject argv nor
-select a local executable. See
-[`features/terminals/windows-shell-profiles.md`](features/terminals/windows-shell-profiles.md).
+```
+wsl.exe -d <distro> --exec sh -c <cwd guard> nodeterm-wsl <linux cwd>
+```
+
+Measured with real `wsl.exe` under WSL interop:
+
+- `wsl.exe --list --quiet` writes UTF-16LE with CRLF, and lists `docker-desktop`, which has no user
+  shell and is filtered out.
+- `wslpath -a -u` is run in the selected distribution. It converts `C:\...` and
+  `\\wsl.localhost\<distro>\...`, and exits 1 on an unmapped drive. That failure rejects the create
+  with its real reason; nothing falls back to another directory or shell.
+- `wsl.exe --cd <missing>` prints an error, then runs the command anyway and exits 0. It is therefore
+  not used. The guard changes directory itself, exits 71 on failure, then execs the user's passwd
+  shell as a login shell.
+
+Other rules:
+
+- An SSH node ignores a `wsl:` default shell, because it names this machine's distribution.
+- The value is read as node shell, then project shell, then `settings.defaultShell`, in both
+  `spawnNew` and `spawnSession`. It never reaches tmux, Zellij or node-pty as a program.
+- A live session is reattached with no WSL call (`sessionHostHasSession` first), so an unmapped drive
+  cannot cut a user off from a running terminal. A phone may join a live one the same way.
+- A session probe that cannot answer rejects the create with its reason. It is not read as "no
+  session", which could start a second terminal for a live one.
+- A malformed `wsl:` value, a non-Windows core, and a phone asking to start a new WSL terminal are
+  refused by name instead of running another shell.
+- A distribution is this machine's choice. A shared project setting naming one is dropped even once
+  trusted, the relay policies strip it from a peer's `pty:create`, and an Editor cannot store one in
+  a project's local settings. A peer's `pty:create` with no shell does use the host's own default,
+  which may be a distribution the host user chose.
+- A WSL pane uses Ctrl-U as its kill line and POSIX file-drop quoting when the value comes from the
+  node or the default shell.
+
+Known limits: a pane in WSL through a project's local shell setting still gets the Windows kill line
+and quoting, because the renderer does not see project overrides. On a non-Windows core, a hand-typed
+`wsl:` value refuses every create, including a reattach to a live tmux session.
+
+Not yet available in a WSL terminal, because the agent runs on the other side of the WSL boundary from
+the hook server and the Windows process probes: agent status, hooks and messaging. Agent launch rows
+are also unverified there, since the pane owner reads as `wsl.exe`. Not run on a real Windows build:
+node-pty's own argv quoting of the guard script, the session host's restart path, and the picker UI.
 
 ### Agent launches in a Windows-native shell (`pty:execute-launch`)
 
@@ -1019,22 +1050,19 @@ through `directExecutableInvocation` (`opencodeExportAt`, #655).
 
 The focused suites exercise behaviour rather than scan implementation source:
 
-- the Windows profile resolver covers detection precedence, standard Git Bash locations, custom
-  absolute paths containing spaces, `%COMSPEC%`, unavailable executables, malformed ids, WSL
-  UTF-16/NUL output, distribution names containing spaces, and cwd-conversion failures;
-- resolver/spawn tests assert that `node-pty` and session-host creation receive only the trusted
-  launch plan, and that explicit unavailable profiles perform no fallback spawn;
+- the Windows profile resolver covers WSL UTF-16/NUL output, distribution names containing spaces,
+  malformed values, and cwd-conversion failures;
+- `pty-wsl-launch.test.ts` asserts that `node-pty` and session-host creation receive only the trusted
+  launch plan, and that a refused or unresolvable WSL value starts nothing;
 - `pty-session-host.test.ts` exercises successful creation plus provisional/rejected attach
   teardown, coalesced callers, late events, and the persistent result;
 - `session-host-client.test.ts` uses real local sockets to exercise the hello transition,
   correlated responses, failed-subscriber rollback, reconnect replay, and transport uncertainty;
   and
-- workspace/node-exec tests prove `terminalProfileId` never enters shared/exported/inbound state
-  and that the local overlay survives reload.
+- `project-spawn-overrides.test.ts` and the relay policy tests assert that shared files and peers
+  cannot name a WSL distribution.
 
-The guards were mutation-checked by temporarily accepting a hostile profile, allowing a missing
-WSL distribution to fall back, and removing machine-local stripping; each corresponding focused
-test must turn red. The former source-text shell regression test is intentionally gone.
+The former source-text shell regression test is intentionally gone.
 
 The original session-host implementation was also verified by hand against a real ConPTY session.
 The ordering, connection-owned pause ledger, no-tmux relay probe/capture, platform shell selection,

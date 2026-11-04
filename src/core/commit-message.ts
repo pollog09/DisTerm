@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import type { GitResult, Settings } from '../shared/types'
 import { directExecutableInvocation, findInPathString, shellPathNow } from './exec-path'
 import { resolveGitRemote, runRemoteGit } from './remote-ssh/remote-git'
+import { localGitCommand } from './wsl-git'
 import { AUTH_ENV_STRIP } from './claude-accounts-core'
 
 const run = promisify(execFile)
@@ -68,8 +69,9 @@ async function git(cwd: string, args: string[]): Promise<string> {
     return r.ok ? r.out : ''
   }
   try {
-    const { stdout } = await run('git', args, { cwd, maxBuffer: 50 * 1024 * 1024 })
-    return stdout
+    const cmd = localGitCommand(cwd, args, { maxBuffer: 50 * 1024 * 1024 })
+    const { stdout } = await run(cmd.file, cmd.args, cmd.options)
+    return String(stdout)
   } catch {
     return ''
   }

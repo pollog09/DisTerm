@@ -75,6 +75,12 @@ describe('scoped guest — refused outright', () => {
 })
 
 describe('scoped guest — terminals', () => {
+  it('a guest cannot name a WSL distribution', () => {
+    const d = decide(IPC.ptyCreate, { persistKey: 'a1', cols: 80, rows: 24, shell: 'wsl:Ubuntu' })
+    expect(d.allow).toBe(true)
+    expect((d as { args: Array<{ shell?: string }> }).args[0].shell).toBeUndefined()
+  })
+
   it('opens a terminal for an in-project node, cwd defaulted to the project root', () => {
     const d = decide(IPC.ptyCreate, { persistKey: 'a1', cols: 80, rows: 24, shell: '/bin/zsh' })
     expect(d.allow).toBe(true)

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { MenuItem } from '../components/ContextMenu'
 import {
   ADD_GROUP_LABEL,
@@ -61,6 +61,49 @@ const allKinds: AddItem['kind'][] = [
   'spawn-team',
   'worktree'
 ]
+
+describe('WSL terminal rows', () => {
+  it('reaches the grouped menu the pane and sidebar actually show', () => {
+    const terminal = vi.fn()
+    const rows = buildGroupedAddMenu(
+      CONTENT_ADD_ITEMS,
+      { terminal } as unknown as AddHandlers,
+      {
+        hasCwd: true,
+        isSshProject: false,
+        wslTerminals: [{ label: 'WSL: Ubuntu', shell: 'wsl:Ubuntu' }]
+      },
+      []
+    )
+    const row = rows.find((r) => 'label' in r && r.label === 'New terminal: WSL: Ubuntu') as
+      | { onClick: () => void }
+      | undefined
+    expect(row).toBeDefined()
+    row?.onClick()
+    expect(terminal).toHaveBeenCalledWith(undefined, 'wsl:Ubuntu')
+  })
+
+  it('offers one row per distribution, which creates a terminal with that shell', () => {
+    const terminal = vi.fn()
+    const ctx = {
+      hasCwd: true,
+      isSshProject: false,
+      wslTerminals: [{ label: 'WSL: Ubuntu', shell: 'wsl:Ubuntu' }]
+    }
+    const rows = contentAddItemsToMenuItems(
+      [{ kind: 'terminal' }],
+      { terminal } as unknown as AddHandlers,
+      ctx
+    )
+    expect(rows.map((r) => ('label' in r ? r.label : ''))).toEqual([
+      'New terminal',
+      'New terminal: WSL: Ubuntu'
+    ])
+    const row = rows[1] as { onClick: () => void }
+    row.onClick()
+    expect(terminal).toHaveBeenCalledWith(undefined, 'wsl:Ubuntu')
+  })
+})
 
 describe('Run configuration row', () => {
   it('is disabled with its reason in an SSH project, on the menu and the Dock alike', () => {

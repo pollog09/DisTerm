@@ -112,6 +112,8 @@ export interface AddCtx {
   /** Whether the active project is a relay tab (another machine's core). Disables "New simulator":
    *  the node would show THIS machine's devices inside the host's project. Absent = not relay. */
   isRelayTab?: boolean
+  /** This machine's WSL distributions, each offered as its own terminal row. */
+  wslTerminals?: ReadonlyArray<{ label: string; shell: string }>
 }
 
 /**
@@ -123,7 +125,7 @@ export interface AddCtx {
  * coords) — the caller is responsible for the coordinate space, matching today's pane menu.
  */
 export interface AddHandlers {
-  terminal: (at?: AddPos) => void
+  terminal: (at?: AddPos, shell?: string) => void
   remote: (screenPos: { x: number; y: number }) => void
   /** A run node (a `.vscode/launch.json` configuration with Run/Stop/Restart), in the project folder. */
   run: (at?: AddPos) => void
@@ -217,6 +219,13 @@ export function contentAddItemsToMenuItems(
     switch (item.kind) {
       case 'terminal':
         out.push({ label: 'New terminal', icon: <IconTerminal />, onClick: () => handlers.terminal(at) })
+        for (const wsl of ctx.wslTerminals ?? []) {
+          out.push({
+            label: `New terminal: ${wsl.label}`,
+            icon: <IconTerminal />,
+            onClick: () => handlers.terminal(at, wsl.shell)
+          })
+        }
         break
       case 'remote':
         out.push({ label: 'New remote…', icon: <IconTerminal />, onClick: () => handlers.remote(remotePos) })
@@ -568,11 +577,10 @@ export function buildGroupedAddMenu(
   for (const item of items) {
     // Built one at a time through the SHARED mapper rather than re-implemented here: a second
     // copy of the per-kind rows is exactly how these surfaces drifted apart before this module.
-    const [row] = contentAddItemsToMenuItems([item], handlers, ctx, at, screenPos)
-    if (!row) continue
+    const rows = contentAddItemsToMenuItems([item], handlers, ctx, at, screenPos)
     const group = ADD_ITEM_GROUP[item.kind]
-    if (group === 'top') top.push(row)
-    else buckets[group].push(row)
+    if (group === 'top') top.push(...rows)
+    else buckets[group].push(...rows)
   }
   const submenu = (id: Exclude<AddGroupId, 'top'>): MenuItem[] =>
     buckets[id].length > 0

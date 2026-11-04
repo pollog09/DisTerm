@@ -58,7 +58,8 @@ export function dropDialect(f: DropDialectFacts): DropDialect {
   const exe = (f.shell ?? '').split(/[\\/]/).pop()?.toLowerCase().replace(/\.exe$/, '') ?? ''
   if (exe === 'pwsh' || exe === 'powershell') return 'win-pwsh'
   // Git Bash / MSYS / WSL bash read backslash escapes; `C:\\Users\\Jane\ Doe` is right there.
-  if (exe === 'bash' || exe === 'sh' || exe === 'zsh' || exe === 'fish' || exe === 'wsl') return 'posix'
+  if (exe === 'bash' || exe === 'sh' || exe === 'zsh' || exe === 'fish' || exe === 'wsl' || exe.startsWith('wsl:'))
+    return 'posix'
   if (exe === 'cmd') return 'win-cmd'
   // No shell configured (or one we do not recognise): the core's own Windows default is PowerShell
   // (`resolveWindowsShell`: pwsh, then the powershell.exe every install ships; COMSPEC only after
