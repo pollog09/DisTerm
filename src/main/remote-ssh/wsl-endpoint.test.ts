@@ -165,6 +165,8 @@ function startPeer(hostKeyPrivate: string, authorizedPub: string): Promise<Peer>
         session.on('exec', (acc, _r, info) => {
           const ch = acc()
           ch.write(`ran: ${info.command}\n`)
+          // A live remote command: it never reports an exit, so only the transport can end it.
+          if (info.command === 'hold') return
           ch.exit(0)
           ch.end()
         })
