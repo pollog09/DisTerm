@@ -293,7 +293,7 @@ import { useTerminalFocus } from '../state/terminalFocus'
 import { useProjects } from '../state/projects'
 import { wslTerminalsForProject } from '../state/wslTerminals'
 import { markWorkspaceDirty } from '../state/workspaceDirty'
-import { isGlobalKanbanOpen, isKanbanOpen, isOmniKanbanEnabled, openIssueOnBoard, useViewMode, viewFor } from '../state/viewMode'
+import { isGlobalKanbanOpen, isKanbanOpen, openIssueOnBoard, useViewMode, viewFor } from '../state/viewMode'
 import { useSshConn } from '../state/sshConn'
 import { useWorktrees } from '../state/worktrees'
 import { isRemoteSessionNode } from '@shared/worktree'
@@ -360,6 +360,7 @@ import { applyIconChoice } from '../lib/nodeIconChoice'
 import { normalizeNodeIcon } from '@shared/node-icon'
 import { connectHostAttachment } from '../lib/sshAttachments'
 import { projectMayDialSsh } from '../session/relay-ssh'
+import { reportSshDrop, reportSshExit, setSshDropHandler } from '../lib/sshDropReport'
 import { REMOTE_PROJECT_SPAWN_REFUSAL, spawnBelongsElsewhere, useOwningProjectId } from '../session/owning-project'
 import { waitForSshRemote } from '../lib/sshRemoteWait'
 
@@ -576,19 +577,8 @@ export function setMoveIntoWorktreeHandler(fn: ((nodeId: string) => void) | null
  * exits 255 (connection drop — the remote tmux session survives) reports (projectId, nodeId)
  * so the coordinator can re-establish the master and respawn the node.
  */
-let sshDropHandler: ((projectId: string, nodeId: string) => void) | null = null
-export function setSshDropHandler(fn: ((projectId: string, nodeId: string) => void) | null): void {
-  sshDropHandler = fn
-}
+export { setSshDropHandler, reportSshDrop }
 
-/**
- * Report a remote terminal that has no session to the reconnect coordinator. Also used by the
- * kanban card modal, which spawns the same node through its own transport and hits the same
- * "no master" refusal — both surfaces queue the node so ONE reconnect flushes them together.
- */
-export function reportSshDrop(projectId: string, nodeId: string): void {
-  sshDropHandler?.(projectId, nodeId)
-}
 
 /**
  * Manual "Reconnect" bridge (same pattern as the drop bridge above). Canvas registers the
@@ -1589,11 +1579,10 @@ export function TerminalNode({
   // an agent's input box off the bottom. So while the board is up we report "not viewing" (null),
   // exactly like a park, and the visible modal drives the shared grid. A node only ever lives in the
   // ACTIVE project's React Flow, so the active project's view is the one that matters.
-  const omniKanbanEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
   const boardOpen = useViewMode(
     (s) =>
-      (omniKanbanEnabled && s.globalKanban) ||
-      viewFor(s, useProjects.getState().activeProjectId ?? '') === 'kanban'
+      s.globalKanban ||
+      viewFor(s, useProjects.getState().activeProjectId ?? '') !== 'canvas'
   )
   const boardOpenRef = useRef(boardOpen)
   // The live session's board render pause (attached by the lifecycle effect): while the board
@@ -4061,7 +4050,7 @@ export function TerminalNode({
             // ssh exiting 255 on an SSH-project terminal is a CONNECTION drop (sleep/wake,
             // network change, NAT idle) — the remote tmux session survives. Report it so the
             // reconnect coordinator can re-establish the master and respawn this node.
-            if (code === 255 && sshProjectId && dialsSsh) sshDropHandler?.(sshProjectId, id)
+            reportSshExit(code, sshProjectId, dialsSsh, id)
           })
         )
         cleanups.push(

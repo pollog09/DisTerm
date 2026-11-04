@@ -29,6 +29,7 @@ import { PresenceIdentitySection } from './sections/PresenceIdentitySection'
 import { RemoteSection } from './sections/RemoteSection'
 import { TeamAccessSection } from './sections/TeamAccessSection'
 import { LiveLinksSection } from './sections/LiveLinksSection'
+import { ShipProcessSection } from './sections/ShipProcessSection'
 import { SshSection } from './sections/SshSection'
 import { UpdatesSection } from './sections/UpdatesSection'
 import { PrivacySection } from './sections/PrivacySection'
@@ -173,6 +174,9 @@ export function SettingsPage({
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="Team seats" visible={active === 'team-access'}>
               <TeamAccessSection isActive={active === 'team-access'} onClose={onClose} />
+            </SettingsSectionBoundary>
+            <SettingsSectionBoundary title="Ship process" visible={active === 'ship-process'}>
+              <ShipProcessSection isActive={active === 'ship-process'} onClose={onClose} />
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="Live links" visible={active === 'live-links'}>
               <LiveLinksSection isActive={active === 'live-links'} />

@@ -74,6 +74,14 @@ describe('scoped guest — refused outright', () => {
   })
 })
 
+describe('scoped guest — WSL projects', () => {
+  it('a guest reaches no WSL project channel', () => {
+    for (const ch of [IPC.wslProjectList, IPC.wslProjectPrepare, IPC.wslProjectBind, IPC.wslProjectUnbind]) {
+      expect(decide(ch, 'Ubuntu', 'ssh-browse-x').allow).toBe(false)
+    }
+  })
+})
+
 describe('scoped guest — terminals', () => {
   it('a guest cannot name a WSL distribution', () => {
     const d = decide(IPC.ptyCreate, { persistKey: 'a1', cols: 80, rows: 24, shell: 'wsl:Ubuntu' })

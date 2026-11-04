@@ -1,18 +1,14 @@
 import { useProjects } from '../../state/projects'
-import { useSettings } from '../../state/settings'
-import { isOmniKanbanEnabled, showAllProjectsBoard, showProjectBoard } from '../../state/viewMode'
+import { showAllProjectsBoard, showProjectBoard } from '../../state/viewMode'
 
 export type KanbanScope = 'project' | 'all'
 
 /**
  * The board's scope: this project's board or every project's (Omni). Omni is a scope of the
  * kanban side, so this switch — not a close button — is how the two boards reach each other;
- * leaving the board for the canvas stays the view toggle's job (tab icon, ⌘⇧B). Renders nothing
- * while the Omni feature is off, so a user who never enabled it sees the board exactly as before.
+ * leaving the board for the canvas stays the view toggle's job (Kanban tab, ⌘⇧B).
  */
-export function KanbanScopeSwitch({ scope }: { scope: KanbanScope }): React.JSX.Element | null {
-  const omniEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
-  if (!omniEnabled) return null
+export function KanbanScopeSwitch({ scope }: { scope: KanbanScope }): React.JSX.Element {
   const options: { id: KanbanScope; label: string }[] = [
     { id: 'project', label: 'This project' },
     { id: 'all', label: 'All projects' }

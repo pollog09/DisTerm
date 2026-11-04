@@ -221,6 +221,8 @@ export function buildRelayApi(
     // tab's projects are the host's, so `...local` would aim a host project id at the local ssh
     // manager. The stub answers E_UNSUPPORTED instead.
     shareTeam: stub.shareTeam,
+    // Never this machine's distros under another machine's tab.
+    wslProject: stub.wslProject,
     // The mirror identity seed is a deliberate no-op here: a relay tab's nodes belong to the HOST's
     // core, whose mirror is seeded by the host's own renderer from its own localStorage. This
     // machine's localStorage holds no identity for them, and `...local` would plant this machine's

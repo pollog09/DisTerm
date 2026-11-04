@@ -1,3 +1,9 @@
+/** A pasted image lands on the canvas, so neither full-page view may let one through: over either, it
+ *  would appear on a canvas nobody can see. */
+export function canvasCoveredByView(boardOpen: boolean, graphOpen: boolean): boolean {
+  return boardOpen || graphOpen
+}
+
 /** True only for the actual React Flow pane, never flow-wrap overlays such as Welcome/Usage. */
 export function isCanvasImageDropTarget(target: EventTarget | null, wrap: Element): boolean {
   const element = target instanceof Element ? target : null

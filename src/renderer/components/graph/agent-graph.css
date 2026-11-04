@@ -1,0 +1,651 @@
+/* The agent graph view. Its own file so a merge from upstream never meets it inside styles.css.
+   Colours are role tokens (CLAUDE.md "Semantic colours"). Arrival is a finite pulse (CLAUDE.md "Idle
+   energy"), which needs no gate. The one `infinite` here is the marks moving along a line in use. */
+
+.agent-graph {
+  position: fixed;
+  top: var(--tabbar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25; /* the board's slot: over the flow, under the tab bar and the drawers/dialogs */
+  background: var(--canvas-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.agent-graph__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* The floating controls cluster (34px, `--float-gap` from this strip's top) stays where it is, so
+     the strip grows around it: same centre line, nothing hanging over the border. */
+  min-height: calc(2 * var(--float-gap) + 34px);
+  padding: 0 calc(var(--agent-graph-clear, 320px) + 8px) 0 var(--float-gap);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.agent-graph__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.agent-graph__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.agent-graph__meta {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.agent-graph__machine,
+.agent-graph__source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-graph__spacer {
+  flex: 1;
+}
+.agent-graph__button {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  height: 34px; /* the toolbar buttons beside it */
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(var(--tint-rgb), 0.06);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.agent-graph__button:hover {
+  background: rgba(var(--tint-rgb), 0.12);
+}
+.agent-graph__button[aria-pressed='true'] {
+  background: rgba(var(--tint-rgb), 0.16);
+}
+
+.agent-graph__hint {
+  margin: 0;
+  padding: 6px var(--float-gap);
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.agent-graph__notices {
+  margin: 0;
+  padding: 6px var(--float-gap);
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.agent-graph__notices li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 0;
+}
+.agent-graph__notices li::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state-warning);
+  transform: translateY(-1px);
+}
+
+.agent-graph__template-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px var(--float-gap);
+  font-size: 12px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.agent-graph__template-note > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-graph__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.agent-graph__flow {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.agent-graph__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+  padding: 0 32px;
+  user-select: none;
+  /* The dots the flow draws once there is something in it. */
+  background-image: radial-gradient(rgba(var(--tint-rgb), 0.14) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.agent-graph__empty p {
+  margin: 0;
+  max-width: 400px;
+}
+.agent-graph__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.agent-graph__button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.agent-graph__button:disabled:hover {
+  background: rgba(var(--tint-rgb), 0.06);
+}
+.agent-graph__empty .agent-graph__empty-note {
+  max-width: 460px;
+  font-size: 12px;
+}
+.agent-graph__empty-note[data-role='reason'] {
+  color: var(--caution);
+}
+.agent-graph__empty-note[data-role='failure'] {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.agent-graph__empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.agent-graph__empty-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.agent-graph__empty .agent-graph__empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.agent-graph__legend {
+  position: absolute;
+  right: var(--float-gap); /* the left corner holds the canvas pills, which stay up over this view */
+  bottom: var(--float-gap);
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: calc(100% - 180px);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.agent-graph__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.agent-graph__swatch {
+  width: 16px;
+  height: 0;
+  border-top: 2px solid;
+}
+.agent-graph__swatch[data-dashed] {
+  border-top-style: dashed;
+}
+
+.agent-graph__panel {
+  width: 340px;
+  max-width: 45%;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding: 14px 14px 24px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+/* The covered-canvas gate sets `--nt-anim-state: paused` on every `.react-flow`, and this view both
+   marks the canvas covered and is a `.react-flow` itself, so without this every moving mark here would
+   be paused for good while the rule reading the variable looked right. What covers the canvas is this
+   view, so here the variable follows the window alone. The idle rule comes second and wins on order. */
+:root[data-nt-canvas='covered'] .agent-graph .react-flow {
+  --nt-anim-state: running;
+}
+:root[data-nt-window='idle'] .agent-graph .react-flow {
+  --nt-anim-state: paused;
+}
+
+/* Nodes */
+.agent-graph-node {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.agent-graph-node:hover {
+  border-color: rgba(var(--tint-rgb), 0.4);
+}
+.agent-graph-node--stage,
+.agent-graph-node--subagent {
+  border-style: dashed;
+}
+.agent-graph-node--ghost {
+  opacity: 0.6;
+  cursor: default;
+}
+/* What was used, and where it runs. Border hues are the line hues (agentGraphEdgeText), so a box and the
+   lines into it read as one thing. */
+.agent-graph-node--skill {
+  border-color: color-mix(in srgb, var(--sys-teal) 60%, var(--border));
+}
+.agent-graph-node--mcp {
+  border-color: color-mix(in srgb, var(--sys-indigo) 60%, var(--border));
+}
+.agent-graph-node--harness {
+  border-style: dotted;
+  background: color-mix(in srgb, var(--panel) 92%, rgb(var(--tint-rgb)));
+}
+.agent-graph-node--skill .agent-graph-node__dot {
+  background: var(--sys-teal);
+}
+.agent-graph-node--mcp .agent-graph-node__dot {
+  background: var(--sys-indigo);
+}
+.agent-graph-node--harness .agent-graph-node__dot {
+  background: rgba(var(--tint-rgb), 0.45);
+}
+.agent-graph-node--note {
+  background: color-mix(in srgb, var(--state-automation) 8%, var(--panel));
+}
+.agent-graph-node[data-reentered] {
+  border-color: var(--state-attention);
+}
+.agent-graph-node[data-activity='running'] {
+  border-color: var(--state-working);
+  border-style: solid;
+}
+.agent-graph-node[data-state='waiting'],
+.agent-graph-node[data-state='blocked'] {
+  border-color: var(--state-attention);
+}
+
+/* Two classes: xyflow's own handle rule is as specific as one, and comes later. Lines are routed by the
+   layout, so a handle only has to exist. */
+.agent-graph-node .agent-graph-node__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+.agent-graph-node__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+}
+.agent-graph-node__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-graph-node__runs {
+  color: var(--muted);
+  font-weight: 400;
+}
+.agent-graph-node__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.3);
+}
+.agent-graph-node[data-activity='running'] .agent-graph-node__dot {
+  background: var(--state-working);
+}
+.agent-graph-node[data-activity='done'] .agent-graph-node__dot {
+  background: var(--state-success);
+}
+.agent-graph-node[data-state='waiting'] .agent-graph-node__dot,
+.agent-graph-node[data-state='blocked'] .agent-graph-node__dot {
+  background: var(--state-attention);
+}
+.agent-graph-node[data-color='red'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-red); }
+.agent-graph-node[data-color='blue'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-blue); }
+.agent-graph-node[data-color='green'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-green); }
+.agent-graph-node[data-color='yellow'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-yellow); }
+.agent-graph-node[data-color='purple'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-purple); }
+.agent-graph-node[data-color='orange'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-orange); }
+.agent-graph-node[data-color='pink'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-pink); }
+.agent-graph-node[data-color='cyan'] .agent-graph-node__dot { box-shadow: 0 0 0 2px var(--sys-cyan); }
+
+.agent-graph-node__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--muted);
+}
+.agent-graph-node__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  overflow: hidden;
+  max-height: 34px;
+}
+.agent-graph-badge {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--muted);
+  background: rgba(var(--tint-rgb), 0.08);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.agent-graph-badge[data-outcome='succeeded'] {
+  color: var(--success);
+}
+.agent-graph-badge[data-outcome='failed'],
+.agent-graph-badge[data-role='loop'] {
+  color: var(--danger);
+}
+.agent-graph-badge[data-role='warning'] {
+  color: var(--caution);
+}
+
+/* Edges */
+.agent-graph-edge__label {
+  position: absolute;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  background: var(--canvas-bg);
+  border-radius: 4px;
+  pointer-events: all;
+}
+.agent-graph-edge__pulse {
+  fill: none;
+  stroke-width: 3;
+  opacity: 0;
+  animation: agent-graph-arrive 900ms ease-out 1;
+  pointer-events: none;
+}
+.agent-graph-node__pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--state-working);
+  opacity: 0;
+  animation: agent-graph-arrive 900ms ease-out 1;
+  pointer-events: none;
+}
+/* One dot per real event, once. FINITE, and deliberately NOT reading --nt-anim-state: the covered-canvas
+   gate sets it on this .react-flow too, and would freeze a dot in the middle of its line. The circle
+   sits at the origin of its own coordinate space and the motion path carries it. */
+.agent-graph-edge__dot {
+  offset-rotate: 0deg;
+  offset-distance: 0%;
+  opacity: 0;
+  animation: agent-graph-dot 900ms ease-in-out 1 forwards;
+  pointer-events: none;
+}
+.agent-graph-edge__dot[data-reverse] {
+  animation-name: agent-graph-dot-back;
+}
+@keyframes agent-graph-dot {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+/* Where each mark rests, and which line it follows, are inline: they come from the route. */
+.agent-graph-edge__chevron {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  offset-rotate: auto;
+  pointer-events: none;
+}
+.agent-graph-edge__chevron[data-moving] {
+  animation: agent-graph-flow 3s linear infinite;
+  animation-play-state: var(--nt-anim-state);
+}
+/* `offset-distance` is only named at the ends, so it runs at one speed under the opacity stops. */
+@keyframes agent-graph-flow {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+@keyframes agent-graph-dot-back {
+  0% { offset-distance: 100%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { offset-distance: 0%; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-graph-edge__dot {
+    display: none;
+  }
+}
+
+/* Direction still shows: with no animation, each mark sits at its inline stop. */
+@media (prefers-reduced-motion: reduce) {
+  .agent-graph-edge__chevron[data-moving] {
+    animation: none;
+  }
+}
+@keyframes agent-graph-arrive {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* Modal */
+.agent-graph-modal {
+  width: min(960px, 88vw);
+  height: min(640px, 80vh);
+}
+.agent-graph-modal .kanban-modal__header {
+  gap: 8px;
+}
+.agent-graph-modal__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Ship process panel: shared by the graph view and Settings */
+.ship-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+.ship-panel__summary {
+  margin: 0;
+}
+.ship-panel__head {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ship-panel__muted {
+  margin: 0 0 3px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ship-panel__warning {
+  margin: 0 0 3px;
+  color: var(--caution);
+  overflow-wrap: anywhere;
+}
+.ship-panel__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.ship-panel__file-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ship-panel__file-text code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ship-panel__action {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(var(--tint-rgb), 0.06);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ship-panel__action:hover {
+  background: rgba(var(--tint-rgb), 0.12);
+}
+.ship-panel__agents {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ship-panel__agents li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.ship-panel__agent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ship-panel__agent-meta {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Harness panel */
+.harness-panel__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.harness-panel__list {
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.harness-panel__list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.harness-panel__list li[data-used] .harness-panel__name {
+  font-weight: 600;
+}
+.harness-panel__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.harness-panel__meta {
+  flex-shrink: 0;
+  max-width: 62%;
+  text-align: right;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.harness-panel__meta[data-status='enabled'] {
+  color: var(--success);
+}
+
+/* Four facts on two rows: the shared two-row clip is what hides the last one if they wrap further. */
+.agent-graph-node--harness .agent-graph-node__badges {
+  max-height: none;
+}

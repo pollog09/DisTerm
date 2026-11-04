@@ -1111,6 +1111,17 @@ export interface LogApi {
   onBatch(cb: (batch: LogRecord[]) => void): () => void
 }
 
+/** The agent graph view's core surface (core/agent-graph, core/ship-config). */
+export interface AgentGraphApi {
+  snapshot(projectId: string): Promise<import('./agent-graph').AgentGraphSnapshot>
+  onEvent(listener: (event: import('./agent-graph').AgentGraphEvent) => void): () => void
+  readShipConfig(projectId: string): Promise<import('./ship-config').ShipConfigResult>
+  createShipGraph(projectId: string, scope: import('./ship-config').ShipScope): Promise<import('./ship-config').ShipGraphCreateResult>
+  createShipTemplate(projectId: string): Promise<import('./ship-config').ShipTemplateCreateResult>
+  /** Subscribe to config changes on the machine this project runs on; returns an unsubscribe. */
+  onShipConfigChanged(projectId: string, cb: () => void): () => void
+}
+
 export interface BoardLogApi {
   /** Append one entry. Resolves `false` on any failure (unsupported project, fs/exec error). */
   append(projectId: string, entry: BoardLogEntry): Promise<boolean>
@@ -2027,15 +2038,6 @@ export interface Settings {
   /** Fallback view for projects the user hasn't explicitly toggled (canvas or the kanban board).
    *  Personal machine-local preference; per-project explicit choices override it. */
   defaultProjectView: 'canvas' | 'kanban'
-  /** Global swimlane kanban overview (Omni-Kanban): when enabled, the kanban board shows all
-   *  open projects as stacked swimlanes instead of per-project tabs. Toggle in Settings →
-   *  Behavior. Default OFF — no silent behavior change for existing users; `globalKanban`
-   *  (the view flag) is only honored when this is true. */
-  omniKanbanEnabled: boolean
-  /** When enabled, Cmd+Shift+B (view.kanbanToggle) opens the global Omni board instead of the
-   *  per-project board. The dedicated global shortcut (view.globalKanbanToggle) always opens
-   *  Omni regardless of this setting. Opt-in, per user — default OFF. */
-  omniKanbanAsDefault: boolean
   /** New-worktree path template, resolved relative to the repository root. Supports `$repoName`
    *  (`$reponame` and `$defaultFolderName` aliases) plus `$branch`; both `$x` and `${x}` forms.
    *  A missing branch token is appended automatically. */
@@ -2144,6 +2146,15 @@ export interface Settings {
    * asked OpenSSH for exactly this. Logic: `core/remote-ssh/native/agent-add.ts`.
    */
   windowsSshAgentAddKeys: boolean
+  /**
+   * Keep a WSL project's distribution running after the app quits, so its agents and tmux sessions
+   * survive: WSL stops a distribution with no client attached, and tmux does not count. On, one hidden
+   * `wsl.exe` per distribution in use outlives the app and the WSL VM keeps using memory. Off, nothing
+   * outlives the app. Machine-local: settings.json only, never in a project file. A relay peer cannot
+   * set it (`settings:save` is host-only) and neither can an agent (`SETTINGS_VERB_FORBIDDEN`).
+   * Logic: core/remote-ssh/native/wsl-endpoint.ts.
+   */
+  wslKeepDistroRunning: boolean
   /** Plain mouse wheel zooms the canvas (no Cmd/Ctrl needed). On macOS a two-finger trackpad
    *  scroll keeps panning independently (see canvas/wheel-gesture.ts), so mouse and trackpad
    *  coexist; elsewhere this still trades away scroll-to-pan, so it stays opt-in. */
@@ -2539,8 +2550,6 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarCollapsedItems: {},
   sidebarGrouping: 'project',
   defaultProjectView: 'canvas',
-  omniKanbanEnabled: false,
-  omniKanbanAsDefault: false,
   worktreePathTemplate: DEFAULT_WORKTREE_PATH_TEMPLATE,
   newProjectStorage: 'folder',
   panHoverDelay: 600,
@@ -2556,6 +2565,7 @@ export const DEFAULT_SETTINGS: Settings = {
   copyOnSelect: false,
   terminalFontZoomKeys: false,
   windowsSshAgentAddKeys: false,
+  wslKeepDistroRunning: true,
   wheelZoom: false,
   wheelZoomSpeed: 1,
   trackpadPan: true,
@@ -2724,6 +2734,9 @@ export type SshProjectStatus = 'connecting' | 'connected' | 'disconnected' | 're
 export interface SshProjectStatusEvent {
   /** Hook-only health update; it does not imply an SSH reconnect or terminal restart. */
   hookTunnelVerified?: boolean
+  /** A WSL project's named warnings (a missing tool, a restarted distro). Same kind of update: it
+   *  says nothing about the connection. */
+  endpointWarnings?: import('./wsl-project').WslWarning[]
   projectId: string
   status: SshProjectStatus
   error?: string
@@ -4663,6 +4676,7 @@ export interface NodeTerminalApi {
   speech: SpeechApi
   ssh: SshApi
   sshProject: SshProjectApi
+  wslProject: import('./wsl-project').WslProjectApi
   sshFs: SshFsApi
   git: GitApi
   clipboard: ClipboardApi
@@ -4677,6 +4691,7 @@ export interface NodeTerminalApi {
   projectLimit: ProjectLimitApi
   contextLink: ContextLinkApi
   boardLog: BoardLogApi
+  agentGraph: AgentGraphApi
   logs: LogApi
   githubIssues: import('./github-issues').GitHubIssuesApi
   githubControl: import('./github-issues').GitHubControlApi

@@ -11,6 +11,12 @@ import { WATCH_CHAT_CAST, WATCH_EVENT, WATCH_HISTORY_CAST, WATCH_INPUT_CAST, WAT
 describe('isHostOnlyChannel', () => {
   it('keeps the host’s installed WSL distributions from relay peers', () => {
     expect(isHostOnlyChannel(IPC.ptyTerminalProfiles)).toBe(true)
+    expect(isHostOnlyChannel(IPC.wslProjectList)).toBe(true)
+    expect(isHostOnlyChannel(IPC.wslProjectPrepare)).toBe(true)
+    expect(isHostOnlyChannel(IPC.wslProjectBind)).toBe(true)
+    expect(isHostOnlyChannel(IPC.wslProjectUnbind)).toBe(true)
+    // The keepalive setting travels in settings:save, so a peer cannot change it either.
+    expect(isHostOnlyChannel(IPC.settingsSave)).toBe(true)
   })
 
   it('covers the whole GitHub host-control namespace by prefix', () => {

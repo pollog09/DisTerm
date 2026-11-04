@@ -19,6 +19,12 @@ describe('planSshPrewarm', () => {
     expect(plan[0]).toEqual({ projectId: 'p1', conn: conn('a'), remoteCwd: '/srv' })
   })
 
+  it('never dials a WSL project: that would start a distro nobody asked for at launch', () => {
+    const wsl = { id: 'w1', ssh: { server: conn('ubuntu-0123456789abcdef.wsl.nodeterm.invalid'), remoteCwd: '~' } }
+    const plan = planSshPrewarm({ projects: [wsl, sshProject('p2', 'b')], busy: () => false })
+    expect(plan.map((t) => t.projectId)).toEqual(['p2'])
+  })
+
   it('never dials a CLOSED project — a closed tab is the user saying "not now"', () => {
     const plan = planSshPrewarm({
       projects: [sshProject('p1', 'a', { closed: true }), sshProject('p2', 'b')],

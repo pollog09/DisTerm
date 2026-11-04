@@ -1,3 +1,4 @@
+import { holdShipConfigLease } from '../shared/ship-config'
 import { subscribeAgentReplay } from '../shared/agent-replay-subscription'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { IPC } from '../shared/ipc'
@@ -320,6 +321,12 @@ const api: NodeTerminalApi = {
     save: (server) => ipcRenderer.invoke(IPC.sshSave, server),
     remove: (id) => ipcRenderer.invoke(IPC.sshDelete, id),
     importCandidates: () => ipcRenderer.invoke(IPC.sshImport)
+  },
+  wslProject: {
+    list: () => ipcRenderer.invoke(IPC.wslProjectList),
+    prepare: (distro, browseId) => ipcRenderer.invoke(IPC.wslProjectPrepare, distro, browseId),
+    bind: (projectId, host) => ipcRenderer.invoke(IPC.wslProjectBind, projectId, host),
+    unbind: (projectId, host) => ipcRenderer.invoke(IPC.wslProjectUnbind, projectId, host)
   },
   sshProject: {
     connect: (projectId, conn, remoteCwd) =>
@@ -882,6 +889,30 @@ const api: NodeTerminalApi = {
       return () => {
         ipcRenderer.removeListener(ch, handler)
         ipcRenderer.send(IPC.boardLogUnsubscribe, projectId)
+      }
+    }
+  },
+  agentGraph: {
+    snapshot: (projectId) => ipcRenderer.invoke(IPC.agentGraphSnapshot, projectId),
+    onEvent: (listener) => {
+      const handler = (_e: unknown, event: Parameters<typeof listener>[0]): void => listener(event)
+      ipcRenderer.on(IPC.agentGraphEvent, handler)
+      return () => ipcRenderer.removeListener(IPC.agentGraphEvent, handler)
+    },
+    readShipConfig: (projectId) => ipcRenderer.invoke(IPC.shipConfigRead, projectId),
+    createShipGraph: (projectId, scope) => ipcRenderer.invoke(IPC.shipGraphCreate, projectId, scope),
+    createShipTemplate: (projectId) => ipcRenderer.invoke(IPC.shipTemplateCreate, projectId),
+    onShipConfigChanged: (projectId, cb) => {
+      const ch = IPC.shipConfigChanged(projectId)
+      const handler = (): void => cb()
+      ipcRenderer.on(ch, handler)
+      const release = holdShipConfigLease({
+        subscribe: (leaseId) => ipcRenderer.send(IPC.shipConfigSubscribe, projectId, leaseId),
+        unsubscribe: (leaseId) => ipcRenderer.send(IPC.shipConfigUnsubscribe, projectId, leaseId)
+      })
+      return () => {
+        ipcRenderer.removeListener(ch, handler)
+        release()
       }
     }
   },

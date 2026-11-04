@@ -1,9 +1,8 @@
 import { create } from 'zustand'
 import { readLocal, writeLocal } from '../lib/localStore'
-import { useSettings } from './settings'
 import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 
-// Which view each project shows (canvas or kanban) — PERSONAL, per machine: persisted in
+// Which view each project shows (canvas, kanban or the agent graph) — PERSONAL, per machine: persisted in
 // localStorage, deliberately never in the git-shared .nodeterm/project.json (spec rule).
 //
 // A project with an EXPLICIT entry uses it; a project with NONE follows `defaultView` (the
@@ -13,15 +12,15 @@ import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 export const PROJECT_VIEW_KEY = 'nodeterm.projectView'
 export const GLOBAL_KANBAN_KEY = 'nodeterm.globalKanban'
 
-export type ProjectView = 'canvas' | 'kanban'
+export type ProjectView = 'canvas' | 'kanban' | 'graph'
 
-/** Parses the persisted map, keeping only valid canvas/kanban entries. Exported for tests. */
+/** Parses the persisted map, keeping only valid view entries. Exported for tests. */
 export function parseViewMap(raw: string | null): Record<string, ProjectView> {
   try {
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     const out: Record<string, ProjectView> = {}
-    for (const [id, v] of Object.entries(parsed)) if (v === 'kanban' || v === 'canvas') out[id] = v
+    for (const [id, v] of Object.entries(parsed)) if (v === 'kanban' || v === 'canvas' || v === 'graph') out[id] = v
     return out
   } catch {
     return {}
@@ -79,17 +78,6 @@ export function viewFor(s: Pick<ViewModeState, 'viewByProject' | 'defaultView'>,
   return s.viewByProject[projectId] ?? s.defaultView
 }
 
-/**
- * Feature flag: does the global swimlane overview exist at all?
- * `settings.omniKanbanEnabled` is the *feature* toggle (Settings → Behavior → Omni Kanban,
- * default OFF — no silent behavior change for existing users). `globalKanban` below is the
- * *view* toggle (whether the overview is currently shown). Use this helper instead of
- * spelling the check inline.
- */
-export function isOmniKanbanEnabled(settings: { omniKanbanEnabled?: boolean }): boolean {
-  return settings.omniKanbanEnabled === true
-}
-
 function readGlobalKanban(): boolean {
   try {
     const raw = readLocal(GLOBAL_KANBAN_KEY)
@@ -142,34 +130,61 @@ export const useViewMode = create<ViewModeState>((set) => ({
     })
 }))
 
-/** True when the given project currently shows the kanban board (read outside React —
- *  keydown handlers use this so they need no store subscription/deps). */
+/**
+ * True when a full-page view COVERS this project's canvas (read outside React — keydown handlers use
+ * this so they need no store subscription/deps). The board and the agent graph answer alike: every
+ * caller is asking "is the canvas hidden, so a canvas gesture would act on something nobody can see",
+ * and "go to node" asks for a card, which the graph view consumes the same way the board does.
+ *
+ * The name predates the graph. It is kept because the callers live in `Canvas.tsx` and renaming them
+ * would be a merge conflict with upstream on every one. Ask `isBoardView` for the board itself.
+ */
 export function isKanbanOpen(projectId: string): boolean {
+  return !!projectId && viewFor(useViewMode.getState(), projectId) !== 'canvas'
+}
+
+/** True when this project shows the board specifically: what the view toggle and its labels flip. */
+export function isBoardView(projectId: string): boolean {
   return !!projectId && viewFor(useViewMode.getState(), projectId) === 'kanban'
+}
+
+/** True when this project shows the agent graph. */
+export function isGraphView(projectId: string): boolean {
+  return !!projectId && viewFor(useViewMode.getState(), projectId) === 'graph'
+}
+
+/** Show `projectId`'s agent graph, whichever view is up (Omni included). */
+export function showGraph(projectId: string): boolean {
+  if (!projectId) return false
+  const vm = useViewMode.getState()
+  vm.setGlobalKanban(false)
+  vm.setView(projectId, 'graph')
+  return true
+}
+
+/** The graph's command (`view.graphToggle`, ⌘K), separate from the canvas ⇄ board toggle, which stays
+ *  that pair: from the graph back to the canvas, from anywhere else into the graph. */
+export function toggleGraphView(projectId: string): boolean {
+  if (!projectId) return false
+  if (isGraphView(projectId) && !isGlobalKanbanOpen()) {
+    useViewMode.getState().setView(projectId, 'canvas')
+    return true
+  }
+  return showGraph(projectId)
 }
 
 /**
  * True when the global swimlane overview is *currently shown* (all projects as swimlanes).
- * Gated by the feature flag `omniKanbanEnabled` — when the feature is off, the view flag is
- * ignored and per-project tabs remain. `globalKanban` itself is persisted in localStorage
- * (`nodeterm.globalKanban`) so an explicit "open overview" survives a restart; this is
- * intentional (like `viewByProject`), not transient: a canvas lock that survives restart would
- * read as "frozen" (which is why `lib/canvasLock.ts` keeps it opt-in and default off), but a
- * board that survives restart reads as "you left it open". If that proves surprising, make this
- * transient; the call site is this one helper.
+ * `globalKanban` is persisted in localStorage (`nodeterm.globalKanban`) so an open overview survives
+ * a restart; this is intentional (like `viewByProject`): a board that survives restart reads as "you
+ * left it open". If that proves surprising, make this transient; the call site is this one helper.
  */
 export function isGlobalKanbanOpen(): boolean {
-  try {
-    if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
-  } catch {
-    // Fail closed — default OFF, so an unreadable settings store must not enable Omni.
-    return false
-  }
   return useViewMode.getState().globalKanban
 }
 
 /**
- * OMNI IS A SCOPE OF THE KANBAN SIDE, NOT A THIRD VIEW. The view toggle (tab icon, ⌘⇧B, the
+ * OMNI IS A SCOPE OF THE KANBAN SIDE, NOT A THIRD VIEW. The view toggle (Kanban tab, ⌘⇧B, the
  * menu) flips canvas ⇄ board, and the board shows either this project or all projects. So:
  * leaving Omni through the scope switch lands on THIS project's board, and the view toggle from
  * Omni lands on the canvas. It used to be an overlay independent of the per-project view, so its
@@ -184,11 +199,9 @@ export function isGlobalKanbanOpen(): boolean {
  * all come through here, so the decision exists once.
  */
 
-/** Show the board with every project (Omni). No-op while the feature is off. */
-export function showAllProjectsBoard(): boolean {
-  if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
+/** Show the board with every project (Omni). */
+export function showAllProjectsBoard(): void {
   useViewMode.getState().setGlobalKanban(true)
-  return true
 }
 
 /** Show `projectId`'s own board — the scope switch's "This project", and where closing Omni lands. */
@@ -206,31 +219,19 @@ export function showCanvas(projectId: string): void {
 }
 
 /**
- * The view toggle (canvas ⇄ board). From any board it goes to the canvas; from the canvas it
- * opens the board in the scope `omniKanbanAsDefault` picks. Returns false when there is nothing
- * to toggle (no project and no Omni).
+ * The view toggle (canvas ⇄ board): from any board to the canvas, from anywhere else into the
+ * all-projects board. This project's own board is one step further, on the board's scope switch.
  */
-export function toggleBoardView(projectId: string): boolean {
-  if (isGlobalKanbanOpen() || (projectId && isKanbanOpen(projectId))) {
-    showCanvas(projectId)
-    return true
-  }
-  const settings = useSettings.getState().settings
-  if (isOmniKanbanEnabled(settings) && settings.omniKanbanAsDefault === true) return showAllProjectsBoard()
-  if (!projectId) return false
-  showProjectBoard(projectId)
-  return true
+export function toggleBoardView(projectId: string): void {
+  if (isGlobalKanbanOpen() || (projectId && isBoardView(projectId))) showCanvas(projectId)
+  else showAllProjectsBoard()
 }
 
-/**
- * The dedicated "All projects" command: from Omni back to this project's board, from anywhere
- * else into Omni. False while the feature is off.
- */
-export function toggleAllProjectsBoard(projectId: string): boolean {
-  if (!isOmniKanbanEnabled(useSettings.getState().settings)) return false
+/** The dedicated "All projects" command: from Omni back to this project's board, from anywhere else
+ *  into Omni. */
+export function toggleAllProjectsBoard(projectId: string): void {
   if (isGlobalKanbanOpen()) showProjectBoard(projectId)
   else showAllProjectsBoard()
-  return true
 }
 
 /**
@@ -252,7 +253,7 @@ export function openIssueOnBoard(
     if (url) openExternal(url)
     return
   }
-  const vm = useViewMode.getState()
-  if (projectId && !isKanbanOpen(projectId)) vm.toggle(projectId)
+  // This project's own board, whichever scope is up: only it has the issue lane, and Omni has none.
+  showProjectBoard(projectId)
   useViewMode.getState().requestIssue(ref)
 }

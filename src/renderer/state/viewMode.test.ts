@@ -11,7 +11,6 @@ import {
   toggleAllProjectsBoard,
   toggleBoardView
 } from './viewMode'
-import { useSettings } from './settings'
 
 describe('parseViewMap', () => {
   it('keeps canvas/kanban entries, tolerates garbage', () => {
@@ -71,8 +70,16 @@ describe('card requests (board-aware "go to node")', () => {
 describe('openIssueOnBoard (a node\'s #N chip)', () => {
   const ref = { owner: 'o', repo: 'r', number: 5 }
   beforeEach(() =>
-    useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', requestedIssue: null, requestedCardNodeId: null })
+    useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', globalKanban: false, requestedIssue: null, requestedCardNodeId: null })
   )
+
+  it('leaves the all-projects board, which has no issue lane, for this project\'s board', () => {
+    showAllProjectsBoard()
+    openIssueOnBoard('p1', ref, true, vi.fn())
+    expect(isGlobalKanbanOpen()).toBe(false)
+    expect(isKanbanOpen('p1')).toBe(true)
+    expect(useViewMode.getState().requestedIssue).toEqual(ref)
+  })
 
   it('brings up a board that can show the issue, then asks it to open the issue', () => {
     const open = vi.fn()
@@ -99,29 +106,23 @@ describe('openIssueOnBoard (a node\'s #N chip)', () => {
 })
 
 describe('Omni is a scope of the kanban side, not a third view', () => {
-  const setOmni = (enabled: boolean, asDefault = false): void => {
-    useSettings.setState((s) => ({
-      settings: { ...s.settings, omniKanbanEnabled: enabled, omniKanbanAsDefault: asDefault }
-    }))
-  }
   beforeEach(() => {
     useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', globalKanban: false })
-    setOmni(true)
   })
   const where = (projectId: string): 'canvas' | 'board' | 'omni' =>
     isGlobalKanbanOpen() ? 'omni' : isKanbanOpen(projectId) ? 'board' : 'canvas'
 
-  it('the view toggle goes canvas → board → canvas', () => {
-    expect(toggleBoardView('p1')).toBe(true)
-    expect(where('p1')).toBe('board')
+  it('the view toggle goes canvas → all projects → canvas', () => {
+    toggleBoardView('p1')
+    expect(where('p1')).toBe('omni')
     toggleBoardView('p1')
     expect(where('p1')).toBe('canvas')
   })
 
-  it('with Omni as default the view toggle opens the all-projects scope from the canvas', () => {
-    setOmni(true, true)
+  it('the view toggle leaves this project\'s own board for the canvas', () => {
+    showProjectBoard('p1')
     toggleBoardView('p1')
-    expect(where('p1')).toBe('omni')
+    expect(where('p1')).toBe('canvas')
   })
 
   it('the view toggle from Omni lands on the CANVAS even when the project view was its board', () => {
@@ -133,7 +134,6 @@ describe('Omni is a scope of the kanban side, not a third view', () => {
   })
 
   it('leaving Omni through the scope switch lands on THIS project board, even from a canvas start', () => {
-    setOmni(true, true)
     toggleBoardView('p1') // canvas → Omni
     showProjectBoard('p1')
     expect(where('p1')).toBe('board')
@@ -153,13 +153,4 @@ describe('Omni is a scope of the kanban side, not a third view', () => {
     expect(where('p2')).toBe('omni') // p2's own view is the canvas
   })
 
-  it('does nothing Omni-shaped while the feature is off', () => {
-    setOmni(false, true)
-    expect(showAllProjectsBoard()).toBe(false)
-    expect(toggleAllProjectsBoard('p1')).toBe(false)
-    toggleBoardView('p1') // asDefault ignored while the feature is off
-    expect(where('p1')).toBe('board')
-    useViewMode.setState({ globalKanban: true }) // a stale persisted flag
-    expect(isGlobalKanbanOpen()).toBe(false)
-  })
 })

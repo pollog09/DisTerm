@@ -347,6 +347,21 @@ export const IPC = {
   boardLogUnsubscribe: 'board-log:unsubscribe',
   /** Per-project push fired when a project's board log changes (mirrors the ptyData naming). */
   boardLogChanged: (projectId: string) => `board-log:changed:${projectId}`,
+  /** The agent graph view's history for one project (core/agent-graph/handlers.ts). */
+  agentGraphSnapshot: 'agent-graph:snapshot',
+  /** main→renderer push: one `AgentGraphEvent` as it is recorded. Never carries a message body. */
+  agentGraphEvent: 'agent-graph:event',
+  /** One machine's ship config: its agents, commands and `ship-graph.json` (core/ship-config). */
+  shipConfigRead: 'ship-config:read',
+  /** Write the example `ship-graph.json`, only where no file exists. */
+  shipGraphCreate: 'ship-config:create-graph',
+  /** Add the starter pipeline to a project's `.claude`, keeping everything already there. */
+  shipTemplateCreate: 'ship-config:create-template',
+  /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while a view holds one, the core re-reads
+   *  the config on a timer and pushes `shipConfigChanged` on a real change. */
+  shipConfigSubscribe: 'ship-config:subscribe',
+  shipConfigUnsubscribe: 'ship-config:unsubscribe',
+  shipConfigChanged: (projectId: string) => `ship-config:changed:${projectId}`,
   appUpdateAvailable: 'app:update-available',
   appUpdateDownloaded: 'app:update-downloaded',
   appUpdateProgress: 'app:update-progress',
@@ -635,6 +650,14 @@ export const IPC = {
   sshFsMkdir: 'sshFs:mkdir',
   sshFsExists: 'sshFs:exists',
   sshFsQuickOpen: 'sshFs:quick-open',
+  /** The WSL distributions the new-project flow may offer. */
+  wslProjectList: 'wsl-project:list',
+  /** Set up a distribution the user just picked. Starts it, and never installs anything. */
+  wslProjectPrepare: 'wsl-project:prepare',
+  /** Record that the user created this project on a WSL endpoint. */
+  wslProjectBind: 'wsl-project:bind',
+  /** The user deleted a WSL project. The endpoint's last one stops its keepalive. */
+  wslProjectUnbind: 'wsl-project:unbind',
   sshProjectStatus: 'ssh-project:status',
   /** main → renderer: an SSH project's identity file is passphrase-protected and the ssh-agent
    *  does not hold the key (or the last answer was wrong), so show a prompt.

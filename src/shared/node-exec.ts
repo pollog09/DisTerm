@@ -85,6 +85,7 @@ function stripNodeExec(n: CanvasNodeState, keepLaunch = false): CanvasNodeState 
     n.shell === undefined &&
     n.ssh?.extraArgs === undefined &&
     n.ssh?.execTrusted === undefined &&
+    n.ssh?.wslDistro === undefined &&
     !launch
   )
     return n
@@ -94,7 +95,7 @@ function stripNodeExec(n: CanvasNodeState, keepLaunch = false): CanvasNodeState 
   if (out.ssh) {
     // `execTrusted` goes with the value it vouches for. It is a MACHINE-LOCAL provenance marker:
     // if it could ride a document or a wire frame, a hostile one would simply set it to true.
-    const { extraArgs: _extraArgs, execTrusted: _execTrusted, ...conn } = out.ssh
+    const { extraArgs: _extraArgs, execTrusted: _execTrusted, wslDistro: _wslDistro, ...conn } = out.ssh
     out.ssh = conn
   }
   return out

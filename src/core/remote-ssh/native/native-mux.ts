@@ -41,9 +41,10 @@ import type { Client, Channel, ClientChannel, ConnectConfig, UNIXConnectionDetai
 import type { LocalForward, ParsedSsh, ReverseForward, SshOptions, SshTarget } from './ssh-argv'
 import { parseProxyJump, resolveForwardAgent, type HostQuery, type JumpSpec, type ResolvedHost } from './ssh-config'
 import { WINDOWS_OPENSSH_AGENT_PIPE, resolveWindowsIdentityAgent } from './windows-agent-discovery'
-import { expandProxyTokens, proxyCommandSocket, type ProxySpawn } from './proxy-command'
+import { expandProxyTokens, proxyCommandSocket, trustedProxySocket, type ProxySpawn } from './proxy-command'
 import { acceptNewHostKey, hostKeyAlgorithmsFor, hostKeyMismatchMessage } from './known-hosts'
 import { addKeyToAgent, type AgentAddResult } from './agent-add'
+import { isWslHost } from '../../../shared/wsl-project'
 
 /**
  * ssh2, loaded on first use. This module sits on main's module-scope import graph (via
@@ -71,8 +72,9 @@ export interface ExecResult {
 
 export interface NativeMuxDeps {
   /** Effective config for a destination (`ssh -G`; see ssh-config.ts). A ProxyJump hop is asked
-   *  with only what its spec names (user/port may be absent — the hop's own config answers). */
-  resolveHost(target: HostQuery): Promise<ResolvedHost>
+   *  with only what its spec names (user/port may be absent — the hop's own config answers).
+   *  `ctx.controlPath` is the connection asking, absent for a hop. */
+  resolveHost(target: HostQuery, ctx?: { controlPath?: string }): Promise<ResolvedHost>
   /** Ask the user for a key's passphrase; null = cancelled (or nobody answered). Absent = never
    *  prompt. `retry`: the previous answer was wrong. `target`: `user@host`, for the dialog. */
   askPassphrase?(identityFile: string, req: { retry: boolean; target: string }): Promise<string | null>
@@ -130,6 +132,8 @@ interface Conn {
   proxies: Duplex[]
   /** ForwardAgent resolved to an agent: PTY channels on this connection request forwarding. */
   agentForward: boolean
+  /** The host a trusted transport was resolved for; only requests naming it may use the connection. */
+  trustedHost?: string
 }
 
 interface LocalListener {
@@ -224,6 +228,23 @@ export class NativeMux {
   private warned = new Set<string>()
 
   constructor(private deps: NativeMuxDeps) {}
+
+  /**
+   * Why a request may not use the connection on its ControlPath, or null. The connection is selected
+   * by path alone, so without this a request that named another host and a WSL project's path would
+   * run in that distro with neither WSL gate consulted. It also runs the other way: a WSL name never
+   * rides an ordinary connection, whichever path it names.
+   */
+  refusal(controlPath: string | undefined, target: SshTarget): string | null {
+    const conn = controlPath ? this.conns.get(controlPath) : undefined
+    if (!conn?.alive) return null
+    return this.refusalOn(conn, target)
+  }
+
+  private refusalOn(conn: Conn, target: SshTarget): string | null {
+    if (conn.trustedHost ? target.host === conn.trustedHost : !isWslHost(target.host)) return null
+    return `ssh: refused: this connection does not serve ${target.host}`
+  }
 
   /** Is there a live shared connection on this path (`-O check`)? */
   check(controlPath: string): boolean {
@@ -368,6 +389,8 @@ export class NativeMux {
       if (!conn) throw new Error(cp ? noMasterMessage(cp) : 'ssh: no connection')
       await conn.ready
       const c = conn
+      const refused = this.refusalOn(c, p.target)
+      if (refused) throw new Error(refused)
       let result!: Promise<ExecResult>
       const start = (ch: ClientChannel): void => {
         recordExit(ch)
@@ -416,6 +439,8 @@ export class NativeMux {
     }
     const conn = this.conns.get(cp)!
     await conn.ready
+    const refused = this.refusalOn(conn, p.target)
+    if (refused) throw new Error(refused)
     const ptyOpts = pty ? { cols: pty.cols, rows: pty.rows, term: pty.term ?? 'xterm-256color' } : undefined
     return this.openOn<ClientChannel>(cp, conn, (client, cb) => {
       // recordExit runs INSIDE ssh2's callback, before anything can be awaited (see recordExit).
@@ -501,6 +526,8 @@ export class NativeMux {
     const c = conn
     try {
       await c.ready
+      const refused = this.refusalOn(c, target)
+      if (refused) throw new Error(refused)
       const s =
         controlPath && !oneOff
           ? await this.openOn<SFTPWrapper>(controlPath, c, (client, cb) => client.sftp(cb))
@@ -720,17 +747,30 @@ export class NativeMux {
     mode: { interactive: boolean },
     via?: Conn
   ): Promise<void> {
-    const host = await this.deps.resolveHost(target)
+    const host = await this.deps.resolveHost(target, { controlPath: options.controlPath })
+    // A trusted transport brings its own identity: what the argv named has no say in it.
+    if (host.trustedTransport) {
+      conn.trustedHost = target.host
+      target = { user: host.user, host: target.host, port: host.port }
+    }
     if (!via && host.unsupported?.length) {
       this.warnOnce(
         `[native-ssh] ${target.host}: ~/.ssh/config options nodeterm's SSH transport does not support are ignored: ${host.unsupported.join(', ')}`
       )
     }
-    const timeoutMs = (options.connectTimeout ?? host.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS / 1000) * 1000
+    const timeoutMs =
+      (host.trustedTransport
+        ? (host.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS / 1000)
+        : (options.connectTimeout ?? host.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT_MS / 1000)) * 1000
     const connectSocket = this.deps.connectSocket ?? defaultConnectSocket
     let sock: Duplex
     const borrowed = via?.jumps.length ? via.jumps[via.jumps.length - 1] : undefined
-    if (borrowed && via?.alive) {
+    if (host.trustedTransport) {
+      const { argv, label } = host.trustedTransport
+      sock = trustedProxySocket(argv, label, { timeoutMs, spawn: this.deps.spawnProxy, platform: this.deps.platform })
+      conn.proxies.push(sock)
+      sock.on('error', (e) => this.deps.log?.(`[native-ssh] ${label}: ${e.message}`))
+    } else if (borrowed && via?.alive) {
       conn.jumps = via.jumps
       conn.ownsJumps = false
       sock = await forwardTo(borrowed, host.hostname, host.port)
@@ -846,7 +886,8 @@ export class NativeMux {
     // OpenSSH's order_hostkeyalgs: offer the key types on record for this host first, so a host
     // that still holds its recorded key presents it — and any other type it presents is refused as
     // a changed key (known-hosts.ts), never recorded as a new one. Undefined = ssh2's default order.
-    const serverHostKey = hostKeyAlgorithmsFor(keyPolicy, knownAs, host.port)
+    const pinned = host.trustedTransport?.pinnedHostKey
+    const serverHostKey = pinned ? ['ssh-ed25519' as const] : hostKeyAlgorithmsFor(keyPolicy, knownAs, host.port)
     const cfg: ConnectConfig = {
       sock,
       username: host.user,
@@ -855,6 +896,12 @@ export class NativeMux {
       keepaliveCountMax: options.serverAliveCountMax ?? 3,
       ...(serverHostKey ? { algorithms: { serverHostKey } } : {}),
       hostVerifier: (key: Buffer): boolean => {
+        // A pin is exact: known_hosts is neither read nor written, so nothing can be learned here.
+        if (pinned) {
+          if (key.equals(pinned)) return true
+          hostKeyRefusal = `${host.trustedTransport?.label}: the SSH host key does not match the one recorded on this computer`
+          return false
+        }
         // accept-new is the only policy the builders ask for; `ask`/`yes` from the user's config
         // are overridden by the command line exactly as they are for OpenSSH.
         const v = acceptNewHostKey(keyPolicy, knownAs, host.port, key)

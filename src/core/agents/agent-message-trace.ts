@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { BoardLogEntry } from '../../shared/types'
 import type { AgentMessageOutcomeKind, ReceiptSignal, TraceKind } from './agent-message-decide'
+import { agentGraphLog } from '../agent-graph/event-log'
 
 /**
  * EVERY DELIVERY AND EVERY REFUSAL LEAVES A TRACE — and the trace records the OUTCOME, not the
@@ -126,6 +127,16 @@ export async function recordDelivery(
     traced
   })
   while (ring.length > TRACE_RING_CAPACITY) ring.shift()
+  // The graph view's live stream. Same fields as the board-log line, so the two merge on the id.
+  agentGraphLog.push({
+    kind: 'delivery',
+    id: traceId,
+    ts,
+    from: input.sourceNodeId,
+    to: input.targetNodeId,
+    outcome: input.outcome,
+    ...(input.reason ? { reason: input.reason } : {})
+  })
   return { traceId, traced }
 }
 

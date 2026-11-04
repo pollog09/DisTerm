@@ -59,6 +59,14 @@ The repo is split by Electron process boundary and the split is enforced, not ad
 `src/core/no-electron.test.ts` and `src/server/no-electron.test.ts` fail if `src/core` or
 `src/server` import `electron` or `../main/*`.
 
+For a map of all this, see [`docs/architecture/README.md`](docs/architecture/README.md): which
+process talks to which, how agent status travels, where state lives. Its `GRAPH.md` and `graph.json`
+are generated from the imports under `src/`, so do not edit them; `npm run arch:graph` rewrites them,
+and `npm run arch:graph -- --check` exits non-zero if they are stale. Nothing runs that check in CI,
+and line counts are part of the output, so any edit under `src/` makes the map stale until someone
+regenerates it. The check does not fail on a forbidden boundary crossing either: `GRAPH.md` only
+lists those, and it does not replace the tests above.
+
 **Put new service logic in `src/core` behind `CorePlatform`, not inline in `src/main`.** That is the
 seam the Server Edition boots from; logic left in `src/main` silently does not exist there, and the
 boundary tests cannot tell you a feature is *missing*. This keeps happening to the same subsystem:
@@ -185,9 +193,9 @@ forces you to *declare* every member, but a no-op stub compiles fine while doing
 The **canvas and the kanban board are two views of the same nodes.** When you add something to a
 canvas node — a header action, a badge, a menu item — ask whether the board's card and card modal
 need it too, and wire it in the same change. The global (Omni) board shows all open projects as
-stacked swimlanes; it is off by default (`settings.omniKanbanEnabled`), has a dedicated remappable
-shortcut (`view.globalKanbanToggle`), and can be made the default for Cmd+Shift+B via
-`settings.omniKanbanAsDefault` — see CLAUDE.md for the full invariants.
+stacked swimlanes; the Kanban tab and Cmd+Shift+B open it, its scope switch reaches a single project's board, and
+`view.globalKanbanToggle` is a remappable shortcut between the two — see CLAUDE.md for the full
+invariants.
 
 **Node actions live in one builder.** A row that acts on a canvas node — a menu item, a switch, a
 picker — goes in `renderer/lib/nodeActionItems.tsx`, never inline in `Canvas.tsx`. The canvas node
@@ -285,6 +293,55 @@ distribution from `useWslTerminalsFor` / `wslTerminalsForProject` (`state/wslTer
 passes the row's `shell` to the node. That list is already empty off Windows and for SSH and relay
 projects, so do not add a platform check, and do not list distributions yourself: that starts
 `wsl.exe`. No test can catch a new menu that forgets this.
+
+## The agent graph view
+
+The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
+Four things to know before touching a view:
+
+- **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
+  the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
+  views consume it. A new full-page view must mark the canvas covered and consume that request.
+- **The graph's model and layout are pure** (`lib/agentGraphModel.ts`, `lib/agentGraphLayout.ts`). A
+  new kind of line or badge goes in the model with a test, not in a component.
+- **A new graph channel is a relay decision.** The core's event buffer spans every project, so anything
+  a peer can read from it must be narrowed to its shared nodes, and machine config stays Editor-only.
+  `.claude/ship-graph.json` arrives in a clone: display only, never executed, and every field read
+  one by one in `core/ship-config/sanitize.ts`.
+- **A new loop in the graph must be earned.** The covered-canvas rule pauses every `.react-flow`, the
+  graph's own included, so `agent-graph.css` sets `--nt-anim-state` back on `.agent-graph .react-flow`,
+  following the window alone. An `infinite` animation there still needs
+  `animation-play-state: var(--nt-anim-state);` (the animation-gate test reads that sheet too) and a
+  still form under Reduce Motion. What moves is decided by `edgeInTransit` in the model: a moving line
+  keeps the window at display rate, so a line moves only while something is passing along it.
+
+Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
+and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
+work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
+
+**Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two
+things can go wrong quietly:
+
+- **`resources/bin/tmux` is gitignored**, and a missing `extraResources` source is only a WARNING to
+  electron-builder. A fresh checkout that did not run `node scripts/build-tmux.mjs` first gets a `.dmg`
+  with no bundled tmux. The release job runs it as its own step for this reason; a local `dist` does not.
+- **`sharp` is installed per architecture.** `@img/sharp-darwin-x64` is an optional dependency pinned to
+  x64, so `npm ci` on Apple silicon may leave it out, and electron-builder does not fetch it. If it is
+  missing, an x64 `.dmg` built there has a broken project icon upload. Building on an Intel Mac avoids
+  the question. On Apple silicon, check first with `ls node_modules/@img/`. If it is absent, add the x64
+  packages without touching anything else, at the versions `package-lock.json` pins:
+  `npm install --no-save --force @img/sharp-darwin-x64@<ver> @img/sharp-libvips-darwin-x64@<ver>`. Do not
+  use `--cpu=x64 --os=darwin`: npm treats the host's own optional packages as inert under those flags and
+  removes the darwin-arm64 builds of sharp, esbuild, rollup, lightningcss and tailwind's oxide, which
+  `make-icon` and `build` need. This recipe has not been run on a Mac yet, so check step 2 below after it.
+
+On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`:
+
+1. `file <app>/Contents/MacOS/nodeterm` says x86_64, and `<app>/Contents/Resources/bin/tmux` exists and
+   runs (`--version`).
+2. `ls <app>/Contents/Resources/app.asar.unpacked/node_modules/@img/` lists `sharp-darwin-x64`.
+3. A terminal opens and survives a quit and relaunch, a project icon upload works, and dictation loads.
+4. The agent graph opens from the tab's graph icon, lists your agents and draws a ship pipeline.
 
 ## House rules
 

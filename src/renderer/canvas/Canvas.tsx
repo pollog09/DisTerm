@@ -70,7 +70,7 @@ import {
 import { isBrowserRuntime } from '@renderer/bridge/runtime'
 import { WheelZoomBurstLimiter, clampWheelZoomSpeed, nextWheelZoom } from './wheel-zoom'
 import { canCopyFilesToClipboard, selectedLocalFilePaths } from './canvas-file-copy'
-import {
+import { canvasCoveredByView,
   canvasImagePasteArmedAfterKey,
   canvasImportRefusal,
   droppedDirectories,
@@ -166,6 +166,7 @@ import {
   IconLineage,
   IconGroup,
   IconJump,
+  IconGraph,
   IconKanban,
   IconLock,
   IconMinus,
@@ -465,6 +466,15 @@ import { followSharedProject, shareCanvas, shareProjectDeps } from '../lib/share
 import { handedOffWarning } from '../lib/handedOff'
 import { skipNextColdResumeFor } from '../terminal/handed-off-resume'
 import { SshProjectDialog } from '../components/SshProjectDialog'
+import type { WslWarning } from '@shared/wsl-project'
+import {
+  bindOpenedWslProject,
+  createProjectReconnector,
+  dropClosedWslConnection,
+  isClosedWslProject,
+  releaseClosedTerminals,
+  unbindDeletedWslProject
+} from '../lib/wslProjectBinding'
 import { SshPassphrasePrompt } from '../components/SshPassphrasePrompt'
 import { transport } from '../terminal/local-transport'
 import { sshFs } from '../terminal/ssh-fs'
@@ -840,10 +850,11 @@ import { useBoardLog } from '../state/boardLog'
 import {
   isGlobalKanbanOpen,
   isKanbanOpen,
-  isOmniKanbanEnabled,
   showCanvas,
   toggleAllProjectsBoard,
+  isBoardView,
   toggleBoardView,
+  toggleGraphView,
   useViewMode,
   viewFor
 } from '../state/viewMode'
@@ -855,6 +866,7 @@ import {
   useWslTerminalsFor,
   wslTerminalsForProject
 } from '../state/wslTerminals'
+import { AgentGraphView } from '../components/graph/AgentGraphView'
 import { useFocusNode, FOCUS_SURFACE_ID } from '../state/focusNode'
 import { focusTargetId } from '../lib/focusTarget'
 import {
@@ -1781,6 +1793,7 @@ export function Canvas() {
   // Live SSH ControlMaster status per project id (drives the thin connection banner).
   const [sshStatus, setSshStatus] = useState<Record<string, SshProjectStatus>>({})
   const [lostHookTunnels, setLostHookTunnels] = useState<Record<string, boolean>>({})
+  const [endpointWarnings, setEndpointWarnings] = useState<Record<string, WslWarning[]>>({})
   // The cause that came with an `error` status. Kept beside the status because the banner used to
   // render a bare "SSH connection error", throwing away the one line ssh gave us (permission
   // denied, host unreachable, host key mismatch) that tells the user what to actually fix.
@@ -3619,9 +3632,9 @@ export function Canvas() {
   useEffect(() => registerWorkspaceDirty(markDirty), [markDirty])
 
   const perProjectKanbanOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'kanban')
+  const graphOpen = useViewMode((s) => !!activeProjectId && viewFor(s, activeProjectId) === 'graph')
   const rawGlobalKanban = useViewMode((s) => s.globalKanban)
-  const omniEnabled = useSettings((s) => isOmniKanbanEnabled(s.settings))
-  const globalKanbanOpen = rawGlobalKanban && omniEnabled
+  const globalKanbanOpen = rawGlobalKanban
   const kanbanOpen = globalKanbanOpen || perProjectKanbanOpen
   const projectKanban = useProjects((s) => s.projects.find((p) => p.id === s.activeProjectId)?.kanban)
   // The active project's lazy default board — deterministic per project (the same ids on every
@@ -3847,21 +3860,20 @@ export function Canvas() {
   // Single decision for "toggle the kanban board" — called from both the registry handler
   // (view.kanbanToggle, under terminal-first) and the desktop menu IPC receiver
   // (onToggleKanban, under app-first where the menu steals the accelerator). Must stay in one
-  // place: the IPC path bypasses the registry, so duplicating the omni/asDefault choice
-  // caused Cmd+Shift+B on desktop to ignore omniKanbanAsDefault and to toggle the per-project
-  // board underneath the global overlay.
+  // place: the IPC path bypasses the registry, so duplicating the choice caused Cmd+Shift+B on
+  // desktop to toggle the per-project board underneath the global overlay.
   // The decision itself is `toggleBoardView` / `toggleAllProjectsBoard` (state/viewMode.ts), which
-  // TabBar's board icon calls too. No commit is needed before Omni opens: its active lane reads
+  // TabBar's Kanban tab calls too. No commit is needed before Omni opens: its active lane reads
   // the live canvas (GlobalKanbanLive), and the effect above commits for the other readers.
-  const performKanbanToggle = useCallback(
-    () => toggleBoardView(useProjects.getState().activeProjectId),
-    []
-  )
+  const performKanbanToggle = useCallback(() => {
+    toggleBoardView(useProjects.getState().activeProjectId)
+    return true
+  }, [])
 
-  const performGlobalKanbanToggle = useCallback(
-    () => toggleAllProjectsBoard(useProjects.getState().activeProjectId),
-    []
-  )
+  const performGlobalKanbanToggle = useCallback(() => {
+    toggleAllProjectsBoard(useProjects.getState().activeProjectId)
+    return true
+  }, [])
 
   // Mirror `dirty` into a ref so the external-change listener (mounted once) reads the
   // live value without re-subscribing on every edit.
@@ -6122,7 +6134,7 @@ export function Canvas() {
       if (projectId) void placeCanvasImages(images, center, projectId)
     }
     const onPaste = (event: ClipboardEvent) => {
-      if (!canvasImagePasteArmedRef.current || !hasProjects || welcomeOpen || kanbanOpen) return
+      if (!canvasImagePasteArmedRef.current || !hasProjects || welcomeOpen || canvasCoveredByView(kanbanOpen, graphOpen)) return
       if (document.querySelector('[role="dialog"], .usage-popover')) return
       if (editableTarget(event.target)) return
       const projectId = useProjects.getState().activeProjectId
@@ -6155,7 +6167,7 @@ export function Canvas() {
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('paste', onPaste)
     }
-  }, [hasProjects, kanbanOpen, placeCanvasImages, screenToFlowPosition, viewCenter, welcomeOpen])
+  }, [graphOpen, hasProjects, kanbanOpen, placeCanvasImages, screenToFlowPosition, viewCenter, welcomeOpen])
 
   // Load the quick-open file index when the palette opens. An SSH project indexes its remoteCwd
   // over the ControlMaster (sshFs.quickOpen); the browser client's sshFs is a stub, so the catch
@@ -10878,6 +10890,7 @@ export function Canvas() {
       'app.shortcutsPanel': () => { setShortcutsOpen((v) => !v); return true },
       'view.kanbanToggle': () => performKanbanToggle(),
       'view.globalKanbanToggle': () => performGlobalKanbanToggle(),
+      'view.graphToggle': () => toggleGraphView(useProjects.getState().activeProjectId),
       'view.focusMode': () => { toggleFocusMode(); return true },
       'panel.explorer': () => { showExplorer('toggle'); return true },
       'panel.sourceControl': () => { setScOpen((v) => !v); return true },
@@ -13012,6 +13025,15 @@ export function Canvas() {
     (nodeId: string) => {
       const id = useProjects.getState().activeProjectId
       if (id) useViewMode.getState().toggle(id) // board → canvas
+      focusNodeById(nodeId)
+    },
+    [focusNodeById]
+  )
+
+  // The graph's "Show on canvas". `toggle` would flip it to the board, so this names the canvas.
+  const openNodeFromGraph = useCallback(
+    (nodeId: string) => {
+      showCanvas(useProjects.getState().activeProjectId)
       focusNodeById(nodeId)
     },
     [focusNodeById]
@@ -17632,7 +17654,7 @@ export function Canvas() {
   // via onConnected (wired into the status subscription below).
   const sshReconnectorRef = useRef<SshReconnector | null>(null)
   useEffect(() => {
-    const rec = new SshReconnector({
+    const rec = createProjectReconnector({
       connect: async (scopeId) => {
         // A HOST ATTACHMENT has no project row to read its endpoint from — `registerAttachment`
         // put it on record before the first dial, precisely so a connect that never succeeded is
@@ -17648,6 +17670,8 @@ export function Canvas() {
         // Same post-connect sequence as the active-project effect: arm remote git routing first
         // (only if this project is still the active tab), then record the connection info.
         const info = await window.nodeTerminal.sshProject.connect(projectId, ssh.server, ssh.remoteCwd)
+        // Closed while that was in flight: its close disconnected this, so nothing is connected.
+        if (isClosedWslProject(useProjects.getState().getProject(projectId))) return false
         if (useProjects.getState().activeProjectId === projectId) {
           await api.git.setActiveRemote(projectId)
         }
@@ -17699,6 +17723,10 @@ export function Canvas() {
       if (e.hookTunnelVerified !== undefined) {
         setLostHookTunnels((prev) => ({ ...prev, [e.projectId]: !e.hookTunnelVerified }))
         return // A health probe must never trigger terminal reconnection.
+      }
+      if (e.endpointWarnings) {
+        setEndpointWarnings((prev) => ({ ...prev, [e.projectId]: e.endpointWarnings as WslWarning[] }))
+        return // Same: it says nothing about the connection.
       }
       setSshStatus((prev) => ({ ...prev, [e.projectId]: e.status }))
       // Keep the cause for the banner. Cleared on any non-error status so a stale reason can
@@ -17778,14 +17806,15 @@ export function Canvas() {
         if (g !== true && !(await g)) return
         takeBack?.()
         commitActiveToStore()
-        useProjects.getState().openSshProject(input.label, ssh)
+        const opened = useProjects.getState().openSshProject(input.label, ssh)
+        bindOpenedWslProject(opened, ssh, api?.wslProject)
         // Same contract as onRepoCloned: the welcome screen waits behind the SSH dialog and
         // dismisses only once the project is created (cancel returns to the welcome screen).
         setWelcomeOpen(false)
         void writeDisk()
       })()
     },
-    [commitActiveToStore, writeDisk, confirmHandedOffReopen]
+    [commitActiveToStore, writeDisk, confirmHandedOffReopen, api]
   )
 
   // Synchronous end to end while the project limit allows (its gate answers `true` in the same
@@ -17996,10 +18025,11 @@ export function Canvas() {
   // differences: agent status is KEPT (the persisted sessionId is what lets a later reopen
   // cold-restore `claude --resume` the conversation — ending the process is a reboot, not an
   // amnesia), and SSH masters are NOT disconnected (close never managed the connection before,
-  // and a reopen expects it exactly as a project switch left it).
-  const endProjectSessions = useCallback((id: string) => {
+  // and a reopen expects it exactly as a project switch left it). Resolves once the project's own
+  // remote kill has been answered, for the one caller that must not cut across it.
+  const endProjectSessions = useCallback((id: string): Promise<unknown> | undefined => {
     const project = useProjects.getState().getProject(id)
-    if (!project) return
+    if (!project) return undefined
     project.nodes.forEach((n) => {
       if ((n.kind ?? 'terminal') === 'terminal') {
         disposeTerminalOnUnmount(sessionForProject(id).id, n.id) // may be parked from a recent switch away
@@ -18013,9 +18043,7 @@ export function Canvas() {
     const terminalIds = project.nodes
       .filter((n) => (n.kind ?? 'terminal') === 'terminal')
       .map((n) => n.id)
-    if (project.ssh) {
-      void window.nodeTerminal.sshProject.killSessions(id, terminalIds).catch(() => {})
-    }
+    const killed = project.ssh ? window.nodeTerminal.sshProject.killSessions(id, terminalIds).catch(() => {}) : undefined
     for (const scopeId of useSshConn.getState().attachmentScopesOf(id)) {
       const nodeIds =
         hostAttachmentsFor(id, project.nodes, project.ssh?.server).find(
@@ -18023,6 +18051,7 @@ export function Canvas() {
         )?.nodeIds ?? []
       void window.nodeTerminal.sshProject.killSessions(scopeId, nodeIds).catch(() => {})
     }
+    return killed
   }, [])
 
   // Close a project: hide it from the tab bar but keep it (and, by default, its tmux/agent
@@ -18036,7 +18065,21 @@ export function Canvas() {
     (id: string, endSessions = false) => {
       const store = useProjects.getState()
       if (id === store.activeProjectId) commitActiveToStore()
-      if (endSessions) endProjectSessions(id)
+      const ended = endSessions ? endProjectSessions(id) : undefined
+      // A closed WSL project gives up its connection, so nothing can boot a distro the user stopped.
+      dropClosedWslConnection(store.getProject(id), {
+        ended,
+        forgetReconnect: (p) => sshReconnectorRef.current?.forget(p),
+        releaseTerminals: (p) => {
+          const sessionId = sessionForProject(p.id).id
+          releaseClosedTerminals(p, p.id === store.activeProjectId, {
+            disposeOnUnmount: (nodeId) => disposeTerminalOnUnmount(sessionId, nodeId),
+            disposePark: (nodeId) => disposeParkedTerminal(terminalKey(sessionId, nodeId))
+          })
+        },
+        clearConn: (p) => useSshConn.getState().clear(p),
+        disconnect: sshDisconnect
+      })
       // A relay tab is never reopened from the history (`planReopen` skips it too): its nodes are
       // the host's sessions.
       if (!store.getProject(id)?.remote) {
@@ -18988,6 +19031,7 @@ export function Canvas() {
           .finally(() => void window.nodeTerminal.sshProject.disconnect(scopeId))
         useSshConn.getState().clearAttachment(scopeId)
       }
+      unbindDeletedWslProject(project, window.nodeTerminal.wslProject)
       disposeRelayTabForProject(id)
       store.deleteProject(id)
       void writeDisk()
@@ -19492,7 +19536,7 @@ export function Canvas() {
       })
     const kanbanId = useProjects.getState().activeProjectId
     if (kanbanId) {
-      const kb = isKanbanOpen(kanbanId)
+      const kb = isBoardView(kanbanId)
       cmds.push({
         id: 'toggle-kanban',
         label: kb ? 'Canvas view' : 'Kanban view',
@@ -19500,6 +19544,14 @@ export function Canvas() {
         section: 'View',
         icon: kb ? <IconCanvasView /> : <IconKanban />,
         run: () => useViewMode.getState().toggle(kanbanId)
+      })
+      cmds.push({
+        id: 'toggle-graph',
+        label: viewFor(useViewMode.getState(), kanbanId) === 'graph' ? 'Leave agent graph' : 'Agent graph',
+        hint: chipFor('view.graphToggle') || undefined,
+        section: 'View',
+        icon: <IconGraph />,
+        run: () => toggleGraphView(kanbanId)
       })
     }
     cmds.push({
@@ -19635,7 +19687,8 @@ export function Canvas() {
             setSettingsOpen(true)
           }}
         />
-        <HostIntegrationBanner hostKey={activeSshHostKey} />
+        <HostIntegrationBanner
+          hostLabel={activeSshServer?.wslDistro ? activeSshServer.label : undefined} hostKey={activeSshHostKey} />
         {/* Discovery belongs to the local core; never run its installer on an SSH/relay host. */}
         <TmuxBanner
           onInstall={!isSshProject && session.id === localSession.id ? runInTerminal : undefined}
@@ -19768,6 +19821,23 @@ export function Canvas() {
           />
         )}
         {activeSshServer &&
+          endpointWarnings[activeProjectId]?.map((w) => (
+            <div
+              key={w.kind}
+              role="status"
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                color: 'var(--text)',
+                background: 'color-mix(in srgb, var(--state-warning) 22%, var(--surface-overlay))',
+                border: '1px solid var(--border)',
+                borderRadius: 8
+              }}
+            >
+              {w.message}
+            </div>
+          ))}
+        {activeSshServer &&
           sshStatus[activeProjectId] &&
           (sshStatus[activeProjectId] !== 'connected' || lostHookTunnels[activeProjectId]) &&
           (() => {
@@ -19873,6 +19943,17 @@ export function Canvas() {
           issueWorktreeMenu={issueWorktreeMenu}
           teams={teamStations}
           onIssueMoved={dispatchOnUserMove}
+        />
+      )}
+      {graphOpen && !globalKanbanOpen && activeProjectId && (
+        <AgentGraphView
+          key={activeProjectId}
+          projectId={activeProjectId}
+          nodes={nodes}
+          linkEdges={linkEdges}
+          controlEdges={controlEdges}
+          onShowOnCanvas={openNodeFromGraph}
+          onModalNodeChange={setKanbanModalNode}
         />
       )}
       <UpdateCard />
@@ -20156,7 +20237,7 @@ export function Canvas() {
               too (their tmux sessions keep running), and reaching one means reopening its tab
               first — the same path a notification click and a peer jump take. */}
           <SystemResourcePill
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
             onGoToNode={travelToNode}
             onKillSession={killSessionById}
             pauseOfferFor={sessionPauseOfferFor}
@@ -20166,7 +20247,7 @@ export function Canvas() {
           {/* Same write path as the TabBar caret menu (project.defaultAccountId + persist) — the
               popover row is a second, better-placed entrance to the same action (issue #142). */}
           <UsageIndicator
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
             onSetDefaultAccount={setProjectDefaultAccount}
             countAccountSessions={countAccountSessions}
             onMoveSessions={(from, to, label) => void moveAccountSessions(from, to, label)}
@@ -20224,7 +20305,7 @@ export function Canvas() {
             recentActionFor={recentActionFor}
             onResumeRecent={resumeRecentConversation}
             onClose={hasProjects ? () => setWelcomeOpen(false) : undefined}
-            overBoard={kanbanOpen}
+            overBoard={kanbanOpen || graphOpen}
           />
         )}
 

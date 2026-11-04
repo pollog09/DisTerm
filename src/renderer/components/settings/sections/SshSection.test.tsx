@@ -64,6 +64,25 @@ describe('SshSection', () => {
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   }
 
+  it('the WSL keepalive row says what it costs, and writes the machine setting', async () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    const update = vi.fn(async () => {})
+    const { useSettings } = await import('../../../state/settings')
+    const before = useSettings.getState()
+    useSettings.setState({ settings: { ...before.settings, wslKeepDistroRunning: true }, update } as never)
+    mount()
+    expect(host.textContent).toContain('Keep WSL distributions running after quit')
+    expect(host.textContent).toContain('the WSL VM keeps using memory')
+    const toggle = host.querySelector<HTMLElement>('[aria-label="Keep WSL distributions running after quit"]')
+    expect(toggle).not.toBeNull()
+    await act(async () => {
+      toggle?.click()
+    })
+    expect(update).toHaveBeenCalledWith({ wslKeepDistroRunning: false })
+    useSettings.setState(before)
+    platform.mockRestore()
+  })
+
   it('shows each machine’s default folder in the list', () => {
     mount()
     expect(host.textContent).toContain('Default folder: /home/corvin/projects/app')

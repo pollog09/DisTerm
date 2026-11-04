@@ -32,6 +32,7 @@ app.on('child-process-gone', (_event, details) => {
   console[level](`[process] ${msg}`)
 })
 import { nativeMux, setNativeWindowsAgentOptIn, useNativeSsh } from '../core/remote-ssh/native/native-runtime'
+import { wslEndpoints } from '../core/remote-ssh/native/wsl-endpoint'
 import { writeFilesToClipboard } from './clipboard-files'
 import { writeWindowsFileDrop } from './clipboard-files-win'
 import { micConsentDecision, micSettingsUrl } from './mic-consent'
@@ -83,6 +84,8 @@ import {
   type BrowserSurfaceKind
 } from './browser-guest-registry'
 import { appendBoardLogVia, registerBoardLogHandlers, type BoardLogRoute } from '../core/board-log-handlers'
+import { registerAgentGraphHandlers } from '../core/agent-graph/handlers'
+import { registerShipConfigHandlers, type ShipConfigRoute } from '../core/ship-config/handlers'
 import {
   createDeliveryQueue,
   restoreDeliveryQueue,
@@ -2262,6 +2265,27 @@ app.whenReady().then(async () => {
     }
   }
   const boardLog = registerBoardLogHandlers(corePlatform, boardLogRouter)
+  registerAgentGraphHandlers(corePlatform, boardLogRouter)
+  // The agents an SSH project runs are the HOST's: discovery goes over the project's master, and a
+  // project whose master is down says so rather than describing this machine's agents as the host's.
+  registerShipConfigHandlers(corePlatform, {
+    route: (projectId: string): ShipConfigRoute => {
+      const ref = sshProjectManager?.refForProject(projectId)
+      if (ref?.remoteCwd) {
+        return {
+          kind: 'remote',
+          remoteCwd: ref.remoteCwd,
+          host: ref.conn.host,
+          runScript: (script) =>
+            sshProjectManager!.sshRun(childArgs(ref.conn, ref.controlPath, 'sh -s'), script, { timeoutMs: 20_000 })
+        }
+      }
+      if (workspaceStore.projectTargetInfo(projectId)?.ssh) {
+        return { kind: 'unsupported', reason: 'This SSH project is not connected.' }
+      }
+      return { kind: 'local', cwd: workspaceStore.localCwdForProject(projectId) ?? null }
+    }
+  })
   registerLogHandlers(corePlatform, logBuffer, () => settingsStore.get().debugLogPanel)
 
   // Agent messaging (the `send`/`reply` control verbs). Canvas.tsx forwards the validated verb
@@ -5324,6 +5348,13 @@ app.whenReady().then(async () => {
   // Windows SSH projects: the opt-in to keep passphrase-unlocked keys in the Windows OpenSSH agent
   // (core/remote-ssh/native/agent-add.ts). Read at each unlock, so a toggle applies to the next one.
   setNativeWindowsAgentOptIn(() => settingsStore.get().windowsSshAgentAddKeys === true)
+  let keepDistroRunning = settingsStore.get().wslKeepDistroRunning === true
+  settingsStore.onChange((s) => {
+    const next = s.wslKeepDistroRunning === true
+    if (next === keepDistroRunning) return
+    keepDistroRunning = next
+    void wslEndpoints()?.keepaliveSettingChanged()
+  })
   sshProjectManager = initSshProject(
     (projectId) => {
       // On (re)connect, reconcile the server's .nodeterm/project.json with our offline cache by rev.
@@ -5411,7 +5442,8 @@ app.whenReady().then(async () => {
         return { install: new Set(plan.install), remove: new Set(plan.remove), decided: plan.decided }
       },
       integrationReceipts: integrations.receipts
-    }
+    },
+    () => settingsStore.get().wslKeepDistroRunning === true
   )
   settingsStore.onChange(() => sshProjectManager?.onIntegrationConsentChanged())
   // Pre-warm the ControlMasters of OPEN SSH projects, in the background, one host at a time.

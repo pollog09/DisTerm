@@ -35,6 +35,8 @@ import {
 } from '../core/model-gateway-credentials'
 import { DownloadTickets } from '../core/download-tickets'
 import { registerBoardLogHandlers, type BoardLogRoute } from '../core/board-log-handlers'
+import { registerAgentGraphHandlers } from '../core/agent-graph/handlers'
+import { registerShipConfigHandlers, type ShipConfigRoute } from '../core/ship-config/handlers'
 import { ProjectTrustStore } from '../core/project-trust-store'
 import { ProjectSetupService } from '../core/project-setup-service'
 import {
@@ -444,11 +446,21 @@ export async function startServer(
   // Board-log: same CorePlatform registrar as desktop, but the Server Edition has no SSH projects
   // (terminals are local), so the router only ever resolves a local folder cwd or unsupported —
   // an SSH-ref project answers `{ entries: [], unsupported: true }` (v1: no remote board log here).
-  const boardLog = registerBoardLogHandlers(platform, {
+  const boardLogRouter = {
     route: (projectId: string): BoardLogRoute => {
       const cwd = workspaceStore.boardLogRootForProject(projectId)
       return cwd ? { kind: 'local', cwd } : { kind: 'unsupported' }
     }
+  }
+  const boardLog = registerBoardLogHandlers(platform, boardLogRouter)
+  registerAgentGraphHandlers(platform, boardLogRouter)
+  // No SSH on the Server Edition: an SSH project's agents are on a host this shell cannot reach, so
+  // it answers that instead of passing this server's agents off as the host's.
+  registerShipConfigHandlers(platform, {
+    route: (projectId: string): ShipConfigRoute =>
+      workspaceStore.projectTargetInfo(projectId)?.ssh
+        ? { kind: 'unsupported', reason: "The Server Edition cannot read an SSH host's agents." }
+        : { kind: 'local', cwd: workspaceStore.localCwdForProject(projectId) ?? null }
   })
 
   // Debug log ring (issue #78) — same core registrar as desktop. Headless is where a swallowed

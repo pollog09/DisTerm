@@ -39,6 +39,10 @@ describe('classifyClaudeOrigin', () => {
   it('#1153: a claude in the foreground of ANOTHER terminal (Claude\'s daemon pty) is not', () => {
     expect(classifyClaudeOrigin({ foreground: true, tty: 'pts/9' }, '/dev/pts/3')).toBe('foreign')
   })
+  it('a WSL claude in a session-host pane is not foreign: a Windows console id is no tty to compare', () => {
+    expect(classifyClaudeOrigin({ foreground: true, tty: 'pts/4' }, 'win32-console:1234')).toBe('unknown')
+    expect(classifyClaudeOrigin({ foreground: false, tty: 'pts/4' }, 'win32-console:1234')).toBe('foreign')
+  })
   it('anything this core cannot judge is unknown, never foreign', () => {
     expect(classifyClaudeOrigin(undefined, '/dev/pts/3')).toBe('unknown')
     expect(classifyClaudeOrigin({ foreground: true }, '/dev/pts/3')).toBe('unknown')

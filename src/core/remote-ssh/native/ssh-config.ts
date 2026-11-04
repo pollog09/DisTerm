@@ -57,6 +57,18 @@ export interface ResolvedHost {
    * kept raw here so an unknown spelling reads as "not asked for", never as yes.
    */
   addKeysToAgent?: string
+  /**
+   * A connection this app set up itself (a WSL project): the program whose stdio is the socket, and
+   * the one host key it may present. Only trusted local code sets this. `parseSshG` never does, so
+   * nothing in an ssh_config, a project file or a peer can reach it. Takes the place of ProxyCommand,
+   * ProxyJump and known_hosts, and the target's own identity and agent are ignored.
+   */
+  trustedTransport?: {
+    argv: { file: string; args: string[] }
+    pinnedHostKey: Buffer
+    /** Names the connection in errors. */
+    label: string
+  }
 }
 
 /** `~` / `%d` expansion for path-valued options. `ssh -G` leaves `~` unexpanded. */

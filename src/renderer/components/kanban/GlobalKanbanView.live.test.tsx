@@ -16,7 +16,6 @@ import type { KanbanSession } from './KanbanView'
 import { useProjects } from '../../state/projects'
 import { useViewMode } from '../../state/viewMode'
 import { useBoardLog } from '../../state/boardLog'
-import { useSettings } from '../../state/settings'
 import { addColumn, defaultKanban } from '../../lib/kanban'
 
 const localApi = { tag: 'local-api' }
@@ -176,7 +175,6 @@ describe("Omni overview — a lane's board belongs to its project's session", ()
 
 describe('Omni header — the scope switch replaces the close button', () => {
   it('"This project" lands on the active project board, not the canvas', () => {
-    useSettings.setState((s) => ({ settings: { ...s.settings, omniKanbanEnabled: true } }))
     useViewMode.setState({ globalKanban: true, viewByProject: { p1: 'canvas' } } as never)
     mount([project('p1', [sticky('a', 'x')])])
     expect(document.querySelector('.kanban-header__close')).toBeNull()

@@ -116,21 +116,60 @@ const STDERR_KEEP = 4096
  * `timeoutMs` (OpenSSH's ConnectTimeout, which for a proxy covers the wait for the server's banner)
  * — the stream errors with the reason and the proxy's last stderr, which the handshake reports.
  */
-export function proxyCommandSocket(
-  cmd: string,
-  opts: {
-    timeoutMs: number
-    platform?: NodeJS.Platform
-    spawn?: ProxySpawn
-    env?: NodeJS.ProcessEnv
-    /** Test seam: kill a Windows process TREE by pid (default `taskkill /pid <pid> /t /f`). */
-    killTree?: (pid: number) => void
+export function proxyCommandSocket(cmd: string, opts: ProxySocketOptions): Duplex {
+  return stdioSocket(proxyCommandArgv(cmd, opts.platform ?? process.platform, opts.env), 'ProxyCommand', opts)
+}
+
+/**
+ * The same socket over a program this app chose, as an argv: no shell and no cmd.exe, so nothing in
+ * it is parsed, expanded or quoted a second time. Node's own argv quoting is the only layer. Takes
+ * only what trusted local code built (`ResolvedHost.trustedTransport`), never an ssh_config value.
+ */
+export function trustedProxySocket(
+  argv: { file: string; args: string[] },
+  label: string,
+  opts: ProxySocketOptions
+): Duplex {
+  return stdioSocket({ ...argv, verbatim: false }, label, opts, true)
+}
+
+/** How much a trusted program may print before its SSH banner. wsl.exe's notices are a few lines. */
+export const MAX_PRE_BANNER_BYTES = 64 * 1024
+
+/**
+ * Where the SSH banner starts in `buf`, or -1. It must begin a line, in single-byte text. A line ending
+ * in UTF-16 (`\n\0`) counts, because wsl.exe writes its own notices in UTF-16LE, on stdout, ahead of
+ * whatever the Linux side prints. ssh2 tolerates ASCII lines before a banner but fails on those bytes
+ * with `Invalid header: expected newline`.
+ */
+export function findSshBanner(buf: Buffer): number {
+  for (let at = buf.indexOf('SSH-'); at !== -1; at = buf.indexOf('SSH-', at + 1)) {
+    if (at === 0 || buf[at - 1] === 0x0a || (buf[at - 1] === 0 && buf[at - 2] === 0x0a)) return at
   }
+  return -1
+}
+
+export interface ProxySocketOptions {
+  timeoutMs: number
+  platform?: NodeJS.Platform
+  spawn?: ProxySpawn
+  env?: NodeJS.ProcessEnv
+  /** Test seam: kill a Windows process TREE by pid (default `taskkill /pid <pid> /t /f`). */
+  killTree?: (pid: number) => void
+}
+
+function stdioSocket(
+  { file, args, verbatim }: { file: string; args: string[]; verbatim: boolean },
+  label: string,
+  opts: ProxySocketOptions,
+  /** Trusted transports only: drop what precedes the SSH banner, within `MAX_PRE_BANNER_BYTES`. A
+   *  user's ProxyCommand keeps OpenSSH's behavior, where the bytes go to the protocol as they are. */
+  awaitBanner = false
 ): Duplex {
   const platform = opts.platform ?? process.platform
-  const { file, args, verbatim } = proxyCommandArgv(cmd, platform, opts.env)
   let stderr = ''
   let gotData = false
+  let preBanner = Buffer.alloc(0)
   let child: ChildProcess | null = null
   const kill = (): void => {
     if (!child || child.exitCode !== null || child.signalCode !== null) return
@@ -143,10 +182,16 @@ export function proxyCommandSocket(
     child.kill()
   }
   const why = (msg: string): Error => {
-    const tail = stderr.trim().split(/\r?\n/).pop()
-    return new Error(`ProxyCommand ${msg}${tail ? `: ${tail}` : ''}`)
+    // wsl.exe reports its own failures on stdout in UTF-16, so without this they would be lost.
+    const printed = preBanner.toString('latin1').replace(/\0/g, '')
+    const tail = (stderr.trim() || printed.trim()).split(/\r?\n/).pop()
+    return new Error(`${label} ${msg}${tail ? `: ${tail}` : ''}`)
   }
   const stream = new Duplex({
+    // The proxy's EOF ends the whole stream. ssh2 marks a connection dead on the socket's `close`, so
+    // with a half-open stream a proxy that died left `-O check` answering 0 and nothing reconnecting
+    // (measured: a killed sshd behind a live project, no status event in 70 s).
+    allowHalfOpen: false,
     read() {
       child?.stdout?.resume()
     },
@@ -194,7 +239,21 @@ export function proxyCommandSocket(
   c.stdin?.on('error', onStdioError)
   c.stdout?.on('error', onStdioError)
   c.stderr?.on('error', onStdioError)
-  c.stdout?.on('data', (d: Buffer) => {
+  c.stdout?.on('data', (raw: Buffer) => {
+    let d = raw
+    if (awaitBanner && !gotData) {
+      preBanner = Buffer.concat([preBanner, raw])
+      const at = findSshBanner(preBanner)
+      if (at === -1) {
+        if (preBanner.length > MAX_PRE_BANNER_BYTES) {
+          preBanner = preBanner.subarray(-512)
+          stream.destroy(why(`printed more than ${MAX_PRE_BANNER_BYTES} bytes without an SSH banner`))
+        }
+        return
+      }
+      d = preBanner.subarray(at)
+      preBanner = Buffer.alloc(0)
+    }
     if (!gotData) {
       gotData = true
       clearTimeout(timer)

@@ -20,6 +20,7 @@
 // Editors and owners pass untouched: Editor is shell access by definition, so gating them would be
 // theatre.
 import { isWslShellValue } from '../../shared/terminal-profiles'
+import { isWslHost } from '../../shared/wsl-project'
 import path from 'node:path'
 import { IPC } from '../../shared/ipc'
 import { decodePtyDataSessionId } from '../../shared/rpc'
@@ -276,7 +277,10 @@ export const VIEW: Readonly<Record<string, Check>> = Object.freeze({
   [IPC.presenceProject]: pass,
   [IPC.boardLogRead]: projectArg0,
   [IPC.boardLogSubscribe]: projectArg0,
-  [IPC.boardLogUnsubscribe]: projectArg0
+  [IPC.boardLogUnsubscribe]: projectArg0,
+  // Message and subagent history of a shared project; the RESPONSE is trimmed to shared nodes by
+  // narrowResponseForRole (the live buffer spans every project of this core).
+  [IPC.agentGraphSnapshot]: projectArg0
 })
 
 export const COMMENT: Readonly<Record<string, Check>> = Object.freeze({
@@ -372,6 +376,10 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.projectSettingsUpdateLocal,
   IPC.projectSettingsLaunchInfo,
   IPC.ptyTerminalProfiles,
+  IPC.wslProjectList,
+  IPC.wslProjectPrepare,
+  IPC.wslProjectBind,
+  IPC.wslProjectUnbind,
   IPC.projectSetupRun,
   IPC.projectSetupCancel,
   IPC.projectSetupConsentSubmit,
@@ -488,7 +496,15 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.relayHostedPeerPending,
   IPC.relayHostedPendingClosed,
   IPC.relayHostedSharedChanged,
+  // A machine's Claude config (its global agents and commands) belongs to the host's user, and a
+  // viewer's graph is observation only. Create writes a file on the host.
+  IPC.shipConfigRead,
+  IPC.shipGraphCreate,
+  IPC.shipTemplateCreate,
+  IPC.shipConfigSubscribe,
+  IPC.shipConfigUnsubscribe,
   // Server→client events (see the doc comment): what a non-editor receives is VIEW_EVENTS.
+  IPC.agentGraphEvent,
   IPC.workspaceMigrated,
   IPC.workspaceCorruptRecovered,
   IPC.workspaceExternalChange,
@@ -512,9 +528,18 @@ export function decideAccess(_kind: 'req' | 'cast', method: string, args: unknow
   if (isEditor(ctx.role)) {
     // Editors may start shells on the host, but a WSL distribution is the host user's own choice.
     const create = method === IPC.ptyCreate && Array.isArray(args) ? args[0] : undefined
-    if (create && typeof create === 'object' && isWslShellValue((create as { shell?: unknown }).shell)) {
-      const { shell: _shell, ...rest } = create as Record<string, unknown>
-      return { allow: true, args: [rest, ...args.slice(1)] }
+    if (create && typeof create === 'object') {
+      const c = create as { shell?: unknown; sshRemote?: { conn?: { host?: unknown } } }
+      const wslShell = isWslShellValue(c.shell)
+      // The same choice by route: a peer attaches to a WSL project's session through the host's own
+      // connection (core/relay-attach-plan.ts), never by naming that connection.
+      const wslRoute = isWslHost(c.sshRemote?.conn?.host)
+      if (wslShell || wslRoute) {
+        const rest = { ...(create as Record<string, unknown>) }
+        if (wslShell) delete rest.shell
+        if (wslRoute) delete rest.sshRemote
+        return { allow: true, args: [rest, ...args.slice(1)] }
+      }
     }
     // The same choice stored instead of used: a project's local shell applies to the host's own
     // terminals, so this one is refused rather than quietly dropped from a settings save.
@@ -568,9 +593,25 @@ type EventCheck = (args: unknown[], ctx: AccessContext, owners: SubagentOwners |
 const always: EventCheck = () => true
 
 /** Exact event channels a Viewer/Commenter may RECEIVE. Anything else is dropped for them. */
+/**
+ * Does this graph event concern only the peer's shared nodes? A delivery names two nodes and needs
+ * both: the far end of a message into another project is that project's activity. The core's buffer
+ * spans every project, so this is what keeps a peer's graph to the project it was given.
+ */
+function agentGraphEventShared(event: unknown, ctx: AccessContext): boolean {
+  if (field(event, 'kind') === 'delivery') {
+    return sharedNode(field(event, 'from'), ctx) && sharedNode(field(event, 'to'), ctx)
+  }
+  // A typed row's name is whatever followed `/` in a prompt, which can be a pasted token. Only the
+  // renderer can tell it is really a skill, so it never leaves for a peer who may not read prompts.
+  if (field(event, 'kind') === 'access' && field(event, 'typed') === true) return false
+  return sharedNode(field(event, 'nodeId'), ctx)
+}
+
 export const VIEW_EVENTS: Readonly<Record<string, EventCheck>> = Object.freeze({
   [IPC.canvasMut]: (a, ctx) => sharedProject(a[0], ctx),
   [IPC.agentStatus]: (a, ctx) => sharedNode(field(a[0], 'nodeId'), ctx),
+  [IPC.agentGraphEvent]: (a, ctx) => agentGraphEventShared(a[0], ctx),
   [IPC.agentSubagentActivity]: (a, ctx, owners) => {
     const toolUseId = field(a[0], 'toolUseId')
     return typeof toolUseId === 'string' && sharedNode(owners?.get(toolUseId), ctx)
@@ -673,6 +714,13 @@ const NODE_KEYED_SNAPSHOTS: ReadonlySet<string> = new Set([IPC.agentSubagentSnap
 export function narrowResponseForRole(method: string, result: unknown, ctx: AccessContext): unknown {
   if (isEditor(ctx.role)) return result
   if (method === IPC.workspaceLoad) return redactWorkspaceExec(result)
+  if (method === IPC.agentGraphSnapshot) {
+    const events = field(result, 'events')
+    return {
+      ...(result as object),
+      events: Array.isArray(events) ? events.filter((e) => agentGraphEventShared(e, ctx)) : []
+    }
+  }
   if (!NODE_KEYED_SNAPSHOTS.has(method)) return result
   return Array.isArray(result) ? result.filter((e) => sharedNode(field(e, 'nodeId'), ctx)) : []
 }

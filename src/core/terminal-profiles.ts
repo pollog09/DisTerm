@@ -42,7 +42,7 @@ export function wslExe(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /** `wsl.exe` writes UTF-16LE from its own commands unless `WSL_UTF8=1` is set. */
-function decodeWslOutput(raw: Buffer): string {
+export function decodeWslOutput(raw: Buffer): string {
   const text = raw.includes(0) ? raw.toString('utf16le') : raw.toString('utf8')
   return text.replace(/^﻿/, '')
 }

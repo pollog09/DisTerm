@@ -1547,7 +1547,7 @@ export function setSharedGlyphCamera(cam: Camera): void {
 export function boardCoversCanvas(): boolean {
   if (isGlobalKanbanOpen()) return true
   const { activeProjectId } = useProjects.getState()
-  return !!activeProjectId && viewFor(useViewMode.getState(), activeProjectId) === 'kanban'
+  return !!activeProjectId && viewFor(useViewMode.getState(), activeProjectId) !== 'canvas'
 }
 
 export interface BoardFrameGate {

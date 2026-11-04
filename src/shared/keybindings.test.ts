@@ -82,6 +82,8 @@ describe('registry invariants', () => {
         darwin: ['Cmd+Shift+B'], other: ['Cmd+Shift+B'], allowInTerminal: true },
       { id: 'view.globalKanbanToggle', title: 'Toggle global kanban (Omni)', group: 'General', scope: 'app',
         darwin: [], other: [], allowInTerminal: true },
+      { id: 'view.graphToggle', title: 'Toggle agent graph', group: 'General', scope: 'app',
+        darwin: [], other: [], allowInTerminal: true },
       { id: 'view.focusMode', title: 'Toggle focus mode', group: 'General', scope: 'canvas',
         darwin: ['Cmd+Shift+F'], other: ['Cmd+Shift+F'], allowInTerminal: true },
       { id: 'panel.explorer', title: 'Toggle explorer panel', group: 'General', scope: 'app',

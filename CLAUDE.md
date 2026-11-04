@@ -8021,6 +8021,189 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     focused on its terminal strands mirror and main out of sync with no event that can reconcile
     them, and the policy is dead until the user clicks away and back.
 
+## Agent graph view and the ship process
+
+A third per-project view beside the canvas and the board (`ProjectView` = `'graph'`): sessions as a
+graph, with what passes between them and how work moved through the machine's ship process. It
+observes and writes nothing to the canvas. User-facing format and limits: `docs/ship-graph.md`.
+
+- **Where things are.** Stream and history: `core/agent-graph/` (`event-log.ts`, `handlers.ts`). Machine
+  discovery: `core/ship-config/` (`discover.ts`, `sanitize.ts`, `handlers.ts`). Wire shapes:
+  `shared/agent-graph.ts`, `shared/ship-config.ts`. The picture: `renderer/lib/agentGraphModel.ts`
+  (pure: every counting rule), `renderer/lib/agentGraphLayout.ts` (pure: the only file that knows
+  dagre), `renderer/components/graph/`. `Canvas.tsx` holds only the mount, the view flag and the
+  palette row, so a merge from upstream stays cheap.
+- **`isKanbanOpen` means "the canvas is covered", not "the board is up".** Its ~20 callers in
+  `Canvas.tsx` all ask whether a canvas gesture would act on something nobody can see, so the graph
+  answers true. The flag `kanbanOpen` is a different thing and stays board-only, so a gesture reading
+  it directly has to add `graphOpen`: the image paste guard did (`canvasCoveredByView`), and an image
+  pasted over the graph landed on the hidden canvas until it did. Code that means the board itself asks
+  `isBoardView` (`toggleBoardView`, `openIssueOnBoard`, the palette's label). "Go to node" still asks for a card
+  (`requestedCardNodeId`), and the graph consumes that request by opening the terminal in its modal;
+  without that, every notification click and notch Go would read as dead over this view.
+  `TerminalNode`'s board render pause and `boardCoversCanvas` read the view directly and test
+  `!== 'canvas'`, so terminals under the graph stop drawing as they do under the board.
+- **Its own `ReactFlowProvider`.** The canvas's store has an owner (`flowStoreOwner.ts`), read to decide
+  which project a mounting node belongs to. Sharing it would feed that decision boxes from no project.
+  It also mounts under `ProjectSessionScope`: Canvas's context is the LOCAL session, so a team tab's
+  graph would otherwise ask this machine's core about the host's nodes.
+- **Layout is keyed on structure, not content** (`agentGraphStructureKey`). Status and counts change a
+  box, never its place; re-laying out on each hook event would be unreadable. A reject or re-entry is
+  fed to dagre forwards and its route reversed afterwards. Left to dagre's cycle breaking (`greedy`
+  measured it), the reviewer landed to the LEFT of what it reviews.
+- **Re-entry means moving BACKWARDS against the order the `next` edges declare**, not "ran again" and
+  not first-seen order. With "ran again", one rejection paints every forward edge of the second pass;
+  with first-seen order, review, impl, docs, review paints the declared docs -> review. It is reachability
+  along `next` edges (`splitNextCycle` drops an edge closing a cycle, with a warning), so a stage the file
+  says nothing about is never behind anything. A real reset or a new user prompt (`turn-start`) starts a
+  new run, so predecessors never cross one; `SessionStart` with `compact` or `resume` is not a reset, which
+  is why the normalizer carries `sessionSource`. Inside a turn a declared move is taken as declared, and
+  an undeclared last-to-first move is a new run. `docs/ship-graph.md` states this for users.
+- **What these rules rest on is recorded.** `__fixtures__/claude/session-boundary-hook-payloads.json`
+  holds live captures (2.1.317), and `test/acceptance/agent-graph-real-hooks.test.ts` drives them through
+  the real path: `/clear` is `SessionEnd(clear)` then `SessionStart(clear)` under a NEW session id;
+  `compact` and `resume` keep it; a slash command fires `UserPromptSubmit`, and an injected hand-back or
+  `<task-notification>` is not a turn; SendMessage fires a second `SubagentStart` under the same agent id;
+  a child's `SubagentStop` fires twice around its hand-back; side agents stop with no type. Not captured:
+  a subagent open through `SessionStart(compact)` itself (it ended between `PreCompact` and that).
+- **A `next` and a `reject` to the same agent are not told apart, and no run is counted for it**
+  (`placeRuns`). Picking `next` always stated a passed review as fact, and a declared reject could never
+  light up. Both edges read "maybe" in the warning colour, never the reject one, the run is a `maybeRuns`
+  on each stage, and later runs are placed from every position it could have been until only one route
+  is left. A pipeline with no such pair never reaches this case and is unaffected.
+- **A run's first end stands, and a re-start is a new pass.** The tool path can report a child's end
+  again after its native stop, and a rejection can resume the same `agent_id`; rewriting `endedAt` in
+  either case moves the run past whatever started in between, which erased the forward edge and invented
+  a false `spawned` one. The acceptance test goes through `ClaudeSubagentLifecycle`, as production does.
+- **Streamed output counts as life** (`SubagentReplay.touch` to `AgentGraphLog.recordActivity`), coalesced
+  and replaced per subagent, or a healthy run past 20 minutes reads "no recent signal" beside a canvas
+  card that knows better.
+- **`now` is only sampled on a rebuild**, and a killed subagent sends nothing, so while a run is open one
+  timer waits for `nextStaleAt`. With none open there is no timer.
+- **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
+  `registerShipConfigHandlers`). A crashed renderer or a dropped relay peer sends no unsubscribe, and an
+  SSH project's route changes when its master connects. Both shapes leaked real work before.
+- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element, and only an event
+  newer than the view's mount pulses, so opening the view does not flash the past.
+- **The one loop is the direction marks, and only motion that is true may run** (`edgeInTransit`,
+  `TRANSIT_WINDOW_MS` = 15 s). Every line but a context link has three chevrons (`edgeShowsDirection`).
+  They move for a delivered message for 15 s after it lands, and for a used line while the run it led to
+  is live (`GraphEdge.running`, by the same staleness line as a box's activity) and for 15 s after that
+  run started (`GraphEdge.movedAt`). A queued, failed or refused message never moves, nor does `opened`,
+  `dependency`, `context`, a declared line nothing has used, or a `maybe`: motion would state a route hooks
+  cannot confirm. A move placed by a guess is the same case, on the line into the guess and the line out
+  of it: it is counted, but sets neither `running` nor `movedAt`. So motion reads `movedAt` and never
+  `lastEventTs`, which any event sets and which still drives the arrival pulse, so those lines do pulse.
+  `running` belongs to the MOVE, not the stage reached: a stage entered twice has two lines in
+  and one in use. The transit window ends with no event to say so, so `useEdgesInTransit` arms one
+  timer for it (`nextTransitChangeAt`), and none while nothing is recent; a line a run holds is left to
+  `nextStaleAt` and the run's own end. The marks use CSS `offset-path`, not SMIL `animateMotion`, because
+  `animation-play-state` cannot pause SMIL; a negative delay starts each from its resting stop, so a line
+  does not jump when it starts moving. Three per line whatever its length (`EDGE_CHEVRONS`). An observed
+  loop reads `×N` instead of "went back": the marks show the direction, and with no file the words must
+  not lean towards a rejection. It stays amber and keeps its hover caveat.
+- **The graph takes `--nt-anim-state` back from the covered gate.** This view marks the canvas covered
+  and is a `.react-flow` itself, so `:root[data-nt-canvas='covered'] .react-flow` would pause its marks for
+  good while the rule reading the variable looked right. `agent-graph.css` sets it to `running` on
+  `.agent-graph .react-flow`, then an idle rule of equal specificity sets it to `paused`, and the order
+  of those two is what makes the window gate win. `styles.animation-gate.test.ts` pins both and scans this
+  sheet. Reduce Motion gives static chevrons. The cost is under **Idle energy**.
+- **The starter never replaces or shadows anything** (`core/ship-config/template.ts`,
+  `createShipTemplate`, `ship-config:create-template`; the empty state's "Set up graph engineering",
+  offered by the pure `lib/shipTemplate.ts`). A project agent replaces a global one of its name and a
+  project routing file replaces a global one whole, so a file written over what a machine has would quietly
+  change how its other work runs. It reads the machine first and refuses on a failed read: absence is
+  what decides. An agent is matched by declared name AND by exact file, because the discovery listing
+  stops at 100; a skill counts for the command, since it answers to the same `/name`. Any routing file
+  ends the offer and keeps `ship-graph.json` (`globalGraphExists || globalGraphBlocked` on the global side),
+  usable or not and whether or not it routes anything: the project file would replace it whole. Publication
+  is exclusive (`wx` locally, the one-function `nt_put` script remotely, shared with `createShipGraph`).
+  Routing goes last and the write stops at the first failure, so no route ever names an agent that failed.
+  A removed project folder is refused rather than recreated: it may be a worktree someone removed.
+  **A project whose `.claude` is part of the machine's Claude config is refused before any write**
+  (`SHIP_SHARED_CONFIG_MESSAGE`): a new SSH project's folder is `~`, and anything written there reaches
+  every project on that machine. The starter and "Create example" with `project` scope share the check:
+  `leadsIntoGlobalConfig` over `realPathAllowingAbsent` and `isSameOrInside` locally,
+  `remoteSharedConfigCheck` over `nt_real` on a host (`test -ef` is not POSIX), read back by
+  `remoteConfigRefusal`. Same-or-inside is by whole segments, so `~/.claude-2` passes while a project on or
+  under `~/.claude` is refused. Dangling links are followed, because a link to a subfolder that does not
+  exist yet still says where a write would go. Each caller names its subfolders: the starter
+  (`TEMPLATE_SUBS`) tests `.claude`, `.claude/agents` and `.claude/commands` against the real global dir and
+  its `agents` and `commands`, because a global subfolder can link out to a shared kit. Create example
+  (`GRAPH_SUBS`) tests `.claude` against the global dir alone, so an unreadable global `agents` does not
+  block it. A check that cannot run refuses too. The starter also fails on a global `agents` or `commands`
+  it cannot read, before the first write: a remote `[ -e ]` would read it as empty. A home folder passes when
+  `CLAUDE_CONFIG_DIR` points elsewhere. Scope `global` ("All projects") skips the check, as the person's
+  explicit choice. The offer does not pre-judge any of this, so both buttons stay enabled and the refusal is
+  the failure shown after the click. Nothing launches. The channel is classified like `shipGraphCreate`
+  (Editor-only, `SCOPED_REFUSED`). Desktop and Server Edition have a real leg; Mobile: N/A. **Not
+  verified:** a real SSH host (the script has run under a real `/bin/sh` only), the Server Edition in a
+  browser, a relay tab, Windows, macOS, and `/ship-change` with the generated agents in a real Claude
+  session. The real-path refusal on both buttons, the unreadable global folder failure and the guessed-move
+  rule are covered by handler and model tests only: the panel's display of the refusal was not exercised,
+  and the live Electron run was not repeated for them.
+- **Status reaches the model as one string** (`statusSig`, the `teamProgressSig` discipline), never the
+  whole `byId` map, which changes on every hook of every node.
+- **A delivery buffer spanning every project is why narrowing exists.** `AgentGraphLog` is per process.
+  The renderer keeps what touches its nodes, and a non-editor's response and live events are cut to
+  events whose EVERY named node is shared (`agentGraphEventShared`): the far end of a message into
+  another project is that project's activity. The ship channels are Editor-only and `SCOPED_REFUSED`:
+  global agents belong to the host's user, and those peers get the observed graph.
+- **Discovery runs where the agents run.** An SSH project reads the host through one `sh -s` script fed
+  on stdin (not `sh -c`: the login shell may not be POSIX), with a per-call nonce on its record markers
+  so a hostile agent file cannot fake a record. A disconnected SSH project answers `unsupported`, and
+  the Server Edition answers the same for any SSH project: describing this machine's agents as the
+  host's is the failure to avoid. Output with no end marker is a failed read, not an empty machine.
+- **Symlinks are followed, and that is why this polls.** Installed agents are usually symlinks, and
+  `fs.watch` on the folder never fires for an edit of a link's target. A subscribed view re-reads (5 s
+  local, 20 s remote), on leases shared per project, and pushes only on a real change.
+  A link in a cloned repo can point anywhere, so the target must be a regular file (a FIFO would hang
+  the open), only its head is read, and only parsed frontmatter leaves: an "agent" linked to a private
+  key yields a card with the link's name.
+- **`ship-graph.json` is hostile display data.** Read field by field in `sanitize.ts`, so unknown keys
+  and `__proto__` never reach the output; ids must be plain tokens; `trigger.command` is shown, never
+  run. A malformed project file warns and falls back to the global one, and the row still offers Open,
+  because Create would refuse. Create never overwrites (`wx` locally; remotely a checked temp published with `ln`, since the script
+  itself crosses the ssh channel and `remote-write.guard.test.ts` forbids a bare `cat >`). That script is
+  one function called on its last line, so a cut-off script runs nothing, and success is its done marker:
+  exit 0 can be a shell that read nothing.
+
+- **Skills and MCP are a log fact, not a mirror event.** `claudeToolAccess` (`shared/agents/tool-access.ts`) reads
+  a hook payload, and `HookServer` hands the result to `agentGraphLog.recordAccess` AFTER the claude pane-origin
+  gate and in no other path. It is not a `NormalizedAgentEvent`, so state, Eco, messaging and the renderer never
+  hear of it, and `normalizeClaude` still returns null for a child's tool events. A throw there never fails the
+  hook POST. Claude only: other agents' tool events are not measured, and a custom agent built on claude posts as
+  `claude` already. MEASURED on 2.1.318 (`__fixtures__/claude/tool-access-hook-payloads.json`): `Skill` with
+  `tool_input.skill`; `mcp__<server>__<tool>`; a child's events carry `agent_id`; a typed `/name` fires only
+  `UserPromptSubmit`; `ToolSearch` is not an access.
+- **Only names ever leave.** A name passes a closed alphabet (skills `[A-Za-z0-9._:-]`, MCP `[A-Za-z0-9_-]`, 64) or the
+  event is dropped whole, never repaired. Tool arguments and the rest of a prompt are never carried, and `subId`
+  must pass `isClaudeAgentId`. One row per key with a running count (`MAX_ACCESS_KEYS` 1024, oldest key and its
+  row forgotten and counted as dropped), pushed on every call, because each push is one flow dot. A typed
+  `/name` is its own row (`:typed`), and the model draws it only when the machine's skills or commands hold that
+  name, so `/clear` and a stray token draw nothing.
+- **MCP config: `name` and `transport` are the only fields that leave the parser** (`parseMcpServers`). `command`,
+  `args`, `env`, `url` and `headers` carry tokens and appear in no `ShipConfig`, warning or log, and a parse error
+  never quotes the file because it quotes the text it choked on. Sources are `$CLAUDE_CONFIG_DIR/.claude.json`
+  else `~/.claude.json` (top level plus `projects[<cwd>]`) and the project's `.mcp.json`, regular files only,
+  16 MB. An SSH host answers `mcpRead: false`: that file holds credentials and is not fetched, and "not read"
+  is never rendered as "none". Claude names a tool's server with characters outside `[A-Za-z0-9_-]` rewritten
+  to `_`, so the panel matches by `mcpNameKey`.
+- **Dots are finite and per event.** `FlowDots` adds one `<circle>` per new line timestamp (`pulseOf` already refuses
+  anything older than the view), at most `MAX_FLOW_DOTS` at once, removed on `animationend`. The CSS is
+  `1` iteration and must not read `--nt-anim-state`. The Harness line points harness to session so the
+  layout ranks the harness left, and carries `flow: 'reverse'` so its dot runs the way hooks flow. An idle graph
+  runs no animation. `agent-graph.css.test.ts` pins it.
+- **The Harness box is per machine and only for session boxes**, never a note, ghost or template. A figure the
+  config cannot state for that machine (`shipDescribes`) is left off, not zero. Which box a subagent's call
+  leaves (`subBox`) is certain or it is the session: a guessed, uncertain, twice-drawn or unknown run falls back.
+- **Surfaces.** Desktop full. Server Edition runs the same core path (the hook route, the log and the local ship
+  handler are shared); an SSH project there answers `unsupported` as before. A relay Viewer or Commenter gets the
+  observed boxes for shared nodes (an access event is narrowed by `nodeId` like every other graph event) and no
+  inventory, because the ship channels are Editor-only. SSH nodes report through the hook tunnel, so their boxes
+  work and their inventory is partial (skills yes, MCP not read). Kanban N/A. Mobile N/A, a follow-up for the
+  phone would need the log over the relay.
+
 ## Canvas interaction & panels (`Canvas.tsx` is the hub)
 
 - **Context menus** (`components/ContextMenu.tsx`, portal, icons from `components/icons.tsx`):
@@ -8672,10 +8855,11 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     nodes work fine). Deliberately out of scope here: both index a single root, and making them
     scope-aware is the same "which checkout am I looking at?" question Source Control already answers
     with `ScmScope` — that is the seam to reuse when it is built.
-- **Kanban view** (`components/kanban/KanbanView.tsx`; toggle is a Trello-style icon ON the
-  **active project tab** (`.tab__board-toggle`, after the name, before the caret — the view
-  belongs to the project; earlier homes were the tab-strip end, then the controls-cluster,
-  both rejected in use) plus ⌘⇧B / ⌘K): per-project
+- **Kanban view** (`components/kanban/KanbanView.tsx`; toggle is the **Kanban tab**, first in the bar after the brand and outside the
+  scrolling strip (`.tab--kanban`, plus ⌘⇧B / ⌘K; it opens the all-projects board, Omni below, and this
+  per-project board is that board's "This project" scope; a project tab keeps only its canvas and graph view
+  buttons, and clicking the active project's tab while its board is up returns to its canvas; earlier
+  homes were the tab-strip end, the controls-cluster, then an icon on the active project tab): per-project
   full-page board OVER the canvas. It is **dual-source** (PR #90): SESSION cards are the project's
   session nodes (React Flow type `terminal`), derived LIVE from the canvas nodes
   (title/color/kind/agentId), with RUNNING / NEEDS YOU badges + unread dot from the default
@@ -9333,7 +9517,7 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   the phone's direct-SSH writer (`KanbanBoardWriter`) still appends without one — the next desktop
   write into that column ranks it, and array order already shows it correctly. `KanbanDefaults`
   should gain the three categories. All three are the iOS follow-up, not desktop work.
-- **Omni Kanban (global swimlanes)** (`components/kanban/GlobalKanbanView.tsx`; one swimlane per open project; `state/viewMode.ts` `globalKanban` (localStorage `nodeterm.globalKanban`, machine-local, like `viewByProject`) + `settings.omniKanbanEnabled` (feature gate, default OFF, `settings.json`) / `omniKanbanAsDefault` (when true, `view.kanbanToggle` — Cmd+Shift+B — opens Omni; otherwise per-project; `view.globalKanbanToggle` registry command — unbound, remappable — always opens Omni when enabled); **Omni is a SCOPE of the kanban side, not a third view**: the view toggle (tab icon, ⌘⇧B, the menu) flips canvas ⇄ board, and a board header's `KanbanScopeSwitch` ("This project" / "All projects", rendered only while the feature is on) moves between the two scopes — so leaving Omni through the switch lands on the project's board, and the view toggle from Omni lands on the canvas (it used to fall through to whatever the project's view happened to be, so "Canvas view" from Omni could land on a board). The decisions live once in `state/viewMode.ts` (`toggleBoardView` / `toggleAllProjectsBoard` / `showProjectBoard` / `showCanvas`), called by TabBar, the menu IPC and both registry commands; Omni has no close button. `globalKanban` deliberately stays independent of the active project, so a project switch made from a lane does not drop the user out of Omni. `isGlobalKanbanOpen()` is the single gate (fail-closed, static import of `useSettings` — the earlier `require` failed open in the packaged renderer). Non-active lanes are derived from serialized `p.nodes` via `toKanbanSessionState` (the persisted-state counterpart to `toKanbanSession`); the ACTIVE project's lane is fed LIVE by Canvas (`GlobalKanbanLive`: the same `kanbanSessionsFrom(nodes)` cards + live `teamStations` the per-project board uses), because its edits reach the store only at the next ~800 ms autosave — a store-fed lane reverted the card modal's controlled sticky textarea on every keystroke and pruned the assignment of a card created a moment earlier. The open card modal is ONE overview-level fact reported to Canvas's `setKanbanModalNode` (watched for Eco, wake-on-open, dictation target), never per-lane state; each lane's board write resolves ITS project's session (`sessionForProject`) for the hosted read-only refusal and the board-log api; `pendingLaunch` never becomes `initialCommand` in the modal (the DAG launch must fire only when dependencies report done, and the canvas `TerminalNode` already delivers `initialCommand` via `writeWhenShellReady` after the `nodeterm:create-node` project switch). Active-project edits (rename / sticky / browser nav) route through Canvas live nodes (`setNodes` + `markDirty`), non-active through the store + `writeDisk`; delete uses `ConfirmDialog` (not `confirm`) and then `deleteNodes` (active project) or `closeStoredNodes` (any other) — the existing cross-project teardown funnel, never a hand-rolled copy. The top bar's project pills and Cmd/Ctrl+1..9 (`nodeterm:swimlane-jump`) jump to the lane; header hint shows the correct mod (`Cmd` on Mac, `Ctrl` elsewhere). Server Edition works as-is, Mobile N/A.
+- **Omni Kanban (global swimlanes)** (`components/kanban/GlobalKanbanView.tsx`; one swimlane per open project; `state/viewMode.ts` `globalKanban` (localStorage `nodeterm.globalKanban`, machine-local, like `viewByProject`); the Kanban tab and `view.kanbanToggle` (Cmd+Shift+B) open it, and `view.globalKanbanToggle` (registry command, unbound, remappable) moves between it and this project's board; it was a settings-gated opt-in until the Kanban tab made it the board's front door, and a stale `omniKanban*` key in settings.json is ignored; it has no GitHub issue lanes, so a node's `#N` chip goes to the project's own board; **Omni is a SCOPE of the kanban side, not a third view**: the view toggle (Kanban tab, ⌘⇧B, the menu) flips canvas ⇄ board, and a board header's `KanbanScopeSwitch` ("This project" / "All projects") moves between the two scopes — so leaving Omni through the switch lands on the project's board, and the view toggle from Omni lands on the canvas (it used to fall through to whatever the project's view happened to be, so "Canvas view" from Omni could land on a board). The decisions live once in `state/viewMode.ts` (`toggleBoardView` / `toggleAllProjectsBoard` / `showProjectBoard` / `showCanvas`), called by TabBar, the menu IPC and both registry commands; Omni has no close button. `globalKanban` deliberately stays independent of the active project, so a project switch made from a lane does not drop the user out of Omni. Non-active lanes are derived from serialized `p.nodes` via `toKanbanSessionState` (the persisted-state counterpart to `toKanbanSession`); the ACTIVE project's lane is fed LIVE by Canvas (`GlobalKanbanLive`: the same `kanbanSessionsFrom(nodes)` cards + live `teamStations` the per-project board uses), because its edits reach the store only at the next ~800 ms autosave — a store-fed lane reverted the card modal's controlled sticky textarea on every keystroke and pruned the assignment of a card created a moment earlier. The open card modal is ONE overview-level fact reported to Canvas's `setKanbanModalNode` (watched for Eco, wake-on-open, dictation target), never per-lane state; each lane's board write resolves ITS project's session (`sessionForProject`) for the hosted read-only refusal and the board-log api; `pendingLaunch` never becomes `initialCommand` in the modal (the DAG launch must fire only when dependencies report done, and the canvas `TerminalNode` already delivers `initialCommand` via `writeWhenShellReady` after the `nodeterm:create-node` project switch). Active-project edits (rename / sticky / browser nav) route through Canvas live nodes (`setNodes` + `markDirty`), non-active through the store + `writeDisk`; delete uses `ConfirmDialog` (not `confirm`) and then `deleteNodes` (active project) or `closeStoredNodes` (any other) — the existing cross-project teardown funnel, never a hand-rolled copy. The top bar's project pills and Cmd/Ctrl+1..9 (`nodeterm:swimlane-jump`) jump to the lane; header hint shows the correct mod (`Cmd` on Mac, `Ctrl` elsewhere). Server Edition works as-is, Mobile N/A.
 - **Settings** (`SettingsPage.tsx`, ⚙ / ⌘,): font/cursor (live to xterm + Monaco), default
   shell, grid + snap, **default node size** (one row with a kind picker: terminal/agent is the
   `defaultNodeWidth`/`defaultNodeHeight` pair, clamped in `terminalNodeSize()`; every other kind
@@ -9664,6 +9848,14 @@ shipped build has not been measured. The rule repeats xyflow's selectors verbati
 xyflow upgrade that adds one fails there. A FOCUSED window still pays the full per-edge cost while an
 edge works; a cheaper working-edge style is an open design call (the driven rope keeps flowing).
 
+**The agent graph has one infinite animation of its own, and it runs under a covered canvas on
+purpose.** Its direction marks (`agent-graph-flow`, `agent-graph.css`) move only while something is
+passing along a line, and that sheet re-scopes `--nt-anim-state` so the marks follow the window alone
+rather than the covered gate (see **Agent graph view**). So while a run is live in a FOCUSED window, the
+graph holds the window at display rate for as long as that run lasts, and a graph with nothing in transit
+runs no loop. The idle gate still pauses it. **This cost has not been measured**; none of the numbers in
+this section describe it.
+
 **The viewport is never promoted — not even while the camera moves.** A `will-change: transform`
 on `.react-flow__viewport` during pan/zoom was tried (00c9c5fc, measured 41–48% → 30–36% CPU on
 12 WebGL terminals) and removed: the viewport layer spans the WHOLE canvas, and Chromium rasters it
@@ -9843,9 +10035,167 @@ unix-socket forward and dev-server `-L` forward over it. POSIX keeps OpenSSH unt
   Windows' refusal stands: a refused constrained add is NEVER retried unconstrained. Fail-open: an
   agent error never affects the connection. Reboot persistence is inferred from the registry hive,
   not measured.
+- **A proxy's EOF closes the socket** (`allowHalfOpen: false` in `proxy-command.ts`). ssh2 marks a
+  connection dead on the socket's `close`, so a half-open stream left a dead proxy looking alive:
+  `-O check` answered 0 and nothing reconnected (measured, no status event in 70 s; ~1.1 s now).
 - **Not done yet:** sleep/wake verification on the native transport, a like-for-like timing against
   OpenSSH on the same project, and any run on a real Windows desktop (all evidence so far is CI plus
   the macOS run of the same code path).
+
+### Claude hooks in a plain WSL terminal (`core/wsl-hooks.ts`)
+
+A `wsl:<distro>` pane reports Claude's status, so its badges, unread dot, agent graph box and subagents
+work with no sshd. Three things stood in the way, each MEASURED from Ubuntu on Windows 11 (NAT mode):
+the hook server is on Windows loopback (`127.0.0.1` from WSL refuses, the gateway address times out),
+the pane's env stops at `wsl.exe`, and Claude reads the distro's `~/.claude`, not the Windows one.
+- **Transport:** Windows' `curl.exe` through WSL interop reaches loopback (~20 ms a call, a UNC payload
+  path readable, `--config -` on stdin intact, so the bearer stays off argv). `WSL_INTEROP_CURL_SH`
+  shadows `curl` with a function and rewrites `/dev/null` and the `payload@` path. It is in the one
+  script generator, because a WSL project on the same distro writes that same file. Claude's script
+  only; inert without `NODETERM_WSL_CURL`, and that value must end in `/curl.exe`.
+- **Env:** `wslHookEnv` lists exact names in WSLENV (only listed names cross, they survive the login
+  shell, `/p` converts). **Never forward `NODETERM_PERM_WAIT_SECS`:** core writes approval answers on
+  Windows and the script polls the distro's own `~/.nodeterm`, so a hold could only time out. A held
+  prompt there is answered in the terminal.
+- **Install:** on a new terminal, under the machine's Claude consent (enabled installs, declined
+  removes, unanswered touches nothing, not even a read). It needs `~/.claude` to exist, so a distro that
+  never ran Claude gets no config dir. It waits at most 4 s, then the terminal opens anyway, and it is
+  never a spawn failure. A declined machine's distro is cleaned when its next WSL terminal opens.
+- **The pane-origin gate lets these events through:** a session-host pane's tty is
+  `win32-console:<pid>`, which `normalizeTty` refuses, so the pane reads as unknown and a WSL claude's
+  `pts/N` is never compared with it (pinned in `claude-pane-origin.test.ts`). A backgrounded claude
+  (`foreground: false`) is still foreign.
+- **Limits:** Claude only. A pane opened before this build, or attached warm, has no env: it needs a new
+  session. Interop off or `/mnt/c` unmounted fails open (no status). `CLAUDE_CONFIG_DIR` set inside the
+  distro is not honoured by the install. Transcript paths are Linux paths, so the local jail refuses them:
+  no context meter, ⌘M chat or live subagent activity. Subagent CARDS come from hooks and do work.
+- **NOT measured:** the whole path in a packaged Windows app. The install commands went through real
+  `wsl.exe` under interop, where argv quoting differs from Windows `node.exe`; the real script reached the
+  real hook server through real `curl.exe` only as far as its 403, since no real credential was used.
+
+### WSL projects: a distribution as an SSH project
+
+A WSL project is an SSH project whose host is a distribution on this machine, so agents in WSL get
+everything SSH projects have: status, hooks, messaging, subagent cards, tmux persistence. A WSL
+terminal profile (`wsl:<distro>`) is a shell plus Claude status hooks (`core/wsl-hooks.ts`, below). It
+has no messaging, canvas control, tmux persistence or transcript reads, because pane probes see
+`wsl.exe` and the transcript is on the other side of the boundary.
+
+- **Transport:** `wsl.exe -d <distro> --exec sh -c <launch>` runs an unprivileged `sshd -i` on the
+  child's stdio, and the native transport speaks SSH over it. No port is opened and no root is needed.
+  `core/remote-ssh/native/wsl-endpoint.ts` owns all of it; every call site is the ordinary SSH path.
+- **The host name is only a handle:** `<slug>-<random hex>.wsl.nodeterm.invalid`. A project file, relay
+  peer or canvas frame can carry that name, so the name selects nothing. The distro, keys and pin are
+  read from `~/.nodeterm/wsl-projects/<handle>/`, which only this module writes, and `conn.wslDistro` is
+  for display.
+- **`ResolvedHost.trustedTransport` is the one way in.** `parseSshG` never sets it. It replaces
+  ProxyCommand, ProxyJump and known_hosts, and `NativeMux.connect` drops the argv's identity and agent
+  when it is present.
+- **Two gates, both needed:** `authorize` (run by `connectOnce` before anything starts) refuses a
+  project id the user did not create on this endpoint. The id list is written only by
+  `wsl-project:bind`, a host-only channel called from the create step. `resolve` then refuses a
+  ControlPath `authorize` did not pass, which also covers a spawn naming the route directly and a
+  ProxyJump hop. An editor's `pty:create` has `sshRemote` removed for a WSL host in any spelling
+  (`access-policy.ts`); a peer attaches through the host's own connection instead.
+- **The gates do not cover a live connection, so the transport does.** NativeMux picks a connection by
+  ControlPath alone, and neither gate runs once it is up. So on a trusted connection any request whose
+  target host differs is refused (`NativeMux.refusal`): exec, pty, SFTP and every `-O` op. A WSL name
+  never rides an ordinary connection either. `isWslHost` is case-insensitive for the same reason.
+- **An argv, never a command line.** `trustedProxySocket` skips the `cmd.exe /c` route on purpose:
+  cmd.exe expands `%VAR%` in a command line and that cannot be escaped there. A distro name is one argv
+  element, so spaces and metacharacters need no quoting. It is validated as `wsl:` profiles are, must
+  be listed by `wsl.exe --list`, and is re-validated at the exec site.
+- **Keys:** generated by core per distro with ssh2. Keep the parse-back retry in `keyPair()`: ssh2 1.17
+  writes an unreadable Ed25519 key about 1 time in 300. Key bodies go over stdin through
+  `remoteAtomicWrite`, never on an argv. The client's private key stays on Windows. Modes are 0600/0700.
+  POSIX modes do not apply on Windows, so each key directory gets an explicit ACL for this user with
+  inheritance removed, through a fixed-path `icacls` before a key lands in it (`windowsPrivateDirArgs`).
+  The grant is by SID from a fixed-path `whoami /user /fo csv /nh`, never by name: on a domain machine with
+  a same-named local account, a name could grant the local account while `/inheritance:r` removes the real
+  user. If the SID cannot be read strictly, or either step fails, the directory is left unchanged on the
+  profile folder's own ACLs, it is logged, and setup continues. **SYSTEM and Administrators lose access to
+  this folder**, which system-level backup tools may notice. A lost key heals: the
+  public half is derived from the private key, and a lost private key gets a new pair.
+- **The host key pin is exact.** A different key in the distro is refused by name, and no key is
+  adopted: with nothing to compare (first connect, reinstalled distro, lost local records) core
+  generates a new one and only then moves the pin. The new key is recorded as `pendingHostKey` before
+  the write, so a run that stops partway completes the move next time instead of reporting a changed
+  key. `authorized_keys` is compared by checksum of the whole file, so a planted extra line is removed.
+- **Never installs and never runs sudo.** Missing `sshd` is a connect failure naming the install
+  command. Missing `tmux` or `curl` is a warning (`endpointWarnings` on the status event, a banner, and
+  the dialog) and the project still opens. An empty list clears a warning the user has fixed.
+- **Only the distro the user chose is started.** Listing does not start one and the pre-warm skips WSL
+  hosts. A cold start gets 60 s (`CONNECT_TIMEOUT_S`) rather than the argv's 15.
+- **Every `wsl.exe` call has a HARD timeout** (`wslRunner`), because a stuck distro was measured hanging
+  for over 2 minutes. `close` is not a bound: it waits for the pipes, and a process that inherited them
+  held one open 26.5 s against a 10 s limit. So the timer answers by itself and destroys the pipes.
+- **`wsl.exe` output:** its own text is UTF-16LE and Linux output is raw bytes, possibly mixed on one
+  stream. The probe's lines carry an `NTWSL` marker the parser keys on. The transport drops what precedes
+  the SSH banner, bounded by `MAX_PRE_BANNER_BYTES` and for a trusted transport only, because ssh2 fails
+  a UTF-16 notice with `Invalid header: expected newline`. A failure printed there ends up in the error.
+- **The keepalive (`settings.wslKeepDistroRunning`, machine-local, on by default).** Community reports and
+  a Microsoft thread say WSL stops a distro with no client attached and that tmux does not count; that
+  is NOT measured here. While the app runs, the sshd's `wsl.exe` is a client. The keepalive is a second
+  one that outlives the app: `wsl.exe -d <distro> --exec sh -c <WSL_KEEPALIVE_SCRIPT> nodeterm-wsl-keepalive-<handle>`,
+  detached, hidden, with `stdio: 'ignore'`, by argv. The VM keeps using memory after quit, and the row in
+  Settings → Remote (SSH) says so. Off, nothing outlives the app, and one left by an earlier run is stopped
+  on the next connect.
+  - **Only for a project the user created on the endpoint,** on its connect (`WslEndpoints.connected`).
+    Never for a folder browse, a listing or a `wsl:` profile.
+  - **Exactly one per DISTRO, recognized inside it.** `WSL_KEEPALIVE_OPS` reports a process only if this
+    user owns it and its arguments after argv[0] are EXACTLY `-c <script> nodeterm-wsl-keepalive-<16 hex>`.
+    Any handle counts, because a lost or corrupt `endpoint.json` mints a new one, and the old keepalive
+    must still be reused and stoppable. A process that merely mentions the marker is neither trusted nor
+    stopped, which `wsl-keepalive.test.ts` proves with real decoy processes. `trim` keeps one and stops any
+    extra. **Two valid records on one distro** share that one keepalive: whichever connects reuses it, and
+    deleting a project stops it only when no record on that distro still has a project.
+  - **Stopping:** deleting a distro's last project (`wsl-project:unbind`), or turning the setting off,
+    stops it by the same match. Turning it off looks in every distro `wsl.exe --list --running` reports,
+    including ones with no readable record, because a lost record leaves nothing saying which distro it
+    was. It runs one read of `/proc` there and starts nothing. Closing a tab does not stop it: closing means
+    "not now".
+  - **If it cannot start:** a named `keepalive` warning, and the project still works.
+  - The `distro-restarted` warning (boot id + init start time) remains for when the distro stopped anyway.
+- **Stopping a distro, combined behavior.** The keepalive has no restart loop and the service has no timer,
+  so a `wsl --shutdown` or `wsl --terminate` ends it and nothing it owns starts the distro again. But an
+  OPEN project reconnects: its dropped channels fire the renderer's `SshReconnector` right away, and the
+  45 s `revalidateAll` watchdog follows. Either one re-establishes the master, which boots the distro and
+  starts a new keepalive. **So a distro cannot stay stopped while one of its projects is open.** To keep it
+  stopped, close its project tabs first, then run `wsl --terminate <distro>`. Closing a WSL tab keeps its
+  master down (`dropClosedWslConnection`, unlike an ordinary SSH project, whose master stays). That takes
+  three things together, because ending the master alone starts a reconnect: the parked PTY's channel
+  exits 255, which reports a drop, which dials a second later and registers the project with the watchdog
+  again. So the close cancels a pending reconnect, `SshReconnector` dials nothing for a closed WSL project
+  (`createProjectReconnector`), and the terminals' parks are disposed, since a park on the ended master is
+  dead and reopening would adopt it. A drop on a closed project is still REMEMBERED: closing the last open
+  tab leaves its nodes mounted (the load effect bails with no active project), so a DIRECT reopen keeps the
+  same ids, nothing remounts, and those dead terminals come back only through a respawn. The coordinator
+  holds them and, on reopen, resumes the ordinary loop, whichever comes first: a `connected` status or its
+  own 1 s timer (a connect that reuses a live master reports no status). Each respawn's `new-session -A`
+  reattaches to the live tmux session, and reopening starts the distro if it stopped. **Once another project
+  is active the hold is dropped** (`nodesMayBeMounted`): its load replaced those nodes, so reopening mounts
+  them fresh and they attach by themselves, and a respawn would only kill a terminal that just attached. A
+  close also ends that project's `RESPAWN_REFUSE_MS` windows, because the exit it causes says nothing about
+  a broken spawn, and refusing one that lands just after a quick reopen would strand the terminal. An
+  ordinary SSH project keeps its window. Closing alone leaves the distro running on its keepalive; to
+  stop that too, turn the setting off or delete the project. A setting change never starts a distro: it
+  only touches distros `wsl.exe --list --running` reports.
+- **Testing:** `wsl-endpoint.test.ts` and `wsl-keepalive.test.ts` run the real NativeMux against ssh2's
+  Server behind a scripted `wsl.exe` on any OS, and the real scripts under `/bin/sh` on POSIX. For a live
+  run off Windows set `NODETERM_NATIVE_SSH=1` and `NODETERM_WSL_PROJECTS=1`, which resolves the bare
+  `wsl.exe` on PATH (never read on Windows). sshd takes HOME from passwd, so `HOME=` alone does NOT
+  sandbox a session: use a mount namespace over the real home.
+- **What has been measured, and how.**
+  - From real Windows `node.exe` v25 through real `wsl.exe` with an extracted sshd: the launcher's quoting
+    survives; with the generated `sshd_config`, ssh2 connected in 77 ms; exec, PTY size, SFTP and a reverse
+    unix-socket forward to a listener on Windows all worked, with the socket at mode 600; `taskkill /t /f`
+    left no sshd running and tmux survived. In that run `$HOME` in the launcher was replaced by a sandbox
+    path. Separately, `wsl.exe --exec` ignored a `HOME` passed by WSLENV: the probe reported the real home.
+  - The running Electron app under Xvfb with a real sshd, tmux and hooks, but a stand-in for `wsl.exe` that
+    exec'd the Linux side directly: project creation, tmux, a dropped connection (~1.1 s to reconnect),
+    an app restart keeping the same pane, hooks through the tunnel. This predates the keepalive.
+  - NOT measured anywhere: the keepalive on real `wsl.exe` (that it survives the app quitting, that
+    `detached` with no console works, that argv[0]-independent matching holds), and WSL's idle stop itself.
 
 ## Remote access (phone relay) — free, not Pro
 
@@ -10667,7 +11017,7 @@ node-pty, output `dist/`). The app icon is generated from the nodeterm mark by
 `scripts/make-icon.mjs` (sharp → `build/icon.png` 1024² + multi-resolution `build/icon.ico`
 for Windows, both gitignored — regenerated by `make-icon`, which every dist script runs first);
 the same script hand-packs `build/icon.icns` (size-checked frames — issue #369) and `build/icon.ico`, which electron-builder embeds as-is. Scripts: `npm run make-icon`, `npm run dist`
-(local **unsigned** arm64 `.dmg` smoke test), `npm run dist:win` (unsigned x64 NSIS installer +
+(local **unsigned** arm64 `.dmg` smoke test; `npm run dist:mac:x64` is the same for Intel, and `release` already builds both), `npm run dist:win` (unsigned x64 NSIS installer +
 zip, `--publish never`). Production release signing/notarization and the update-feed hosting are
 handled outside this repo.
 

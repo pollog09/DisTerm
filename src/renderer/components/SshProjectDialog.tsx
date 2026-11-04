@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useDialogStack } from './dialog-stack'
 import { useSshServers } from '../state/sshServers'
 import { Button } from '@renderer/ui/Button'
 import { Input } from '@renderer/ui/Input'
 import type { SshServer } from '@shared/ssh'
+import type { WslWarning } from '@shared/wsl-project'
+import { SessionContext } from '../session/session'
 
 interface SshProjectDialogProps {
   /** Create the SSH project (Canvas commits the active canvas, adds + switches to it). */
@@ -53,12 +55,23 @@ function parentDir(p: string): string {
  * "Connect over SSH…" project creation flow: pick a saved server, open its ControlMaster,
  * browse the remote filesystem, and create an SSH project rooted at the chosen folder.
  *
+ * On Windows the same flow offers each WSL distribution. Picking one starts it and sets it up (the
+ * core does both; see core/remote-ssh/native/wsl-endpoint.ts), and from there it is an SSH project.
+ *
  * The browse uses a throwaway connection (a temporary project id) so the dialog never needs a
  * project id before one exists; Canvas establishes the project's real master on switch. The
  * temporary master is torn down on create/cancel.
  */
 export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDialogProps) {
   const servers = useSshServers((s) => s.servers)
+  const wslApi = useContext(SessionContext)?.api?.wslProject
+  const [distros, setDistros] = useState<string[]>([])
+  const [wslWarnings, setWslWarnings] = useState<WslWarning[]>([])
+  // The distro behind the current attempt, so Retry repeats the setup and not only the connect.
+  const wslDistroRef = useRef<string | null>(null)
+  // Set once the dialog is cancelled or gone. Setting up a cold distro can take a minute, and a
+  // connect started after that would have no one left to tear it down.
+  const closedRef = useRef(false)
   const [serverFilter, setServerFilter] = useState('')
   const [step, setStep] = useState<Step>('pick')
   const [server, setServer] = useState<SshServer | null>(null)
@@ -82,6 +95,23 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
     )
   }, [servers, serverFilter])
 
+  // Listing does not start a distro; only picking a row does.
+  useEffect(() => {
+    if (!wslApi) return
+    let live = true
+    wslApi
+      .list()
+      .then((r) => {
+        if (live) setDistros(r.available ? r.distros : [])
+      })
+      .catch(() => {
+        if (live) setDistros([])
+      })
+    return () => {
+      live = false
+    }
+  }, [wslApi])
+
   // Tear down the temporary browse master (best-effort) once it's no longer needed.
   const disconnectBrowse = useCallback(() => {
     if (connectBegunRef.current) {
@@ -91,6 +121,7 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
   }, [])
 
   const close = useCallback(() => {
+    closedRef.current = true
     disconnectBrowse()
     onClose()
   }, [disconnectBrowse, onClose])
@@ -107,7 +138,13 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
   }, [isTop, close])
 
   // Disconnect the browse master if the dialog unmounts without an explicit close.
-  useEffect(() => () => disconnectBrowse(), [disconnectBrowse])
+  useEffect(() => {
+    closedRef.current = false
+    return () => {
+      closedRef.current = true
+      disconnectBrowse()
+    }
+  }, [disconnectBrowse])
 
   /** Does `dir` exist on the remote? Asked of its PARENT's listing, because a `listDir` of a
    *  missing directory succeeds and answers `{ path: dir, dirs: [] }`. `~` is taken on faith. */
@@ -178,6 +215,30 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
     [list]
   )
 
+  const connectWsl = useCallback(
+    async (distro: string) => {
+      if (!wslApi) return
+      wslDistroRef.current = distro
+      setServer({ id: `wsl-${distro}`, label: `WSL: ${distro}`, host: distro, user: '' })
+      setError('')
+      setWslWarnings([])
+      setStep('connecting')
+      const prepared = await wslApi.prepare(distro, browseIdRef.current).catch((e: Error) => ({
+        ok: false as const,
+        error: e.message
+      }))
+      if (closedRef.current) return
+      if (!prepared.ok) {
+        setError(prepared.error)
+        setStep('error')
+        return
+      }
+      setWslWarnings(prepared.warnings)
+      await connect(prepared.server)
+    },
+    [wslApi, connect]
+  )
+
   const useThisFolder = useCallback(() => {
     if (!server) return
     disconnectBrowse()
@@ -200,8 +261,24 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
             Connect over SSH
           </p>
           <p className="confirm__msg" style={{ flex: '0 0 auto', overflow: 'visible' }}>
-            Pick a saved server to host this project's terminals.
+            {distros.length
+              ? "Pick a WSL distribution or a saved server to host this project's terminals."
+              : "Pick a saved server to host this project's terminals."}
           </p>
+          {distros.length > 0 && (
+            <div
+              role="group"
+              aria-label="WSL distributions"
+              style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 10px', flexShrink: 0 }}
+            >
+              {distros.map((distro) => (
+                <button key={distro} style={ROW_STYLE} title={`WSL: ${distro}`} onClick={() => void connectWsl(distro)}>
+                  <span style={{ fontWeight: 600 }}>{distro}</span>
+                  <span style={{ opacity: 0.6, fontSize: 12 }}>WSL distribution</span>
+                </button>
+              ))}
+            </div>
+          )}
           {servers.length > 0 && (
             <Input
               autoFocus
@@ -241,7 +318,10 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
                   key={s.id}
                   style={ROW_STYLE}
                   title={`${s.user}@${s.host}`}
-                  onClick={() => void connect(s)}
+                  onClick={() => {
+                    wslDistroRef.current = null
+                    void connect(s)
+                  }}
                 >
                   <span
                     style={{
@@ -289,7 +369,11 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
             Connecting to {server?.label}…
           </p>
           <p className="confirm__msg" style={{ opacity: 0.7 }}>
-            {server ? `Establishing the SSH connection to ${server.user}@${server.host}.` : 'Establishing the SSH connection.'}
+            {wslDistroRef.current
+              ? `Starting ${wslDistroRef.current} if needed and connecting to it. No port is opened.`
+              : server
+                ? `Establishing the SSH connection to ${server.user}@${server.host}.`
+                : 'Establishing the SSH connection.'}
           </p>
           <div className="confirm__actions">
             <Button onClick={close}>Cancel</Button>
@@ -308,7 +392,13 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
           </p>
           <div className="confirm__actions">
             <Button onClick={close}>Close</Button>
-            <Button variant="primary" onClick={() => server && void connect(server)}>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (wslDistroRef.current) void connectWsl(wslDistroRef.current)
+                else if (server) void connect(server)
+              }}
+            >
               Retry
             </Button>
           </div>
@@ -322,6 +412,11 @@ export function SshProjectDialog({ onCreate, onManage, onClose }: SshProjectDial
         <p className="confirm__msg" style={{ fontWeight: 600 }}>
           Choose a folder on {server?.label}
         </p>
+        {wslWarnings.map((w) => (
+          <p key={w.kind} role="status" className="confirm__msg" style={{ color: 'var(--state-warning)', margin: '0 0 8px', fontSize: 12 }}>
+            {w.message}
+          </p>
+        ))}
         <div
           style={{
             display: 'flex',

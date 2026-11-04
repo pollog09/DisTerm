@@ -23,6 +23,10 @@ const ROWS = {
   windowsAgent: {
     title: 'Keep unlocked keys in the Windows ssh-agent',
     keywords: ['ssh-agent', 'agent', 'passphrase', 'key', 'windows', 'AddKeysToAgent', 'ssh-add', 'prompt']
+  },
+  wslKeepalive: {
+    title: 'Keep WSL distributions running after quit',
+    keywords: ['wsl', 'distribution', 'distro', 'keepalive', 'quit', 'memory', 'tmux', 'persist', 'windows']
   }
 }
 /** The native SSH transport (and with it this switch) is the Windows desktop's; a browser tab's
@@ -35,6 +39,7 @@ const ENTRIES = showsWindowsAgentRow() ? Object.values(ROWS) : [ROWS.servers]
 export function SshSection({ isActive }: { isActive: boolean }): React.JSX.Element {
   const sshServers = useSshServers((s) => s.servers)
   const agentAddKeys = useSettings((s) => s.settings.windowsSshAgentAddKeys)
+  const keepDistroRunning = useSettings((s) => s.settings.wslKeepDistroRunning)
   const updateSettings = useSettings((s) => s.update)
   const [sshDraft, setSshDraft] = useState<SshServer | null>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
@@ -317,6 +322,21 @@ export function SshSection({ isActive }: { isActive: boolean }): React.JSX.Eleme
                 checked={agentAddKeys === true}
                 onChange={(v) => void updateSettings({ windowsSshAgentAddKeys: v })}
                 ariaLabel="Keep unlocked keys in the Windows ssh-agent"
+              />
+            }
+          />
+        </SearchableRow>
+      ) : null}
+      {showsWindowsAgentRow() ? (
+        <SearchableRow {...ROWS.wslKeepalive}>
+          <FieldRow
+            label="Keep WSL distributions running after quit"
+            description="On by default. WSL can stop a distribution once no Windows program is attached to it, and that ends its terminals and agents. On, each distribution you opened as a WSL project stays running after nodeterm quits, so they are still there when you come back, and the WSL VM keeps using memory until you run wsl --shutdown or turn this off. Off, nothing outlives the app. Deleting a distribution's last WSL project also stops this for that distribution."
+            control={
+              <Switch
+                checked={keepDistroRunning === true}
+                onChange={(v) => void updateSettings({ wslKeepDistroRunning: v })}
+                ariaLabel="Keep WSL distributions running after quit"
               />
             }
           />
