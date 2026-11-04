@@ -185,9 +185,9 @@ forces you to *declare* every member, but a no-op stub compiles fine while doing
 The **canvas and the kanban board are two views of the same nodes.** When you add something to a
 canvas node — a header action, a badge, a menu item — ask whether the board's card and card modal
 need it too, and wire it in the same change. The global (Omni) board shows all open projects as
-stacked swimlanes; it is off by default (`settings.omniKanbanEnabled`), has a dedicated remappable
-shortcut (`view.globalKanbanToggle`), and can be made the default for Cmd+Shift+B via
-`settings.omniKanbanAsDefault` — see CLAUDE.md for the full invariants.
+stacked swimlanes; the Kanban tab and Cmd+Shift+B open it, its scope switch reaches a single project's board, and
+`view.globalKanbanToggle` is a remappable shortcut between the two — see CLAUDE.md for the full
+invariants.
 
 **Node actions live in one builder.** A row that acts on a canvas node — a menu item, a switch, a
 picker — goes in `renderer/lib/nodeActionItems.tsx`, never inline in `Canvas.tsx`. The canvas node

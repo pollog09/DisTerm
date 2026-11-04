@@ -1,6 +1,6 @@
 # Ship process and `ship-graph.json`
 
-The agent graph view (the graph icon on the active project's tab, or **Agent graph** in ⌘K) shows a
+The agent graph view (the graph button on the active project's tab, or **Agent graph** in ⌘K) shows a
 project's sessions, what passes between them, and how work moves through your ship process.
 
 That process is not built in. It is read from the machine the project runs on: this computer for a

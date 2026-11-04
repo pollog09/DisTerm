@@ -62,8 +62,9 @@ describe('the board toggle stays canvas and board', () => {
   it('the shortcut from the graph opens the board, it does not read the graph as a board', () => {
     useViewMode.getState().setView('p', 'graph')
     toggleBoardView('p')
-    expect(view('p')).toBe('kanban')
+    expect(useViewMode.getState().globalKanban).toBe(true)
     toggleBoardView('p')
+    expect(useViewMode.getState().globalKanban).toBe(false)
     expect(view('p')).toBe('canvas')
   })
 })
