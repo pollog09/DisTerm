@@ -1,0 +1,2303 @@
+{
+  "generatedBy": "scripts/architecture-graph.mjs",
+  "aliases": {
+    "@renderer/": "src/renderer/",
+    "@shared/": "src/shared/"
+  },
+  "stats": {
+    "files": 1445,
+    "loc": 324209,
+    "excludedTestFiles": 1728,
+    "imports": 6853,
+    "internalImports": 5741,
+    "externalImports": 1101,
+    "assetImports": 11,
+    "importsOfTestFiles": 0,
+    "importsOutsideSrc": 0,
+    "unresolvedImports": 0,
+    "nonLiteralDynamicImports": 0,
+    "filesWithLexProblems": 0
+  },
+  "contexts": [
+    {
+      "id": "core",
+      "files": 378,
+      "loc": 102450,
+      "subsystems": 12,
+      "internalImports": 808
+    },
+    {
+      "id": "main",
+      "files": 125,
+      "loc": 30121,
+      "subsystems": 4,
+      "internalImports": 202
+    },
+    {
+      "id": "preload",
+      "files": 3,
+      "loc": 1165,
+      "subsystems": 1,
+      "internalImports": 0
+    },
+    {
+      "id": "renderer",
+      "files": 710,
+      "loc": 145474,
+      "subsystems": 15,
+      "internalImports": 2252
+    },
+    {
+      "id": "server",
+      "files": 25,
+      "loc": 7556,
+      "subsystems": 2,
+      "internalImports": 43
+    },
+    {
+      "id": "session-host",
+      "files": 23,
+      "loc": 4508,
+      "subsystems": 1,
+      "internalImports": 31
+    },
+    {
+      "id": "shared",
+      "files": 181,
+      "loc": 32935,
+      "subsystems": 4,
+      "internalImports": 289
+    }
+  ],
+  "contextEdges": [
+    {
+      "from": "core",
+      "to": "session-host",
+      "imports": 15,
+      "value": 11,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core",
+      "to": "shared",
+      "imports": 538,
+      "value": 367,
+      "typeOnly": 171,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main",
+      "to": "core",
+      "imports": 323,
+      "value": 294,
+      "typeOnly": 29,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main",
+      "to": "shared",
+      "imports": 130,
+      "value": 91,
+      "typeOnly": 39,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "preload",
+      "to": "shared",
+      "imports": 15,
+      "value": 4,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer",
+      "to": "shared",
+      "imports": 855,
+      "value": 485,
+      "typeOnly": 370,
+      "dynamic": 2,
+      "kind": "mixed"
+    },
+    {
+      "from": "server",
+      "to": "core",
+      "imports": 165,
+      "value": 146,
+      "typeOnly": 19,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server",
+      "to": "shared",
+      "imports": 57,
+      "value": 39,
+      "typeOnly": 18,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "session-host",
+      "to": "core",
+      "imports": 8,
+      "value": 8,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "session-host",
+      "to": "shared",
+      "imports": 10,
+      "value": 6,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "core/(root)",
+      "context": "core",
+      "files": 204,
+      "loc": 59144,
+      "internalImports": 371
+    },
+    {
+      "id": "core/agents",
+      "context": "core",
+      "files": 53,
+      "loc": 14323,
+      "internalImports": 85
+    },
+    {
+      "id": "core/github",
+      "context": "core",
+      "files": 21,
+      "loc": 5849,
+      "internalImports": 38
+    },
+    {
+      "id": "core/handoff",
+      "context": "core",
+      "files": 1,
+      "loc": 147,
+      "internalImports": 0
+    },
+    {
+      "id": "core/presence",
+      "context": "core",
+      "files": 1,
+      "loc": 377,
+      "internalImports": 0
+    },
+    {
+      "id": "core/relay",
+      "context": "core",
+      "files": 29,
+      "loc": 6501,
+      "internalImports": 55
+    },
+    {
+      "id": "core/remote",
+      "context": "core",
+      "files": 1,
+      "loc": 111,
+      "internalImports": 0
+    },
+    {
+      "id": "core/remote-ssh",
+      "context": "core",
+      "files": 29,
+      "loc": 6032,
+      "internalImports": 21
+    },
+    {
+      "id": "core/simulator",
+      "context": "core",
+      "files": 8,
+      "loc": 2316,
+      "internalImports": 14
+    },
+    {
+      "id": "core/speech",
+      "context": "core",
+      "files": 5,
+      "loc": 484,
+      "internalImports": 6
+    },
+    {
+      "id": "core/usage",
+      "context": "core",
+      "files": 12,
+      "loc": 2538,
+      "internalImports": 17
+    },
+    {
+      "id": "core/watch-link",
+      "context": "core",
+      "files": 14,
+      "loc": 4628,
+      "internalImports": 19
+    },
+    {
+      "id": "main/(root)",
+      "context": "main",
+      "files": 74,
+      "loc": 18407,
+      "internalImports": 97
+    },
+    {
+      "id": "main/handoff",
+      "context": "main",
+      "files": 9,
+      "loc": 533,
+      "internalImports": 11
+    },
+    {
+      "id": "main/remote",
+      "context": "main",
+      "files": 29,
+      "loc": 4577,
+      "internalImports": 43
+    },
+    {
+      "id": "main/remote-ssh",
+      "context": "main",
+      "files": 13,
+      "loc": 6604,
+      "internalImports": 12
+    },
+    {
+      "id": "preload/(root)",
+      "context": "preload",
+      "files": 3,
+      "loc": 1165,
+      "internalImports": 0
+    },
+    {
+      "id": "renderer/(root)",
+      "context": "renderer",
+      "files": 5,
+      "loc": 353,
+      "internalImports": 2
+    },
+    {
+      "id": "renderer/bridge",
+      "context": "renderer",
+      "files": 10,
+      "loc": 3180,
+      "internalImports": 14
+    },
+    {
+      "id": "renderer/canvas",
+      "context": "renderer",
+      "files": 26,
+      "loc": 24750,
+      "internalImports": 26
+    },
+    {
+      "id": "renderer/components",
+      "context": "renderer",
+      "files": 188,
+      "loc": 40233,
+      "internalImports": 395
+    },
+    {
+      "id": "renderer/editor",
+      "context": "renderer",
+      "files": 2,
+      "loc": 123,
+      "internalImports": 1
+    },
+    {
+      "id": "renderer/glyphgrid",
+      "context": "renderer",
+      "files": 16,
+      "loc": 5933,
+      "internalImports": 40
+    },
+    {
+      "id": "renderer/hud",
+      "context": "renderer",
+      "files": 3,
+      "loc": 591,
+      "internalImports": 2
+    },
+    {
+      "id": "renderer/lib",
+      "context": "renderer",
+      "files": 259,
+      "loc": 28754,
+      "internalImports": 109
+    },
+    {
+      "id": "renderer/nodes",
+      "context": "renderer",
+      "files": 51,
+      "loc": 17252,
+      "internalImports": 56
+    },
+    {
+      "id": "renderer/remote",
+      "context": "renderer",
+      "files": 1,
+      "loc": 12,
+      "internalImports": 0
+    },
+    {
+      "id": "renderer/session",
+      "context": "renderer",
+      "files": 8,
+      "loc": 1280,
+      "internalImports": 8
+    },
+    {
+      "id": "renderer/state",
+      "context": "renderer",
+      "files": 67,
+      "loc": 12062,
+      "internalImports": 34
+    },
+    {
+      "id": "renderer/terminal",
+      "context": "renderer",
+      "files": 61,
+      "loc": 10252,
+      "internalImports": 19
+    },
+    {
+      "id": "renderer/ui",
+      "context": "renderer",
+      "files": 10,
+      "loc": 380,
+      "internalImports": 6
+    },
+    {
+      "id": "renderer/whiteboard",
+      "context": "renderer",
+      "files": 3,
+      "loc": 319,
+      "internalImports": 1
+    },
+    {
+      "id": "server/(root)",
+      "context": "server",
+      "files": 24,
+      "loc": 7410,
+      "internalImports": 40
+    },
+    {
+      "id": "server/handlers",
+      "context": "server",
+      "files": 1,
+      "loc": 146,
+      "internalImports": 0
+    },
+    {
+      "id": "session-host/(root)",
+      "context": "session-host",
+      "files": 23,
+      "loc": 4508,
+      "internalImports": 31
+    },
+    {
+      "id": "shared/(root)",
+      "context": "shared",
+      "files": 149,
+      "loc": 27081,
+      "internalImports": 222
+    },
+    {
+      "id": "shared/agents",
+      "context": "shared",
+      "files": 21,
+      "loc": 4848,
+      "internalImports": 17
+    },
+    {
+      "id": "shared/remote",
+      "context": "shared",
+      "files": 3,
+      "loc": 69,
+      "internalImports": 1
+    },
+    {
+      "id": "shared/watch-link",
+      "context": "shared",
+      "files": 8,
+      "loc": 937,
+      "internalImports": 12
+    }
+  ],
+  "edges": [
+    {
+      "from": "core/(root)",
+      "to": "core/agents",
+      "imports": 41,
+      "value": 37,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/github",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/handoff",
+      "imports": 6,
+      "value": 6,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/presence",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/relay",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/remote-ssh",
+      "imports": 15,
+      "value": 15,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/usage",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "core/watch-link",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/(root)",
+      "to": "session-host/(root)",
+      "imports": 14,
+      "value": 10,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/(root)",
+      "to": "shared/(root)",
+      "imports": 285,
+      "value": 198,
+      "typeOnly": 87,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/(root)",
+      "to": "shared/agents",
+      "imports": 57,
+      "value": 46,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/agents",
+      "to": "core/(root)",
+      "imports": 38,
+      "value": 33,
+      "typeOnly": 5,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/agents",
+      "to": "session-host/(root)",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/agents",
+      "to": "shared/(root)",
+      "imports": 21,
+      "value": 16,
+      "typeOnly": 5,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/agents",
+      "to": "shared/agents",
+      "imports": 29,
+      "value": 18,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/github",
+      "to": "core/(root)",
+      "imports": 8,
+      "value": 5,
+      "typeOnly": 3,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/github",
+      "to": "shared/(root)",
+      "imports": 34,
+      "value": 10,
+      "typeOnly": 24,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/handoff",
+      "to": "core/(root)",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/handoff",
+      "to": "core/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/presence",
+      "to": "core/(root)",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/presence",
+      "to": "shared/(root)",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/relay",
+      "to": "core/(root)",
+      "imports": 8,
+      "value": 2,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/relay",
+      "to": "shared/(root)",
+      "imports": 28,
+      "value": 21,
+      "typeOnly": 7,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/relay",
+      "to": "shared/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "core/(root)",
+      "imports": 13,
+      "value": 12,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "core/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "core/relay",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "core/watch-link",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "shared/(root)",
+      "imports": 20,
+      "value": 13,
+      "typeOnly": 7,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/remote-ssh",
+      "to": "shared/agents",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/simulator",
+      "to": "core/(root)",
+      "imports": 6,
+      "value": 6,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/simulator",
+      "to": "shared/(root)",
+      "imports": 10,
+      "value": 9,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/speech",
+      "to": "core/(root)",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/speech",
+      "to": "shared/(root)",
+      "imports": 5,
+      "value": 4,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/usage",
+      "to": "core/(root)",
+      "imports": 8,
+      "value": 8,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/usage",
+      "to": "core/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/usage",
+      "to": "core/remote-ssh",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/usage",
+      "to": "shared/(root)",
+      "imports": 15,
+      "value": 3,
+      "typeOnly": 12,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/watch-link",
+      "to": "core/(root)",
+      "imports": 10,
+      "value": 4,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/watch-link",
+      "to": "core/relay",
+      "imports": 7,
+      "value": 3,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/watch-link",
+      "to": "core/remote-ssh",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/watch-link",
+      "to": "shared/(root)",
+      "imports": 15,
+      "value": 11,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/watch-link",
+      "to": "shared/watch-link",
+      "imports": 13,
+      "value": 12,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/(root)",
+      "imports": 147,
+      "value": 133,
+      "typeOnly": 14,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/agents",
+      "imports": 17,
+      "value": 17,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/github",
+      "imports": 7,
+      "value": 5,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/presence",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/relay",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/remote-ssh",
+      "imports": 10,
+      "value": 8,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/simulator",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/speech",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/usage",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/watch-link",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "main/handoff",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "main/remote",
+      "imports": 14,
+      "value": 14,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "main/remote-ssh",
+      "imports": 16,
+      "value": 10,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "shared/(root)",
+      "imports": 75,
+      "value": 53,
+      "typeOnly": 22,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/(root)",
+      "to": "shared/agents",
+      "imports": 9,
+      "value": 6,
+      "typeOnly": 3,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/handoff",
+      "to": "core/(root)",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/handoff",
+      "to": "core/handoff",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/handoff",
+      "to": "shared/(root)",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/handoff",
+      "to": "shared/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/(root)",
+      "imports": 18,
+      "value": 16,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/agents",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/presence",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/relay",
+      "imports": 25,
+      "value": 21,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/remote",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote",
+      "to": "core/watch-link",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "main/remote",
+      "to": "main/(root)",
+      "imports": 3,
+      "value": 1,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote",
+      "to": "shared/(root)",
+      "imports": 23,
+      "value": 14,
+      "typeOnly": 9,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote",
+      "to": "shared/agents",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "core/(root)",
+      "imports": 24,
+      "value": 20,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "core/agents",
+      "imports": 18,
+      "value": 18,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "core/relay",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "core/remote-ssh",
+      "imports": 20,
+      "value": 20,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "main/(root)",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "main/remote",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "shared/(root)",
+      "imports": 13,
+      "value": 11,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "main/remote-ssh",
+      "to": "shared/agents",
+      "imports": 6,
+      "value": 4,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "preload/(root)",
+      "to": "shared/(root)",
+      "imports": 15,
+      "value": 4,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/bridge",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 2,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/canvas",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/components",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/glyphgrid",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 1,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/lib",
+      "imports": 7,
+      "value": 7,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/session",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/state",
+      "imports": 7,
+      "value": 7,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "renderer/terminal",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 1,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/(root)",
+      "to": "shared/(root)",
+      "imports": 6,
+      "value": 6,
+      "typeOnly": 0,
+      "dynamic": 2,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/bridge",
+      "to": "renderer/components",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/bridge",
+      "to": "renderer/lib",
+      "imports": 4,
+      "value": 3,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/bridge",
+      "to": "renderer/session",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/bridge",
+      "to": "shared/(root)",
+      "imports": 35,
+      "value": 17,
+      "typeOnly": 18,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/bridge",
+      "to": "shared/agents",
+      "imports": 2,
+      "value": 0,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/bridge",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/components",
+      "imports": 61,
+      "value": 55,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/glyphgrid",
+      "imports": 8,
+      "value": 7,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/lib",
+      "imports": 152,
+      "value": 149,
+      "typeOnly": 3,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/nodes",
+      "imports": 15,
+      "value": 15,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/remote",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/session",
+      "imports": 10,
+      "value": 9,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/state",
+      "imports": 64,
+      "value": 63,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "renderer/terminal",
+      "imports": 16,
+      "value": 16,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "shared/(root)",
+      "imports": 62,
+      "value": 41,
+      "typeOnly": 21,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "shared/agents",
+      "imports": 7,
+      "value": 6,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/canvas",
+      "to": "shared/remote",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/bridge",
+      "imports": 16,
+      "value": 16,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/canvas",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/lib",
+      "imports": 222,
+      "value": 212,
+      "typeOnly": 10,
+      "dynamic": 2,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/nodes",
+      "imports": 10,
+      "value": 10,
+      "typeOnly": 0,
+      "dynamic": 2,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/session",
+      "imports": 35,
+      "value": 33,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/state",
+      "imports": 208,
+      "value": 206,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/terminal",
+      "imports": 47,
+      "value": 47,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "renderer/ui",
+      "imports": 112,
+      "value": 112,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "shared/(root)",
+      "imports": 218,
+      "value": 120,
+      "typeOnly": 98,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/components",
+      "to": "shared/agents",
+      "imports": 24,
+      "value": 21,
+      "typeOnly": 3,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/components",
+      "to": "shared/remote",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/components",
+      "to": "shared/watch-link",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/hud",
+      "to": "renderer/lib",
+      "imports": 6,
+      "value": 6,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/bridge",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/canvas",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/components",
+      "imports": 15,
+      "value": 4,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/glyphgrid",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/session",
+      "imports": 11,
+      "value": 3,
+      "typeOnly": 8,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/state",
+      "imports": 61,
+      "value": 42,
+      "typeOnly": 19,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "renderer/terminal",
+      "imports": 8,
+      "value": 7,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "shared/(root)",
+      "imports": 226,
+      "value": 114,
+      "typeOnly": 112,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "shared/agents",
+      "imports": 45,
+      "value": 31,
+      "typeOnly": 14,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/lib",
+      "to": "shared/watch-link",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/bridge",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/canvas",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/components",
+      "imports": 65,
+      "value": 64,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/editor",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 1,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/glyphgrid",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/lib",
+      "imports": 100,
+      "value": 100,
+      "typeOnly": 0,
+      "dynamic": 1,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/session",
+      "imports": 14,
+      "value": 14,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/state",
+      "imports": 76,
+      "value": 65,
+      "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/terminal",
+      "imports": 59,
+      "value": 58,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "renderer/whiteboard",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 1,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "shared/(root)",
+      "imports": 42,
+      "value": 29,
+      "typeOnly": 13,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/nodes",
+      "to": "shared/agents",
+      "imports": 13,
+      "value": 9,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/remote",
+      "to": "renderer/lib",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/remote",
+      "to": "shared/remote",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/session",
+      "to": "renderer/bridge",
+      "imports": 4,
+      "value": 3,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/session",
+      "to": "renderer/lib",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/session",
+      "to": "renderer/state",
+      "imports": 8,
+      "value": 6,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/session",
+      "to": "shared/(root)",
+      "imports": 11,
+      "value": 4,
+      "typeOnly": 7,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/state",
+      "to": "renderer/bridge",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/state",
+      "to": "renderer/lib",
+      "imports": 31,
+      "value": 25,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/state",
+      "to": "renderer/session",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/state",
+      "to": "renderer/terminal",
+      "imports": 4,
+      "value": 2,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/state",
+      "to": "shared/(root)",
+      "imports": 87,
+      "value": 45,
+      "typeOnly": 42,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/state",
+      "to": "shared/agents",
+      "imports": 22,
+      "value": 14,
+      "typeOnly": 8,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/canvas",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/components",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/glyphgrid",
+      "imports": 6,
+      "value": 2,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/lib",
+      "imports": 10,
+      "value": 9,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/session",
+      "imports": 8,
+      "value": 3,
+      "typeOnly": 5,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "renderer/state",
+      "imports": 3,
+      "value": 2,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "shared/(root)",
+      "imports": 34,
+      "value": 12,
+      "typeOnly": 22,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/terminal",
+      "to": "shared/agents",
+      "imports": 13,
+      "value": 9,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "renderer/whiteboard",
+      "to": "renderer/lib",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/(root)",
+      "imports": 110,
+      "value": 96,
+      "typeOnly": 14,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/agents",
+      "imports": 17,
+      "value": 17,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/github",
+      "imports": 5,
+      "value": 3,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/presence",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/relay",
+      "imports": 6,
+      "value": 5,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/speech",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/usage",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/watch-link",
+      "imports": 4,
+      "value": 4,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "server/handlers",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "shared/(root)",
+      "imports": 44,
+      "value": 30,
+      "typeOnly": 14,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "shared/agents",
+      "imports": 10,
+      "value": 7,
+      "typeOnly": 3,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "shared/remote",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/handlers",
+      "to": "core/(root)",
+      "imports": 16,
+      "value": 14,
+      "typeOnly": 2,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/handlers",
+      "to": "core/usage",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/handlers",
+      "to": "server/(root)",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/handlers",
+      "to": "shared/(root)",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "session-host/(root)",
+      "to": "core/(root)",
+      "imports": 8,
+      "value": 8,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "session-host/(root)",
+      "to": "shared/(root)",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "session-host/(root)",
+      "to": "shared/agents",
+      "imports": 5,
+      "value": 1,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "shared/(root)",
+      "to": "shared/agents",
+      "imports": 23,
+      "value": 8,
+      "typeOnly": 15,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "shared/(root)",
+      "to": "shared/watch-link",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "shared/agents",
+      "to": "shared/(root)",
+      "imports": 12,
+      "value": 6,
+      "typeOnly": 6,
+      "dynamic": 0,
+      "kind": "mixed"
+    }
+  ],
+  "fanIn": [
+    {
+      "file": "src/shared/types.ts",
+      "subsystem": "shared/(root)",
+      "importers": 343,
+      "outsideSubsystem": 309,
+      "value": 26,
+      "typeOnly": 328
+    },
+    {
+      "file": "src/shared/agents/config.ts",
+      "subsystem": "shared/agents",
+      "importers": 107,
+      "outsideSubsystem": 99,
+      "value": 89,
+      "typeOnly": 24
+    },
+    {
+      "file": "src/shared/ipc.ts",
+      "subsystem": "shared/(root)",
+      "importers": 84,
+      "outsideSubsystem": 82,
+      "value": 84,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/core/platform.ts",
+      "subsystem": "core/(root)",
+      "importers": 72,
+      "outsideSubsystem": 22,
+      "value": 52,
+      "typeOnly": 20
+    },
+    {
+      "file": "src/renderer/state/settings.ts",
+      "subsystem": "renderer/state",
+      "importers": 71,
+      "outsideSubsystem": 63,
+      "value": 71,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/session/session.ts",
+      "subsystem": "renderer/session",
+      "importers": 67,
+      "outsideSubsystem": 62,
+      "value": 54,
+      "typeOnly": 14
+    },
+    {
+      "file": "src/renderer/components/icons.tsx",
+      "subsystem": "renderer/components",
+      "importers": 66,
+      "outsideSubsystem": 25,
+      "value": 66,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/state/projects.ts",
+      "subsystem": "renderer/state",
+      "importers": 66,
+      "outsideSubsystem": 63,
+      "value": 65,
+      "typeOnly": 1
+    },
+    {
+      "file": "src/shared/ssh.ts",
+      "subsystem": "shared/(root)",
+      "importers": 62,
+      "outsideSubsystem": 59,
+      "value": 46,
+      "typeOnly": 37
+    },
+    {
+      "file": "src/core/fs-atomic.ts",
+      "subsystem": "core/(root)",
+      "importers": 47,
+      "outsideSubsystem": 27,
+      "value": 47,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/state/workspace.ts",
+      "subsystem": "renderer/state",
+      "importers": 47,
+      "outsideSubsystem": 44,
+      "value": 27,
+      "typeOnly": 20
+    },
+    {
+      "file": "src/shared/agents/normalize.ts",
+      "subsystem": "shared/agents",
+      "importers": 44,
+      "outsideSubsystem": 44,
+      "value": 9,
+      "typeOnly": 36
+    },
+    {
+      "file": "src/renderer/state/agentStatus.ts",
+      "subsystem": "renderer/state",
+      "importers": 31,
+      "outsideSubsystem": 28,
+      "value": 21,
+      "typeOnly": 10
+    },
+    {
+      "file": "src/renderer/ui/Button.tsx",
+      "subsystem": "renderer/ui",
+      "importers": 29,
+      "outsideSubsystem": 28,
+      "value": 29,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/components/settings/SearchableRow.tsx",
+      "subsystem": "renderer/components",
+      "importers": 28,
+      "outsideSubsystem": 0,
+      "value": 28,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/components/settings/SettingsSection.tsx",
+      "subsystem": "renderer/components",
+      "importers": 28,
+      "outsideSubsystem": 0,
+      "value": 28,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/shared/platform-utils.ts",
+      "subsystem": "shared/(root)",
+      "importers": 27,
+      "outsideSubsystem": 27,
+      "value": 27,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/bridge/runtime.ts",
+      "subsystem": "renderer/bridge",
+      "importers": 26,
+      "outsideSubsystem": 26,
+      "value": 26,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/components/settings/FieldRow.tsx",
+      "subsystem": "renderer/components",
+      "importers": 26,
+      "outsideSubsystem": 0,
+      "value": 26,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/shared/github-issue-ref.ts",
+      "subsystem": "shared/(root)",
+      "importers": 26,
+      "outsideSubsystem": 22,
+      "value": 19,
+      "typeOnly": 7
+    },
+    {
+      "file": "src/shared/github-issues.ts",
+      "subsystem": "shared/(root)",
+      "importers": 26,
+      "outsideSubsystem": 25,
+      "value": 0,
+      "typeOnly": 29
+    },
+    {
+      "file": "src/shared/safe-id.ts",
+      "subsystem": "shared/(root)",
+      "importers": 26,
+      "outsideSubsystem": 18,
+      "value": 26,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/core/exec-path.ts",
+      "subsystem": "core/(root)",
+      "importers": 25,
+      "outsideSubsystem": 10,
+      "value": 26,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/components/dialog-stack.ts",
+      "subsystem": "renderer/components",
+      "importers": 25,
+      "outsideSubsystem": 1,
+      "value": 25,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/shared/presence.ts",
+      "subsystem": "shared/(root)",
+      "importers": 25,
+      "outsideSubsystem": 21,
+      "value": 11,
+      "typeOnly": 14
+    }
+  ],
+  "filesWithImporters": 1417,
+  "crossings": [],
+  "unresolved": [],
+  "lexProblems": []
+}
