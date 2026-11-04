@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AGENT_GRAPH_HISTORY_CAP,
   AGENT_GRAPH_LOG_CAPACITY,
@@ -7,9 +7,10 @@ import {
   type AgentGraphEvent,
   type AgentGraphSnapshot
 } from '@shared/agent-graph'
-import type { ShipConfigResult } from '@shared/ship-config'
+import type { ShipConfigResult, ShipTemplateCreateResult } from '@shared/ship-config'
 import type { AgentGraphApi, BoardLogApi } from '@shared/types'
 import { errorText } from '@shared/error-text'
+import { edgeInTransit, nextTransitChangeAt, type GraphEdge } from '../../lib/agentGraphModel'
 
 /** What this view may hold: everything the core can keep plus one full history read. */
 const VIEW_EVENT_CAP = AGENT_GRAPH_LOG_CAPACITY + AGENT_GRAPH_HISTORY_CAP
@@ -102,4 +103,66 @@ export function useShipConfig(
   }, [api, projectId, reload])
 
   return { result: held?.projectId === projectId ? held.result : null, reload }
+}
+
+export interface ShipTemplateState {
+  busy: boolean
+  /** The last answer for this project, until dismissed. */
+  result: ShipTemplateCreateResult | null
+  create: () => void
+  dismiss: () => void
+}
+
+/** Setting a project up with the starter pipeline. The answer is held with the project it belongs to,
+ *  and only that project's config is re-read for it: switching away mid-write must not put one project's
+ *  answer, or one project's config, on another. */
+export function useShipTemplate(
+  api: { agentGraph: Pick<AgentGraphApi, 'createShipTemplate'> } | undefined,
+  projectId: string,
+  reloadShip: () => void
+): ShipTemplateState {
+  const [busyFor, setBusyFor] = useState<string | null>(null)
+  const [held, setHeld] = useState<{ projectId: string; result: ShipTemplateCreateResult } | null>(null)
+  const latest = useRef({ projectId, reloadShip })
+  latest.current = { projectId, reloadShip }
+
+  const create = useCallback(() => {
+    if (!api) return
+    setBusyFor(projectId)
+    setHeld(null)
+    api.agentGraph
+      .createShipTemplate(projectId)
+      .catch((err: unknown): ShipTemplateCreateResult => ({ ok: false, reason: 'failed', message: errorText(err) }))
+      .then((result) => {
+        setBusyFor(null)
+        setHeld({ projectId, result })
+        // A failure can have written some of it, and a retry needs to see what is there.
+        if (latest.current.projectId === projectId) latest.current.reloadShip()
+      })
+  }, [api, projectId])
+
+  return {
+    busy: busyFor === projectId,
+    result: held?.projectId === projectId ? held.result : null,
+    create,
+    dismiss: useCallback(() => setHeld(null), [])
+  }
+}
+
+/** The ids of the lines something is passing along. A moment's transit ends with no event to say so, so
+ *  one timer waits for it, like the view's stale timer. Nothing recent means no timer at all. */
+export function useEdgesInTransit(edges: readonly GraphEdge[]): ReadonlySet<string> {
+  const [tick, setTick] = useState(0)
+  const { moving, nextAt } = useMemo(() => {
+    const now = Date.now()
+    return { moving: new Set(edges.filter((e) => edgeInTransit(e, now)).map((e) => e.id)), nextAt: nextTransitChangeAt(edges, now) }
+    // `tick` stands for the clock: this reads it when a window it armed for has passed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edges, tick])
+  useEffect(() => {
+    if (nextAt === undefined) return
+    const timer = setTimeout(() => setTick((t) => t + 1), Math.max(0, nextAt - Date.now()) + 1)
+    return () => clearTimeout(timer)
+  }, [nextAt, tick])
+  return moving
 }

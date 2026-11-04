@@ -122,3 +122,26 @@ export function routeMidpoint(points: readonly GraphPoint[]): GraphPoint {
   const b = points[points.length / 2]
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
+
+/** The length of a route, corners taken square: near enough to pace a mark along it. */
+export function routeLength(points: readonly GraphPoint[]): number {
+  let total = 0
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
+  return total
+}
+
+/** Marks per line. Fixed, so a long loop costs what a short step does. */
+export const EDGE_CHEVRONS = 3
+const CHEVRON_SPEED_PX_S = 60
+const CHEVRON_MIN_S = 1.5
+
+/** Seconds for a mark to run a route: about one speed on any line, without racing on a short one. */
+export function chevronDuration(length: number): number {
+  return Math.max(CHEVRON_MIN_S, length / CHEVRON_SPEED_PX_S)
+}
+
+/** Where each mark sits, as a fraction of the route, evenly spaced and clear of both ends. Still marks
+ *  rest here, and moving ones start from here, so a line that starts moving does not jump. */
+export function chevronStops(): number[] {
+  return Array.from({ length: EDGE_CHEVRONS }, (_, i) => (i + 0.5) / EDGE_CHEVRONS)
+}

@@ -79,7 +79,7 @@ describe('agent graph at the viewer boundary', () => {
   })
 
   it('the ship config stays with editors: read, create and subscribe', () => {
-    for (const m of [IPC.shipConfigRead, IPC.shipGraphCreate, IPC.shipConfigSubscribe, IPC.shipConfigUnsubscribe]) {
+    for (const m of [IPC.shipConfigRead, IPC.shipGraphCreate, IPC.shipTemplateCreate, IPC.shipConfigSubscribe, IPC.shipConfigUnsubscribe]) {
       expect(decideAccess('req', m, ['P'], ctx('viewer')).allow, m).toBe(false)
       expect(decideAccess('req', m, ['P'], ctx('commenter')).allow, m).toBe(false)
       expect(decideAccess('req', m, ['P'], ctx('editor')).allow, m).toBe(true)
@@ -96,7 +96,7 @@ describe('agent graph at the scoped-guest boundary', () => {
   })
 
   it('never reaches the host config', () => {
-    for (const m of [IPC.shipConfigRead, IPC.shipGraphCreate, IPC.shipConfigSubscribe, IPC.shipConfigUnsubscribe]) {
+    for (const m of [IPC.shipConfigRead, IPC.shipGraphCreate, IPC.shipTemplateCreate, IPC.shipConfigSubscribe, IPC.shipConfigUnsubscribe]) {
       expect(decideScopedAccess('P', deps, m, ['P']).allow, m).toBe(false)
     }
   })

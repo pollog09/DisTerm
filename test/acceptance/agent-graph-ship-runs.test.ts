@@ -319,7 +319,7 @@ describe('what the file does not say is not a loop', () => {
 })
 
 describe('with no file, going back cannot be told apart', () => {
-  it('a clean second run in one turn draws an observed line that claims only that it went back', async () => {
+  it('a clean second run in one turn draws an observed line that claims only that it repeated', async () => {
     run('implementer', 'doc-writer', 'change-reviewer', 'implementer', 'doc-writer', 'change-reviewer')
     const m = await model(null)
     expect(edge(m.edges, 'seq:orch:change-reviewer:implementer')).toMatchObject({ kind: 'observed', loop: true })
@@ -716,7 +716,7 @@ describe('which pipeline a run was', () => {
     expect(m.nodes.some((n) => n.reentered)).toBe(false)
     // The way back is on the line, in words and a colour that do not say rejection or "no file".
     const back = edge(m.edges, 'seq:orch:change-reviewer:implementer')!
-    expect(graphEdgeLabel(back)).toBe('went back ×1')
+    expect(graphEdgeLabel(back)).toBe('×1')
     expect(graphEdgeColor(back)).toBe('var(--state-warning)')
     expect(graphEdgeTitle(back)).not.toMatch(/no routing file/i)
   })

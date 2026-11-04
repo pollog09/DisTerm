@@ -4,22 +4,26 @@ import path from 'node:path'
 import { errorText } from '../../shared/error-text'
 import { IPC } from '../../shared/ipc'
 import {
-  SHIP_GRAPH_EXAMPLE,
   SHIP_LEASE_MS,
+  SHIP_NO_FOLDER_MESSAGE,
+  SHIP_SHARED_CONFIG_MESSAGE,
   type ShipConfigResult,
   type ShipGraphCreateResult,
   type ShipMachine,
-  type ShipScope
+  type ShipScope,
+  type ShipTemplateCreateResult
 } from '../../shared/ship-config'
 import { posixQuote, quoteRemotePath } from '../../shared/ssh'
 import type { CorePlatform } from '../platform'
 import {
   buildShipConfig,
+  REMOTE_GLOBAL_DIR,
   newShipScriptNonce,
   parseRemoteShipOutput,
   readLocalShipInput,
   remoteShipScript
 } from './discover'
+import { SHIP_GRAPH_EXAMPLE_TEXT, SHIP_GRAPH_FILE, planShipTemplate, shipTemplateRel, type ShipTemplateFile } from './template'
 
 /** Where one project's agents run, resolved per call by the shell. */
 export type ShipConfigRoute =
@@ -39,8 +43,8 @@ export interface ShipConfigRouter {
 export const SHIP_POLL_LOCAL_MS = 5_000
 export const SHIP_POLL_REMOTE_MS = 20_000
 
-const GRAPH_FILE = 'ship-graph.json'
-const EXAMPLE_TEXT = `${JSON.stringify(SHIP_GRAPH_EXAMPLE, null, 2)}\n`
+const GRAPH_FILE = SHIP_GRAPH_FILE
+const EXAMPLE_TEXT = SHIP_GRAPH_EXAMPLE_TEXT
 
 function localGlobalDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude')
@@ -89,6 +93,103 @@ export async function readShipConfig(projectId: unknown, router: ShipConfigRoute
   }
 }
 
+/** The folders a template writes into. `createShipGraph` writes only into `.claude` itself. */
+const TEMPLATE_SUBS = ['', 'agents', 'commands'] as const
+const GRAPH_SUBS = [''] as const
+
+/** A path as the filesystem resolves it, for one that may not exist yet: the deepest part that does,
+ *  resolved, plus the rest as written. A link to something missing is followed, because it says where a
+ *  write through it would go. Only a definite absence walks up; anything else is thrown. */
+async function realPathAllowingAbsent(p: string, hops = 0): Promise<string> {
+  try {
+    return await fs.promises.realpath(p)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || path.dirname(p) === p || hops > 40) throw err
+  }
+  const stat = await fs.promises.lstat(p).catch(() => null)
+  if (stat?.isSymbolicLink()) {
+    return realPathAllowingAbsent(path.resolve(path.dirname(p), await fs.promises.readlink(p)), hops + 1)
+  }
+  return path.join(await realPathAllowingAbsent(path.dirname(p), hops), path.basename(p))
+}
+
+/** `inner` is `outer` or below it, by whole segments: `~/.claude-2` is not inside `~/.claude`. */
+function isSameOrInside(inner: string, outer: string): boolean {
+  const rel = path.relative(outer, inner)
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+}
+
+/**
+ * Would a write to these folders of `root` land in the machine's Claude config? By real path, because a
+ * link gets there too, and against the config's own subfolders as well, because one can be a link out to
+ * a shared kit. Throws when it cannot tell: a check that could not run must not let a home folder through.
+ */
+async function leadsIntoGlobalConfig(root: string, globalDir: string, subs: readonly string[]): Promise<boolean> {
+  const inConfig: string[] = []
+  for (const sub of subs) inConfig.push(await realPathAllowingAbsent(path.join(globalDir, sub)))
+  for (const sub of subs) {
+    const real = await realPathAllowingAbsent(path.join(root, sub))
+    if (inConfig.some((outer) => isSameOrInside(real, outer))) return true
+  }
+  return false
+}
+
+/**
+ * The same check in a host's shell (`test -ef` is not POSIX), reading `$root` and `$glob`. Its failures are
+ * markers, read by `remoteConfigRefusal`. A folder that exists and cannot be entered fails here: past this
+ * point `[ -e ]` would read it as empty. `case` with a quoted pattern is what compares by segment, and a
+ * tail holding `..` cannot be judged without the folders it names, so it fails too.
+ */
+function remoteSharedConfigCheck(nonce: string, subs: readonly string[]): string {
+  const list = subs.map((s) => (s ? `/${s}` : "''")).join(' ')
+  return (
+    `nt_real() {\nnt_p=$1\nnt_tail=\nnt_n=0\nwhile [ ! -d "$nt_p" ]; do\n` +
+    `nt_n=$((nt_n+1))\n[ "$nt_n" -le 64 ] || return 1\n` +
+    `if [ -L "$nt_p" ]; then\nnt_l=$(readlink -- "$nt_p") || return 1\n` +
+    `case $nt_l in\n/*) nt_p=$nt_l ;;\n*) nt_p="$(dirname -- "$nt_p")/$nt_l" ;;\nesac\ncontinue\nfi\n` +
+    `nt_tail="/$(basename -- "$nt_p")$nt_tail"\nnt_p=$(dirname -- "$nt_p")\ndone\n` +
+    `case "$nt_tail/" in\n*/../*) return 1 ;;\nesac\n` +
+    `nt_base=$(CDPATH= cd -P -- "$nt_p" 2>/dev/null && pwd -P) || return 1\nprintf '%s%s\\n' "$nt_base" "$nt_tail"\n}\n` +
+    `for nt_o in ${list}; do\n` +
+    `if ! nt_b=$(nt_real "$glob$nt_o"); then printf '\\n${nonce} unverifiable\\n'; exit 1; fi\n` +
+    `[ "$nt_b" = / ] && nt_b=\n` +
+    `for nt_i in ${list}; do\n` +
+    `if ! nt_a=$(nt_real "$root$nt_i"); then printf '\\n${nonce} unverifiable\\n'; exit 1; fi\n` +
+    `case "$nt_a/" in\n"$nt_b"/*) printf '\\n${nonce} sharedconfig\\n'; exit 1 ;;\nesac\n` +
+    `done\ndone\n`
+  )
+}
+
+/** What the check's markers mean, for either script. */
+function remoteConfigRefusal(nonce: string, stdout: string, root: string): { ok: false; reason: 'unsupported' | 'failed'; message: string } | null {
+  if (stdout.includes(`${nonce} sharedconfig`)) return { ok: false, reason: 'unsupported', message: SHIP_SHARED_CONFIG_MESSAGE }
+  if (stdout.includes(`${nonce} unverifiable`)) {
+    return { ok: false, reason: 'failed', message: `Could not tell whether ${root} would change the host's Claude config, because a folder there could not be read. Nothing was written.` }
+  }
+  return null
+}
+
+/**
+ * `nt_put <dir> <leaf> <bytes> <body>`: publish a file on a host, only if nothing is there. Returns 0
+ * written, 17 something is there, 1 failed. Never a bare `cat >` (remote-write.guard.test.ts): the body
+ * goes into a temp of ours, its size is checked, and `ln` publishes it, failing on an existing file as
+ * `wx` does and a rename would not. Defined inside the caller's one function (see below), and `t` is left
+ * for the caller's EXIT trap, so a killed script leaves no temp.
+ */
+function remotePutFunction(nonce: string): string {
+  return (
+    `nt_put() {\n` +
+    `f="$1/$2"\n` +
+    `if [ -e "$f" ] || [ -L "$f" ]; then return 17; fi\nmkdir -p "$1" || return 1\n` +
+    `t="$1/.nodeterm-${nonce}.tmp"\n` +
+    `printf '%s' "$4" > "$t" || { rm -f "$t"; return 1; }\n` +
+    `[ $(wc -c < "$t") -eq "$3" ] || { rm -f "$t"; return 1; }\n` +
+    `if ln "$t" "$f" 2>/dev/null; then rm -f "$t"; return 0; fi\n` +
+    `rm -f "$t"\n` +
+    `if [ -e "$f" ] || [ -L "$f" ]; then return 17; fi\nreturn 1\n}\n`
+  )
+}
+
 /** Write the example, only if nothing is there. An example never replaces anything a person wrote. */
 export async function createShipGraph(
   projectId: unknown,
@@ -107,10 +208,12 @@ export async function createShipGraph(
   }
   if (route.kind === 'unsupported') return unsupported(route.reason)
   if (route.kind === 'local') {
-    if (where === 'project' && !route.cwd) return unsupported('This canvas has no project folder.')
+    if (where === 'project' && !route.cwd) return unsupported(SHIP_NO_FOLDER_MESSAGE)
     const dir = where === 'project' ? path.join(route.cwd!, '.claude') : localGlobalDir()
     const file = path.join(dir, GRAPH_FILE)
     try {
+      // Scope `global` is the person asking for exactly that. A project file there is not what they asked.
+      if (where === 'project' && (await leadsIntoGlobalConfig(dir, localGlobalDir(), GRAPH_SUBS))) return unsupported(SHIP_SHARED_CONFIG_MESSAGE)
       await fs.promises.mkdir(dir, { recursive: true })
       await fs.promises.writeFile(file, EXAMPLE_TEXT, { flag: 'wx' })
       return { ok: true, path: file }
@@ -126,27 +229,176 @@ export async function createShipGraph(
   // The whole script is one function, called on its last line: it arrives over the ssh channel, and a
   // cut-off script must run NOTHING. Run line by line, a cut mid-line is a different command (`mkdir -`,
   // and `ln "$t"` with one argument links into wherever the shell is). A cut function is a syntax error.
-  // Never a bare `cat >` (remote-write.guard.test.ts): the body goes into a temp of ours, its size is
-  // checked, and `ln` publishes it, failing on an existing file as `wx` does and a rename would not.
   // The script reports the path it used, because the host's shell resolves `~` and CLAUDE_CONFIG_DIR,
   // and success is its done marker, because exit 0 alone can be a shell that read nothing.
   const bytes = Buffer.byteLength(EXAMPLE_TEXT, 'utf8')
   const script =
     `nt_create_ship_graph() {\n` +
-    `dir=${dir}\nf="$dir/${GRAPH_FILE}"\nprintf '\\n${nonce} path %s\\n' "$f"\n` +
-    `if [ -e "$f" ] || [ -L "$f" ]; then exit 17; fi\nmkdir -p "$dir" || exit 1\n` +
-    `t="$dir/.nodeterm-${nonce}.tmp"\ntrap 'rm -f "$t"' EXIT\n` +
-    `printf '%s' ${posixQuote(EXAMPLE_TEXT)} > "$t" || exit 1\n` +
-    `[ $(wc -c < "$t") -eq ${bytes} ] || exit 1\n` +
-    `if ln "$t" "$f" 2>/dev/null; then printf '\\n${nonce} done\\n'; exit 0; fi\n` +
-    `[ -e "$f" ] && exit 17\nexit 1\n}\nnt_create_ship_graph\n`
+    remotePutFunction(nonce) +
+    `dir=${dir}\nprintf '\\n${nonce} path %s\\n' "$dir/${GRAPH_FILE}"\n` +
+    (where === 'project' ? `root=$dir\nglob="${REMOTE_GLOBAL_DIR}"\n${remoteSharedConfigCheck(nonce, GRAPH_SUBS)}` : '') +
+    `trap 'rm -f "$t"' EXIT\n` +
+    `nt_put "$dir" ${GRAPH_FILE} ${bytes} ${posixQuote(EXAMPLE_TEXT)}\n` +
+    `case $? in\n0) printf '\\n${nonce} done\\n'; exit 0 ;;\n17) exit 17 ;;\nesac\nexit 1\n}\nnt_create_ship_graph\n`
   try {
     const { code, stdout } = await route.runScript(script)
     const written = new RegExp(`${nonce} path (.+)`).exec(stdout)?.[1]
     const shown = written ?? `${where === 'project' ? route.remoteCwd : '~/.claude'}/${GRAPH_FILE}`
     if (code === 0 && stdout.includes(`${nonce} done`)) return { ok: true, path: shown }
     if (code === 17) return { ok: false, reason: 'exists', message: `${shown} already exists.` }
+    const refused = remoteConfigRefusal(nonce, stdout, shown)
+    if (refused) return refused
     return { ok: false, reason: 'failed', message: `Could not write ${shown} (ssh exited ${code}).` }
+  } catch (err) {
+    return { ok: false, reason: 'failed', message: errorText(err) }
+  }
+}
+
+function templateOutcome(root: string, created: readonly string[], kept: readonly string[], failure: string | null): ShipTemplateCreateResult {
+  if (failure === null) return { ok: true, root, created: [...created], kept: [...kept] }
+  const done = created.length ? ` Created before it stopped: ${created.join(', ')}.` : ''
+  return { ok: false, reason: 'failed', message: `${failure}${done}` }
+}
+
+/** Publish one file only if nothing is there, including a dead link. A write that fails takes its file
+ *  with it, so a retry is not stopped by half of one. */
+async function writeNewFile(file: string, text: string): Promise<'created' | 'exists'> {
+  let handle: fs.promises.FileHandle
+  try {
+    handle = await fs.promises.open(file, 'wx')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return 'exists'
+    throw err
+  }
+  try {
+    await handle.writeFile(text)
+    await handle.close()
+  } catch (err) {
+    await handle.close().catch(() => {})
+    await fs.promises.unlink(file).catch(() => {})
+    throw err
+  }
+  return 'created'
+}
+
+async function writeTemplateLocally(cwd: string, files: readonly ShipTemplateFile[], keptByPlan: readonly string[]): Promise<ShipTemplateCreateResult> {
+  const root = path.join(cwd, '.claude')
+  const globalDir = localGlobalDir()
+  const created: string[] = []
+  const kept = [...keptByPlan]
+  // Never `mkdir -p` a folder back into being: the project may be a worktree someone removed.
+  try {
+    if (!(await fs.promises.stat(cwd)).isDirectory()) return templateOutcome(root, [], [], `${cwd} is not a folder.`)
+  } catch (err) {
+    return templateOutcome(root, [], [], `Could not use the project folder ${cwd}: ${errorText(err)}`)
+  }
+  // Everything that decides a write is settled before the first one, and fails closed: a global folder
+  // that cannot be read says nothing about what is in it.
+  const inGlobal = new Set<ShipTemplateFile>()
+  try {
+    if (await leadsIntoGlobalConfig(root, globalDir, TEMPLATE_SUBS)) {
+      return { ok: false, reason: 'unsupported', message: SHIP_SHARED_CONFIG_MESSAGE }
+    }
+    // A listing can stop at its cap, and a project file here would replace this one.
+    for (const file of files) {
+      if (file.dir && (await lstatExists(path.join(globalDir, file.dir, file.leaf)))) inGlobal.add(file)
+    }
+  } catch (err) {
+    return templateOutcome(root, [], [], `Could not tell whether ${root} would change this machine's Claude config: ${errorText(err)}`)
+  }
+  for (const file of files) {
+    const rel = shipTemplateRel(file)
+    try {
+      if (inGlobal.has(file)) {
+        kept.push(rel)
+        continue
+      }
+      const dir = path.join(root, file.dir)
+      await fs.promises.mkdir(dir, { recursive: true })
+      if ((await writeNewFile(path.join(dir, file.leaf), file.text)) === 'created') created.push(rel)
+      else kept.push(rel)
+    } catch (err) {
+      return templateOutcome(root, created, kept, `Could not write ${path.join(root, rel)}: ${errorText(err)}.`)
+    }
+  }
+  return templateOutcome(root, created, kept, null)
+}
+
+async function lstatExists(file: string): Promise<boolean> {
+  try {
+    await fs.promises.lstat(file)
+    return true
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw err
+  }
+}
+
+/** One script for the whole template, for the reasons `createShipGraph` gives: it runs whole or not at
+ *  all, and only its done marker is success. Files after a failure are not attempted, so routing is never
+ *  written after an agent it names failed. */
+function remoteTemplateScript(nonce: string, remoteCwd: string, files: readonly ShipTemplateFile[]): string {
+  const steps = files.map((file) => {
+    const rel = shipTemplateRel(file)
+    const dir = file.dir ? `"$root/${file.dir}"` : '"$root"'
+    const put =
+      `nt_put ${dir} ${file.leaf} ${Buffer.byteLength(file.text, 'utf8')} ${posixQuote(file.text)}\n` +
+      `case $? in\n0) printf '\\n${nonce} created ${rel}\\n' ;;\n17) printf '\\n${nonce} kept ${rel}\\n' ;;\n` +
+      `*) printf '\\n${nonce} failed ${rel}\\n'; exit 1 ;;\nesac\n`
+    if (!file.dir) return put
+    const inGlobal = `"$glob/${rel}"`
+    return `if [ -e ${inGlobal} ] || [ -L ${inGlobal} ]; then printf '\\n${nonce} kept ${rel}\\n'; else\n${put}fi\n`
+  })
+  return (
+    `nt_create_ship_template() {\n` +
+    remotePutFunction(nonce) +
+    `proj=${quoteRemotePath(remoteCwd)}\nroot="$proj/.claude"\nglob="${REMOTE_GLOBAL_DIR}"\n` +
+    `printf '\\n${nonce} root %s\\n' "$root"\n` +
+    `if [ ! -d "$proj" ]; then printf '\\n${nonce} nofolder\\n'; exit 1; fi\n` +
+    remoteSharedConfigCheck(nonce, TEMPLATE_SUBS) +
+    `trap 'rm -f "$t"' EXIT\n` +
+    steps.join('') +
+    `printf '\\n${nonce} done\\n'\nexit 0\n}\nnt_create_ship_template\n`
+  )
+}
+
+/**
+ * Set a project up with the starter pipeline, on the machine it runs on. Reads the machine first and
+ * refuses on a failed read: a read that failed says nothing about what is there, and absence is what
+ * decides whether a file would shadow one of the person's own. A project whose `.claude` is part of the
+ * machine's own config is refused outright: every file written there reaches all its projects.
+ */
+export async function createShipTemplate(projectId: unknown, router: ShipConfigRouter): Promise<ShipTemplateCreateResult> {
+  const unsupported = (message: string): ShipTemplateCreateResult => ({ ok: false, reason: 'unsupported', message })
+  if (typeof projectId !== 'string' || !projectId) return unsupported('No project.')
+  let route: ShipConfigRoute
+  try {
+    route = router.route(projectId)
+  } catch (err) {
+    return unsupported(errorText(err))
+  }
+  if (route.kind === 'unsupported') return unsupported(route.reason)
+  if (route.kind === 'local' && !route.cwd) return unsupported(SHIP_NO_FOLDER_MESSAGE)
+  const read = await readShipConfig(projectId, router)
+  if (!read.ok) return { ok: false, reason: 'failed', message: read.reason }
+  const { write, kept } = planShipTemplate(read.config)
+  if (route.kind === 'local') return writeTemplateLocally(route.cwd!, write, kept)
+
+  const nonce = newShipScriptNonce()
+  const fallbackRoot = `${route.remoteCwd.replace(/\/+$/, '')}/.claude`
+  try {
+    const { code, stdout } = await route.runScript(remoteTemplateScript(nonce, route.remoteCwd, write))
+    const lines = (kind: string): string[] => [...stdout.matchAll(new RegExp(`^${nonce} ${kind} (.+)$`, 'gm'))].map((m) => m[1])
+    const root = lines('root')[0] ?? fallbackRoot
+    const created = lines('created')
+    const keptToo = [...kept, ...lines('kept')]
+    if (code === 0 && stdout.includes(`${nonce} done`)) return templateOutcome(root, created, keptToo, null)
+    const refused = remoteConfigRefusal(nonce, stdout, root)
+    if (refused) return refused
+    const failed = lines('failed')[0]
+    if (stdout.includes(`${nonce} nofolder`)) return templateOutcome(root, created, keptToo, `The project folder ${route.remoteCwd} is not on the host.`)
+    return templateOutcome(root, created, keptToo, failed ? `Could not write ${root}/${failed} (ssh exited ${code}).` : `Could not set this project up (ssh exited ${code}).`)
   } catch (err) {
     return { ok: false, reason: 'failed', message: errorText(err) }
   }
@@ -170,6 +422,7 @@ export async function createShipGraph(
 export function registerShipConfigHandlers(platform: CorePlatform, router: ShipConfigRouter): void {
   platform.handle(IPC.shipConfigRead, (projectId: unknown) => readShipConfig(projectId, router))
   platform.handle(IPC.shipGraphCreate, (projectId: unknown, scope: unknown) => createShipGraph(projectId, scope, router))
+  platform.handle(IPC.shipTemplateCreate, (projectId: unknown) => createShipTemplate(projectId, router))
 
   interface Sub {
     leases: Map<string, number>

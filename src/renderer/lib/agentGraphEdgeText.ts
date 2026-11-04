@@ -25,7 +25,7 @@ export function graphEdgeColor(edge: GraphEdge): string {
   if (edge.kind === 'uses-mcp') return MCP_LINE
   if (edge.kind === 'harness') return HARNESS_LINE
   if (edge.kind === 'message') return DELIVERY_COLOR[edge.latest ?? 'delivered']
-  // Uncertain lines first: "maybe" and an observed "went back" assert no rejection, so they must not
+  // Uncertain lines first: "maybe" and an observed loop assert no rejection, so they must not
   // wear its colour, including on a declared reject edge that may have been taken.
   if (edge.maybe && !edge.traversals) return 'var(--state-warning)'
   if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return 'var(--state-warning)'
@@ -45,7 +45,7 @@ const OTHER_LINE = 'rgba(var(--tint-rgb), 0.45)'
 const LINE_LEGEND: readonly GraphLegendEntry[] = [
   { label: 'context link', color: 'var(--state-automation)', dashed: true },
   { label: 'reject or re-entry', color: 'var(--state-attention)', dashed: true },
-  { label: 'maybe, went back or not declared', color: 'var(--state-warning)', dashed: true },
+  { label: 'maybe, repeated or not declared', color: 'var(--state-warning)', dashed: true },
   { label: 'opened, then, spawned, next', color: OTHER_LINE },
   { label: 'skill call', color: SKILL_LINE },
   { label: 'MCP call', color: MCP_LINE }
@@ -88,8 +88,9 @@ export function graphEdgeLabel(edge: GraphEdge): string {
   if (edge.kind === 'harness') return ''
   if (edge.kind === 'uses-skill' || edge.kind === 'uses-mcp') return `×${edge.traversals ?? 0}`
   if (edge.maybe) return edge.traversals ? `×${edge.traversals} + maybe ×${edge.maybe}` : `maybe ×${edge.maybe}`
-  // With no file there is no order to have gone against: this could be a rejection or a second run.
-  if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return `went back${times}`
+  // With no file there is no order to have gone against: this could be a rejection or a second run, so
+  // its words claim neither. The colour and the direction marks show it, and the hover text says why.
+  if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return times.trim()
   if (edge.loop) return `re-entered${times}`
   if (edge.undeclared) return `not declared${times}`
   if (edge.kind === 'ship-reject') return `reject${times}`

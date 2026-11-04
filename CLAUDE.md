@@ -8083,10 +8083,65 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
 - **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
   `registerShipConfigHandlers`). A crashed renderer or a dropped relay peer sends no unsubscribe, and an
   SSH project's route changes when its master connects. Both shapes leaked real work before.
-- **Activity is a finite pulse, and its CSS must not read `--nt-anim-state`.** The covered-canvas gate
-  overrides that variable on `.react-flow`, and this view is a `.react-flow` too, so a gated pulse would
-  freeze at full opacity. Finite animations need no gate; `pulseKey` remounts the element, and only an
-  event newer than the view's mount pulses, so opening the view does not flash the past.
+- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element, and only an event
+  newer than the view's mount pulses, so opening the view does not flash the past.
+- **The one loop is the direction marks, and only motion that is true may run** (`edgeInTransit`,
+  `TRANSIT_WINDOW_MS` = 15 s). Every line but a context link has three chevrons (`edgeShowsDirection`).
+  They move for a delivered message for 15 s after it lands, and for a used line while the run it led to
+  is live (`GraphEdge.running`, by the same staleness line as a box's activity) and for 15 s after that
+  run started (`GraphEdge.movedAt`). A queued, failed or refused message never moves, nor does `opened`,
+  `dependency`, `context`, a declared line nothing has used, or a `maybe`: motion would state a route hooks
+  cannot confirm. A move placed by a guess is the same case, on the line into the guess and the line out
+  of it: it is counted, but sets neither `running` nor `movedAt`. So motion reads `movedAt` and never
+  `lastEventTs`, which any event sets and which still drives the arrival pulse, so those lines do pulse.
+  `running` belongs to the MOVE, not the stage reached: a stage entered twice has two lines in
+  and one in use. The transit window ends with no event to say so, so `useEdgesInTransit` arms one
+  timer for it (`nextTransitChangeAt`), and none while nothing is recent; a line a run holds is left to
+  `nextStaleAt` and the run's own end. The marks use CSS `offset-path`, not SMIL `animateMotion`, because
+  `animation-play-state` cannot pause SMIL; a negative delay starts each from its resting stop, so a line
+  does not jump when it starts moving. Three per line whatever its length (`EDGE_CHEVRONS`). An observed
+  loop reads `×N` instead of "went back": the marks show the direction, and with no file the words must
+  not lean towards a rejection. It stays amber and keeps its hover caveat.
+- **The graph takes `--nt-anim-state` back from the covered gate.** This view marks the canvas covered
+  and is a `.react-flow` itself, so `:root[data-nt-canvas='covered'] .react-flow` would pause its marks for
+  good while the rule reading the variable looked right. `agent-graph.css` sets it to `running` on
+  `.agent-graph .react-flow`, then an idle rule of equal specificity sets it to `paused`, and the order
+  of those two is what makes the window gate win. `styles.animation-gate.test.ts` pins both and scans this
+  sheet. Reduce Motion gives static chevrons. The cost is under **Idle energy**.
+- **The starter never replaces or shadows anything** (`core/ship-config/template.ts`,
+  `createShipTemplate`, `ship-config:create-template`; the empty state's "Set up graph engineering",
+  offered by the pure `lib/shipTemplate.ts`). A project agent replaces a global one of its name and a
+  project routing file replaces a global one whole, so a file written over what a machine has would quietly
+  change how its other work runs. It reads the machine first and refuses on a failed read: absence is
+  what decides. An agent is matched by declared name AND by exact file, because the discovery listing
+  stops at 100; a skill counts for the command, since it answers to the same `/name`. Any routing file
+  ends the offer and keeps `ship-graph.json` (`globalGraphExists || globalGraphBlocked` on the global side),
+  usable or not and whether or not it routes anything: the project file would replace it whole. Publication
+  is exclusive (`wx` locally, the one-function `nt_put` script remotely, shared with `createShipGraph`).
+  Routing goes last and the write stops at the first failure, so no route ever names an agent that failed.
+  A removed project folder is refused rather than recreated: it may be a worktree someone removed.
+  **A project whose `.claude` is part of the machine's Claude config is refused before any write**
+  (`SHIP_SHARED_CONFIG_MESSAGE`): a new SSH project's folder is `~`, and anything written there reaches
+  every project on that machine. The starter and "Create example" with `project` scope share the check:
+  `leadsIntoGlobalConfig` over `realPathAllowingAbsent` and `isSameOrInside` locally,
+  `remoteSharedConfigCheck` over `nt_real` on a host (`test -ef` is not POSIX), read back by
+  `remoteConfigRefusal`. Same-or-inside is by whole segments, so `~/.claude-2` passes while a project on or
+  under `~/.claude` is refused. Dangling links are followed, because a link to a subfolder that does not
+  exist yet still says where a write would go. Each caller names its subfolders: the starter
+  (`TEMPLATE_SUBS`) tests `.claude`, `.claude/agents` and `.claude/commands` against the real global dir and
+  its `agents` and `commands`, because a global subfolder can link out to a shared kit. Create example
+  (`GRAPH_SUBS`) tests `.claude` against the global dir alone, so an unreadable global `agents` does not
+  block it. A check that cannot run refuses too. The starter also fails on a global `agents` or `commands`
+  it cannot read, before the first write: a remote `[ -e ]` would read it as empty. A home folder passes when
+  `CLAUDE_CONFIG_DIR` points elsewhere. Scope `global` ("All projects") skips the check, as the person's
+  explicit choice. The offer does not pre-judge any of this, so both buttons stay enabled and the refusal is
+  the failure shown after the click. Nothing launches. The channel is classified like `shipGraphCreate`
+  (Editor-only, `SCOPED_REFUSED`). Desktop and Server Edition have a real leg; Mobile: N/A. **Not
+  verified:** a real SSH host (the script has run under a real `/bin/sh` only), the Server Edition in a
+  browser, a relay tab, Windows, macOS, and `/ship-change` with the generated agents in a real Claude
+  session. The real-path refusal on both buttons, the unreadable global folder failure and the guessed-move
+  rule are covered by handler and model tests only: the panel's display of the refusal was not exercised,
+  and the live Electron run was not repeated for them.
 - **Status reaches the model as one string** (`statusSig`, the `teamProgressSig` discipline), never the
   whole `byId` map, which changes on every hook of every node.
 - **A delivery buffer spanning every project is why narrowing exists.** `AgentGraphLog` is per process.
@@ -9792,6 +9847,14 @@ shipped build has not been measured. The rule repeats xyflow's selectors verbati
 `@import`), and `styles.animation-gate.test.ts` scans the vendor sheet for infinite animations, so an
 xyflow upgrade that adds one fails there. A FOCUSED window still pays the full per-edge cost while an
 edge works; a cheaper working-edge style is an open design call (the driven rope keeps flowing).
+
+**The agent graph has one infinite animation of its own, and it runs under a covered canvas on
+purpose.** Its direction marks (`agent-graph-flow`, `agent-graph.css`) move only while something is
+passing along a line, and that sheet re-scopes `--nt-anim-state` so the marks follow the window alone
+rather than the covered gate (see **Agent graph view**). So while a run is live in a FOCUSED window, the
+graph holds the window at display rate for as long as that run lasts, and a graph with nothing in transit
+runs no loop. The idle gate still pauses it. **This cost has not been measured**; none of the numbers in
+this section describe it.
 
 **The viewport is never promoted — not even while the camera moves.** A `will-change: transform`
 on `.react-flow__viewport` during pan/zoom was tried (00c9c5fc, measured 41–48% → 30–36% CPU on

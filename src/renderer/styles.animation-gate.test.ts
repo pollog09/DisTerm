@@ -68,6 +68,36 @@ function infiniteAnimationLines(css: string): { line: number; text: string }[] {
     .filter((l) => l.text.includes('animation:') && /\binfinite\b/.test(l.text))
 }
 
+describe('the agent graph view joins the gate', () => {
+  const GRAPH_CSS = path.join(__dirname, 'components', 'graph', 'agent-graph.css')
+  const css = fs.readFileSync(GRAPH_CSS, 'utf8').replace(/\r\n/g, '\n')
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('gates every infinite animation in its own sheet, which the scan below does not read', () => {
+    const lines = css.split('\n')
+    const found = infiniteAnimationLines(css)
+    expect(found.length).toBeGreaterThan(0)
+    for (const { line, text } of found) {
+      expect((lines[line] ?? '').trim(), `agent-graph.css:${line}  ${text.trim()}`).toBe(`${PLAY_STATE};`)
+    }
+  })
+
+  it('takes the variable back from the covered gate, or its marks would be paused for good', () => {
+    // The view marks the canvas covered, and `:root[data-nt-canvas='covered'] .react-flow` pauses every
+    // `.react-flow`, its own included. A rule that merely reads the variable looks right and never runs.
+    expect(readStyles()).toMatch(/:root\[data-nt-canvas='covered'\] \.react-flow \{\s*--nt-anim-state: paused/)
+    const covered = stripped.search(/:root\[data-nt-canvas='covered'\] \.agent-graph \.react-flow \{\s*--nt-anim-state: running/)
+    // The same specificity as the covered rule here, so this has to come second to pause on idle.
+    const idle = stripped.search(/:root\[data-nt-window='idle'\] \.agent-graph \.react-flow \{\s*--nt-anim-state: paused/)
+    expect(covered).toBeGreaterThanOrEqual(0)
+    expect(idle).toBeGreaterThan(covered)
+  })
+
+  it('holds the marks still under Reduce Motion', () => {
+    expect(stripped).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.agent-graph-edge__chevron\[data-moving\] \{\s*animation: none/)
+  })
+})
+
 describe('idle-window animation gate', () => {
   const css = readStyles()
 

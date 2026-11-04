@@ -516,6 +516,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   // and the invite never granted it. A guest's graph is observation only.
   IPC.shipConfigRead,
   IPC.shipGraphCreate,
+  IPC.shipTemplateCreate,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
   // A whole-workspace write from a peer would replace the host's other projects.

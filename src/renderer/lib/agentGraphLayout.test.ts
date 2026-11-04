@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentGraphNodeSize, layoutAgentGraph, routeMidpoint, routeToPath } from './agentGraphLayout'
+import { EDGE_CHEVRONS, agentGraphNodeSize, chevronDuration, chevronStops, layoutAgentGraph, routeLength, routeMidpoint, routeToPath } from './agentGraphLayout'
 import type { GraphEdgeKind, GraphNodeKind } from './agentGraphModel'
 
 const nodes = (...ids: string[]) => ids.map((id) => ({ id, kind: 'stage' as GraphNodeKind }))
@@ -129,5 +129,27 @@ describe('the harness, and what is used', () => {
 
   it('every new kind has a size', () => {
     for (const kind of ['harness', 'skill', 'mcp'] as const) expect(agentGraphNodeSize(kind).width).toBeGreaterThan(100)
+  })
+})
+
+describe('the marks along a line', () => {
+  it('measures a route, and an empty or single-point one as nothing', () => {
+    expect(routeLength([{ x: 0, y: 0 }, { x: 3, y: 4 }, { x: 3, y: 10 }])).toBe(11)
+    expect(routeLength([{ x: 1, y: 1 }])).toBe(0)
+    expect(routeLength([])).toBe(0)
+  })
+
+  it('runs a long route at one speed, and does not race along a short one', () => {
+    expect(chevronDuration(1200) / 1200).toBeCloseTo(chevronDuration(600) / 600)
+    expect(chevronDuration(10)).toBe(chevronDuration(20))
+    expect(chevronDuration(10)).toBeGreaterThan(1)
+  })
+
+  it('keeps a fixed few, evenly spaced and clear of both ends', () => {
+    const stops = chevronStops()
+    expect(stops.length).toBe(EDGE_CHEVRONS)
+    expect(stops[0]).toBeGreaterThan(0)
+    expect(stops[stops.length - 1]).toBeLessThan(1)
+    expect(stops[1] - stops[0]).toBeCloseTo(stops[2] - stops[1])
   })
 })

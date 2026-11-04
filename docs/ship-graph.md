@@ -15,14 +15,62 @@ local project, the host for an SSH project.
 Settings → Ship process shows all of this for the active project and creates or opens the file. Both
 places re-read the machine while open: every 5 s locally, every 20 s over SSH.
 
+## Setting a project up
+
+A graph with nothing to draw offers **Set up graph engineering** when there is no routing file at all,
+in the project or in the global config. A file at either path ends the offer even if it is not usable,
+and even if it routes nothing. The action adds a starter pipeline to the project's `.claude` folder, on
+the machine the project runs on:
+
+| File | What it is |
+|---|---|
+| `agents/implementer.md`, `agents/doc-writer.md`, `agents/change-reviewer.md` | The three agents. |
+| `commands/ship-change.md` | The `/ship-change` command that runs them. |
+| `ship-graph.json` | The route, as in the example below. |
+
+Nothing runs until you type `/ship-change <task>` in a Claude session.
+
+It never overwrites a file, and it does not shadow what you already have, because a project agent
+replaces a global one of the same name. It keeps, without writing:
+
+- any file already at that path, including a dead link;
+- an agent the machine already has, whatever file declares that name;
+- the command, when a command or skill named `ship-change` exists;
+- `ship-graph.json`, when a routing file has appeared since the offer, in the project or in the global
+  config.
+
+The note after it finishes lists what was created and what was kept. The routing file is written last and
+the write stops at the first failure, so a failure leaves no route naming an agent that is not there; the
+message names what was created before it stopped. A project folder that no longer exists is refused, not
+recreated. On a canvas with no folder the button is disabled and says why.
+
+A project whose `.claude` is part of the machine's Claude config is refused before anything is written,
+because a file there would reach every project on that machine. That is usually a project opened on the
+home folder, and a new SSH project's folder is the home folder. The same refusal applies to **Create
+example** on the "This project" row in Settings → Ship process. The "All projects" row still writes to the
+global config, because that is what it asks for.
+
+Both compare real paths: the project's `.claude` is refused if it is the global config or lies inside it.
+So a project opened on `~/.claude` or under it is refused, and so is a link to the home folder or a `.claude`
+linked into the global config, even to a subfolder that does not exist yet. A sibling like `~/.claude-2` is
+not refused, and a home folder is fine when `CLAUDE_CONFIG_DIR` points somewhere else. A check that cannot run
+also refuses. Both buttons stay enabled for such a project, and the refusal appears after you click.
+
+**Set up graph engineering** checks more, because it writes more. It also checks `.claude/agents` and
+`.claude/commands`, and it compares all three with the global `agents` and `commands` folders as well, since
+those can be links out to a shared kit. It also refuses when a global `agents` or `commands` folder exists but
+cannot be read, since that says nothing about what is in it. Create example only writes the routing file, so
+it checks `.claude` against the global config alone, and an unreadable global `agents` folder does not block
+it.
+
 ## With no file
 
 The graph draws what it observes. Each agent type a session starts becomes a box, and a line joins a
 subagent to the latest one that had already finished when it started. Subagents running at the same
-time are siblings. Going back to a type first seen earlier in the run is labelled "went back". With no
-file there is no order to judge by, so that line can be a rejection or a clean second run in the same
-turn; it does not say which. Add a file to tell them apart. A new prompt or a `/clear` does separate
-them.
+time are siblings. Going back to a type first seen earlier in the run is drawn in amber with its count
+(`×2`). With no file there is no order to judge by, so that line can be a rejection or a clean second
+run in the same turn; it does not say which, and its hover text says so. Add a file to tell them apart.
+A new prompt or a `/clear` does separate them.
 
 ## With a file
 
@@ -183,6 +231,26 @@ environment, URL and headers can hold tokens and are never read past the parser,
 - A team member with a Viewer or Commenter role sees the boxes and lines for the nodes shared with
   them, and not the machine's inventory. Project-scoped guests likewise.
 
+## Which way a line runs
+
+Every line except a context link or a Harness line carries small chevrons pointing the way it runs. A
+context link has none because it is read on demand, not passed along, and a Harness line is a fact
+about where a session runs. The chevrons move only while something is passing along
+the line:
+
+- a message, for 15 s after it is delivered;
+- a line between agents that has been used, while the run it led to is going and for 15 s after that run
+  started.
+
+The rest stay still: a queued, failed or refused message, an "opened" line, a dependency, a declared line
+nothing has used, and anything marked "maybe", since hooks cannot confirm that route was taken. A retry of
+the same stage is a run count on its box, so no line moves for it.
+
+A move placed by a guess (see "With a file") is still counted, and its line still pulses when the move
+arrives, but its chevrons do not move. That holds for the line into the guess and the line out of it.
+
+Moving chevrons pause while the window is unfocused or hidden, and stay still under Reduce Motion.
+
 ## Known limits
 
 - Subagent, skill and MCP mapping is Claude-only. Other CLIs appear as sessions and message lines.
@@ -192,6 +260,9 @@ environment, URL and headers can hold tokens and are never read past the parser,
 - A session running under a managed Claude account has its own config dir. Discovery reads the default
   one (`~/.claude` or `$CLAUDE_CONFIG_DIR`), not the account's.
 - There is no visual pipeline editor.
+- **Set up graph engineering** needs the Editor role or above on a shared project, and is not offered to
+  project-scoped guests. It is not offered while the machine cannot be read, such as a disconnected SSH
+  project.
 - Message counts count traces: a message that queued and then landed is one queued and one delivered.
   Subagent history lasts for one app run; message history lasts as long as the project's board log.
 - Project members with a Viewer or Commenter role, and project-scoped guests, see the observed graph

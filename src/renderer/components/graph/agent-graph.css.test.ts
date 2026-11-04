@@ -34,7 +34,10 @@ describe('agent-graph.css', () => {
     expect(CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\n  \.agent-graph-edge__dot \{\n    display: none;/)
   })
 
-  it('nothing in the file loops', () => {
-    expect(CSS.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain('infinite')
+  it('only a moving chevron loops, and it reads the animation gate', () => {
+    const rules = CSS.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^{}]*infinite[^{}]*\}/g) ?? []
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toContain('.agent-graph-edge__chevron[data-moving]')
+    expect(rules[0]).toContain('animation-play-state: var(--nt-anim-state)')
   })
 })

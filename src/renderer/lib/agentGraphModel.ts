@@ -26,8 +26,8 @@
  * WHAT BACKWARDS MEANS. With a pipeline, returning to a stage its `next` edges declare as coming before
  * this one, so review, impl, docs, review does not paint docs -> review, and a stage they say nothing
  * about is never "behind" anything. With no `next` edges nothing is. With no file there is no declared order, only the order things were
- * first seen, and then a rejection and a clean second run in one turn look the same: the line says it
- * went back, not that anything was rejected.
+ * first seen, and then a rejection and a clean second run in one turn look the same: the line is marked
+ * as a loop in its own colour, and its hover text says that nothing is known to have been rejected.
  */
 import {
   deliveryClass,
@@ -159,6 +159,12 @@ export interface GraphEdge {
   subject?: string
   tool?: string
   typedCalls?: number
+  /** A run this move led to is still going, by the same staleness line as a box's activity. Motion reads
+   *  this, so a move placed by a guess never sets it. */
+  running?: true
+  /** When a move not placed by a guess last started along this line. `lastEventTs` is any event, and
+   *  drives the arrival pulse; motion claims the route was taken, so it reads this. */
+  movedAt?: number
 }
 
 /** One skill or MCP server that was used, whether or not it is drawn as a box. */
@@ -289,13 +295,14 @@ function predecessors(runs: readonly SubRun[]): Array<SubRun | null> {
   })
 }
 
+/** A killed child fires no stop. Past the app's own staleness line it is no longer claimed as running,
+ *  the same bound the canvas's status uses. */
+const isLive = (run: SubRun, now: number): boolean => run.endedAt === undefined && now - run.lastSignalTs < WORKING_STALE_MS
+
 function activityOf(runs: readonly SubRun[], now: number): GraphActivity {
   if (runs.length === 0) return 'idle'
-  const running = runs.filter((r) => r.endedAt === undefined)
-  if (running.length === 0) return 'done'
-  // A killed child fires no stop. Past the app's own staleness line it is no longer claimed as
-  // running, the same bound the canvas's status uses.
-  return running.some((r) => now - r.lastSignalTs < WORKING_STALE_MS) ? 'running' : 'stale'
+  if (runs.every((r) => r.endedAt !== undefined)) return 'done'
+  return runs.some((r) => isLive(r, now)) ? 'running' : 'stale'
 }
 
 function newestTs(runs: readonly SubRun[]): number | undefined {
@@ -559,9 +566,17 @@ function addPipeline(
   }
 
   // Walk the runs: which stage followed which, and whether a move went backwards.
-  const traversals = new Map<string, { from: string; to: string; count: number; loop: boolean; ts: number }>()
+  const traversals = new Map<string, { from: string; to: string; count: number; loop: boolean; ts: number; movedAt?: number; running: boolean }>()
   const reentered = new Set<string>()
-  const entries = new Map<string, number>()
+  const entries = new Map<string, { count: number; ts: number; movedAt?: number; running: boolean }>()
+  /** Hooks cannot confirm a route into or out of a guess, so it is counted but never shown moving. */
+  const confirmed = (i: number): boolean =>
+    !placement.guessed.has(runs[i]) && !(preds[i] && placement.guessed.has(preds[i]!))
+  const noteMotion = (m: { movedAt?: number; running: boolean }, i: number): void => {
+    if (!confirmed(i)) return
+    m.movedAt = Math.max(m.movedAt ?? 0, runs[i].startedAt)
+    m.running ||= isLive(runs[i], now)
+  }
   let seen = new Set<string>()
   let epoch: number | undefined
   runs.forEach((run, i) => {
@@ -580,7 +595,11 @@ function addPipeline(
     const startsOver = !!pred && !declared.has(`${pred.id}>${stage.id}`) && order.isLast(pred.id) && order.isFirst(stage.id)
     if (!pred || startsOver) {
       if (startsOver) seen = new Set()
-      entries.set(stage.id, (entries.get(stage.id) ?? 0) + 1)
+      const entry = entries.get(stage.id) ?? { count: 0, ts: 0, running: false }
+      entry.count++
+      entry.ts = Math.max(entry.ts, run.startedAt)
+      noteMotion(entry, i)
+      entries.set(stage.id, entry)
     } else if (
       (placement.guessed.has(run) || placement.guessed.has(preds[i]!)) &&
       !pipeline.edges.some((e) => e.from === pred.id && e.to === stage.id && e.kind === 'next')
@@ -591,10 +610,11 @@ function addPipeline(
       const back = !placement.guessed.has(run) && !placement.guessed.has(preds[i]!) && order.precedes(stage.id, pred.id)
       if (back && seen.has(stage.id)) reentered.add(stage.id)
       const key = `${pred.id}>${stage.id}`
-      const t = traversals.get(key) ?? { from: pred.id, to: stage.id, count: 0, loop: false, ts: 0 }
+      const t = traversals.get(key) ?? { from: pred.id, to: stage.id, count: 0, loop: false, ts: 0, running: false }
       t.count++
       t.loop ||= back
       t.ts = Math.max(t.ts, run.startedAt)
+      noteMotion(t, i)
       traversals.set(key, t)
     }
     seen.add(stage.id)
@@ -635,7 +655,7 @@ function addPipeline(
       source: stageNodeId(scope, pipeline.id, edge.from),
       target: stageNodeId(scope, pipeline.id, edge.to),
       kind: edge.kind === 'reject' ? 'ship-reject' : 'ship-next',
-      ...(t ? { traversals: t.count, lastEventTs: t.ts, ...(t.loop ? { loop: true } : {}) } : {}),
+      ...(t ? { traversals: t.count, lastEventTs: t.ts, ...(t.loop ? { loop: true } : {}), ...(t.movedAt !== undefined ? { movedAt: t.movedAt } : {}), ...(t.running ? { running: true as const } : {}) } : {}),
       ...(maybeOn(edge.from, edge.to))
     })
   }
@@ -649,19 +669,24 @@ function addPipeline(
       traversals: t.count,
       undeclared: true,
       lastEventTs: t.ts,
-      ...(t.loop ? { loop: true } : {})
+      ...(t.loop ? { loop: true } : {}),
+      ...(t.movedAt !== undefined ? { movedAt: t.movedAt } : {}),
+      ...(t.running ? { running: true as const } : {})
     })
   }
 
   // The session starts whatever ran with nothing before it.
   if (sessionId) {
-    for (const [stageId, count] of entries) {
+    for (const [stageId, entry] of entries) {
       out.edges.push({
         id: `spawned:${scope}:${pipeline.id}:${stageId}`,
         source: `session:${sessionId}`,
         target: stageNodeId(scope, pipeline.id, stageId),
         kind: 'spawned',
-        traversals: count
+        traversals: entry.count,
+        lastEventTs: entry.ts,
+        ...(entry.movedAt !== undefined ? { movedAt: entry.movedAt } : {}),
+        ...(entry.running ? { running: true as const } : {})
       })
     }
   }
@@ -723,6 +748,8 @@ function addObserved(
     }
     edge.traversals! += 1
     edge.lastEventTs = Math.max(edge.lastEventTs ?? 0, run.startedAt)
+    edge.movedAt = Math.max(edge.movedAt ?? 0, run.startedAt)
+    if (isLive(run, now)) edge.running = true
     if (from && firstSeen.get(run.type)! < firstSeen.get(from)!) edge.loop = true
     edges.set(key, edge)
   })
@@ -1075,4 +1102,51 @@ export function agentGraphStructureKey(model: Pick<AgentGraphModel, 'nodes' | 'e
 /** A line that runs against the process: laid out as if forward, so it never sets the stage order. */
 export function isBackEdge(edge: Pick<GraphEdge, 'kind' | 'loop'>): boolean {
   return edge.kind === 'ship-reject' || !!edge.loop
+}
+
+/** How long a move or a delivery still counts as passing along its line. */
+export const TRANSIT_WINDOW_MS = 15_000
+
+type TransitEdge = Pick<GraphEdge, 'kind' | 'latest' | 'traversals' | 'maybe' | 'running' | 'lastEventTs' | 'movedAt'>
+
+/**
+ * Whether a line runs one way. A context link is not a flow (read either way unless it says otherwise,
+ * and pulled on demand when it does), so it gets no direction marks. Everything else does, including a
+ * line nothing has used yet, because its direction is a fact about the process.
+ */
+export function edgeShowsDirection(edge: Pick<GraphEdge, 'kind'>): boolean {
+  return edge.kind !== 'context' && edge.kind !== 'harness'
+}
+
+const isRecent = (ts: number | undefined, now: number): boolean =>
+  ts !== undefined && Math.abs(now - ts) < TRANSIT_WINDOW_MS
+
+/**
+ * Is something passing along this line right now? This decides what moves, and a moving mark keeps the
+ * whole window at display rate (CLAUDE.md, "Idle energy"), so it answers no unless it has a reason:
+ * - A message that landed moves for a moment. Queued has gone nowhere; failed and refused did not arrive.
+ * - A move between agents moves while the run it led to is going, and for a moment after it started.
+ *   That run, not the stage it reached: a stage entered twice has two lines in and only one is in use.
+ * - A "maybe" does not, nor a move placed by a guess: hooks cannot say this route was taken, and motion
+ *   would say that it was.
+ * - An opener, a wait and a context link are relations, with nothing passing along them. A declared line
+ *   nothing has used has no traversals.
+ */
+export function edgeInTransit(edge: TransitEdge, now: number): boolean {
+  if (edge.kind === 'message') return edge.latest === 'delivered' && isRecent(edge.lastEventTs, now)
+  if (edge.kind === 'context' || edge.kind === 'dependency' || edge.kind === 'opened') return false
+  if (edge.maybe || !edge.traversals) return false
+  return !!edge.running || isRecent(edge.movedAt, now)
+}
+
+/** When the next moving line goes still with no event to say so: for the view's one-shot timer. A line
+ *  held by a running run is not here, because `nextStaleAt` and the run's own end rebuild the model. */
+export function nextTransitChangeAt(edges: readonly TransitEdge[], now: number): number | undefined {
+  let next: number | undefined
+  for (const edge of edges) {
+    if (edge.running || !edgeInTransit(edge, now)) continue
+    const at = (edge.kind === 'message' ? edge.lastEventTs! : edge.movedAt!) + TRANSIT_WINDOW_MS
+    if (next === undefined || at < next) next = at
+  }
+  return next
 }
