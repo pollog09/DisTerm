@@ -9927,12 +9927,44 @@ unix-socket forward and dev-server `-L` forward over it. POSIX keeps OpenSSH unt
   OpenSSH on the same project, and any run on a real Windows desktop (all evidence so far is CI plus
   the macOS run of the same code path).
 
+### Claude hooks in a plain WSL terminal (`core/wsl-hooks.ts`)
+
+A `wsl:<distro>` pane reports Claude's status, so its badges, unread dot, agent graph box and subagents
+work with no sshd. Three things stood in the way, each MEASURED from Ubuntu on Windows 11 (NAT mode):
+the hook server is on Windows loopback (`127.0.0.1` from WSL refuses, the gateway address times out),
+the pane's env stops at `wsl.exe`, and Claude reads the distro's `~/.claude`, not the Windows one.
+- **Transport:** Windows' `curl.exe` through WSL interop reaches loopback (~20 ms a call, a UNC payload
+  path readable, `--config -` on stdin intact, so the bearer stays off argv). `WSL_INTEROP_CURL_SH`
+  shadows `curl` with a function and rewrites `/dev/null` and the `payload@` path. It is in the one
+  script generator, because a WSL project on the same distro writes that same file. Claude's script
+  only; inert without `NODETERM_WSL_CURL`, and that value must end in `/curl.exe`.
+- **Env:** `wslHookEnv` lists exact names in WSLENV (only listed names cross, they survive the login
+  shell, `/p` converts). **Never forward `NODETERM_PERM_WAIT_SECS`:** core writes approval answers on
+  Windows and the script polls the distro's own `~/.nodeterm`, so a hold could only time out. A held
+  prompt there is answered in the terminal.
+- **Install:** on a new terminal, under the machine's Claude consent (enabled installs, declined
+  removes, unanswered touches nothing, not even a read). It needs `~/.claude` to exist, so a distro that
+  never ran Claude gets no config dir. It waits at most 4 s, then the terminal opens anyway, and it is
+  never a spawn failure. A declined machine's distro is cleaned when its next WSL terminal opens.
+- **The pane-origin gate lets these events through:** a session-host pane's tty is
+  `win32-console:<pid>`, which `normalizeTty` refuses, so the pane reads as unknown and a WSL claude's
+  `pts/N` is never compared with it (pinned in `claude-pane-origin.test.ts`). A backgrounded claude
+  (`foreground: false`) is still foreign.
+- **Limits:** Claude only. A pane opened before this build, or attached warm, has no env: it needs a new
+  session. Interop off or `/mnt/c` unmounted fails open (no status). `CLAUDE_CONFIG_DIR` set inside the
+  distro is not honoured by the install. Transcript paths are Linux paths, so the local jail refuses them:
+  no context meter, ⌘M chat or live subagent activity. Subagent CARDS come from hooks and do work.
+- **NOT measured:** the whole path in a packaged Windows app. The install commands went through real
+  `wsl.exe` under interop, where argv quoting differs from Windows `node.exe`; the real script reached the
+  real hook server through real `curl.exe` only as far as its 403, since no real credential was used.
+
 ### WSL projects: a distribution as an SSH project
 
 A WSL project is an SSH project whose host is a distribution on this machine, so agents in WSL get
 everything SSH projects have: status, hooks, messaging, subagent cards, tmux persistence. A WSL
-terminal profile (`wsl:<distro>`) is a shell only. It has none of that, because the hook server is on
-Windows loopback and pane probes see `wsl.exe`.
+terminal profile (`wsl:<distro>`) is a shell plus Claude status hooks (`core/wsl-hooks.ts`, below). It
+has no messaging, canvas control, tmux persistence or transcript reads, because pane probes see
+`wsl.exe` and the transcript is on the other side of the boundary.
 
 - **Transport:** `wsl.exe -d <distro> --exec sh -c <launch>` runs an unprivileged `sshd -i` on the
   child's stdio, and the native transport speaks SSH over it. No port is opened and no root is needed.

@@ -11,6 +11,7 @@ import { IPC } from '../shared/ipc'
 import { safeSessionProgram } from '../shared/node-exec'
 import { isWslShellValue, parseWslShell } from '../shared/terminal-profiles'
 import { listTerminalProfiles, resolveWslLaunch, type WslLaunchPlan } from './terminal-profiles'
+import { ensureWslHooksBounded, wslHookEnv } from './wsl-hooks'
 import { REF_MAX_LEN } from '../shared/presence'
 import { xtermScrollback } from '../shared/scrollback'
 import {
@@ -3183,7 +3184,9 @@ export class PtyManager {
         } else {
           const refusal = wslSpawnRefusal(requestedShell, this.runtimePlatform)
           if (refusal) throw new Error(refusal)
-          const launch = await resolveWslLaunch(parseWslShell(requestedShell) as string, options.cwd)
+          const distro = parseWslShell(requestedShell) as string
+          const launch = await resolveWslLaunch(distro, options.cwd)
+          await ensureWslHooksBounded(distro, this.getSettings())
           options = { ...options, [WSL_LAUNCH]: launch } as WslLaunchOptions
         }
       }
@@ -4575,6 +4578,7 @@ export class PtyManager {
         ? hookServer.buildPtyEnv(options.persistKey, options.agentId, permWaitSecs)
         : {}
     for (const [k, v] of Object.entries(hookEnv)) env[k] = v
+    if (wslLaunch) Object.assign(env, wslHookEnv(hookEnv, env))
 
     // Shared-identity agents (SHARED_IDENTITY_CAPABLE — never `agentId === 'codex'`) reach their
     // managed launcher by NAME, so its directory goes first on THIS session's PATH only. A plain

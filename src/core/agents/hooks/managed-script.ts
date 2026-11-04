@@ -261,6 +261,44 @@ const CLAUDE_ORIGIN_SH: readonly string[] = [
   'fi'
 ]
 
+/**
+ * A plain WSL terminal (`wsl:<distro>`, core/wsl-hooks.ts). The hook server listens on WINDOWS
+ * loopback, which a NAT-mode distro cannot reach and the firewall blocks on the gateway address, but
+ * Windows' own curl.exe, run through WSL interop, can. Measured from Ubuntu on Windows 11: ~20 ms a
+ * call, a UNC payload path readable, `--config -` on stdin intact.
+ *
+ * Claude only, like the install in wsl-hooks.ts. Inert unless the pane's env names curl.exe, which
+ * only `wslHookEnv` sets, so every other session runs exactly the `curl` it always ran. It lives in
+ * this one generator, not a WSL copy of the
+ * script: a WSL project on the same distro writes this same file, and two versions would overwrite
+ * each other. A function shadows the command for the pipelines below, and it rewrites the two paths
+ * a Windows program cannot open. `wslpath` failing leaves the path alone, so that POST just fails
+ * open like any other dead transport.
+ */
+const WSL_INTEROP_CURL_SH: readonly string[] = [
+  'case "$NODETERM_WSL_CURL" in',
+  '  /*/curl.exe)',
+  '    curl() {',
+  '      nt_wc_n=$#',
+  '      while [ "$nt_wc_n" -gt 0 ]; do',
+  '        nt_wc_a=$1',
+  '        shift',
+  '        case "$nt_wc_a" in',
+  '          /dev/null) nt_wc_a=NUL ;;',
+  '          payload@/*)',
+  '            nt_wc_w=$(wslpath -w "${nt_wc_a#payload@}" 2>/dev/null)',
+  '            [ -z "$nt_wc_w" ] || nt_wc_a="payload@$nt_wc_w"',
+  '            ;;',
+  '        esac',
+  '        set -- "$@" "$nt_wc_a"',
+  '        nt_wc_n=$((nt_wc_n - 1))',
+  '      done',
+  '      "$NODETERM_WSL_CURL" "$@"',
+  '    }',
+  '    ;;',
+  'esac'
+]
+
 function safeIdentityRoot(): string | null {
   try {
     return codexThreadIdentityRoot()
@@ -356,6 +394,7 @@ export function buildManagedScript(
     '  cat >/dev/null 2>&1 || :',
     '  exit 0',
     'fi',
+    ...(agentId === 'claude' ? WSL_INTEROP_CURL_SH : []),
     '# Sourced with stdout swallowed, not only stderr: SessionStart and UserPromptSubmit are two of',
     '# the events where Claude ADDS hook stdout to the agent\'s context (#186). The endpoint files',
     '# nodeterm writes print nothing today — this guards the day one of the four candidate paths',
