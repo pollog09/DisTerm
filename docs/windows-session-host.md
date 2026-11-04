@@ -87,8 +87,8 @@ An installer is offered only from a local project, so it cannot run on the selec
 host by mistake. Runtime session-host attach failures still use the terminal's existing error
 path; a bundle being present is not proof an individual session attached successfully.
 
-> A `wsl:<distro>` profile below gives a plain shell in a distribution. For agents running in WSL with
-> status, hooks, messaging and tmux persistence, use a WSL project (CLAUDE.md, "WSL projects"), which
+> A `wsl:<distro>` profile below gives a shell in a distribution, with Claude status hooks. For agents
+> running in WSL with messaging, tmux persistence and everything else SSH projects have, use a WSL project (CLAUDE.md, "WSL projects"), which
 > treats the distribution as an SSH project.
 
 ## Windows profile resolution
@@ -144,8 +144,9 @@ Known limits: a pane in WSL through a project's local shell setting still gets t
 and quoting, because the renderer does not see project overrides. On a non-Windows core, a hand-typed
 `wsl:` value refuses every create, including a reattach to a live tmux session.
 
-Not yet available in a WSL terminal, because the agent runs on the other side of the WSL boundary from
-the hook server and the Windows process probes: agent status, hooks and messaging. Agent launch rows
+Claude's status hooks work in a WSL terminal through Windows' `curl.exe` (CLAUDE.md, "Claude hooks in
+a plain WSL terminal"). Not yet available there, because the agent runs on the other side of the WSL
+boundary from the Windows process probes: messaging, and hooks for other agents. Agent launch rows
 are also unverified there, since the pane owner reads as `wsl.exe`. Not run on a real Windows build:
 node-pty's own argv quoting of the guard script, the session host's restart path, and the picker UI.
 

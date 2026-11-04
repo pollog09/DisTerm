@@ -195,9 +195,10 @@ describe('the managed script for antigravity', () => {
       // claude changed DELIBERATELY (issues #1112/#1153): it now reports which process ran the
       // hook (`$CLAUDE_PID`, foreground, tty — claude-pane-origin.ts). Recomputed from this
       // branch's builder; the other five are untouched, which is what this test still proves.
+      // Claude also carries the WSL interop curl (managed-script.ts), inert outside a WSL terminal.
       claude: [
-        '0e3e1e0d89e7b3ca269effe57067047f9321897c79bf53a3edeadf2bb30ca992',
-        '84a8fc82dede3cf252138376b209e6469a22bfdc9b72f953eb35cb94ccd4fbe3'
+        '17ec8743f204a0fec3d21f095b26ab18eb11faf732ff527ca4f39c4eb6a4231c',
+        'b8e0b80e6ee41a8d12b52f9e692a3307c0ca2c9b59af4d53bb42160d95b2742d'
       ],
       codex: [
         '592fe88ee069db002c9f5c385a2e0465f9659bade3f0bd18c86b5b51f7644e59',
