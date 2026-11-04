@@ -59,6 +59,14 @@ The repo is split by Electron process boundary and the split is enforced, not ad
 `src/core/no-electron.test.ts` and `src/server/no-electron.test.ts` fail if `src/core` or
 `src/server` import `electron` or `../main/*`.
 
+For a map of all this, see [`docs/architecture/README.md`](docs/architecture/README.md): which
+process talks to which, how agent status travels, where state lives. Its `GRAPH.md` and `graph.json`
+are generated from the imports under `src/`, so do not edit them; `npm run arch:graph` rewrites them,
+and `npm run arch:graph -- --check` exits non-zero if they are stale. Nothing runs that check in CI,
+and line counts are part of the output, so any edit under `src/` makes the map stale until someone
+regenerates it. The check does not fail on a forbidden boundary crossing either: `GRAPH.md` only
+lists those, and it does not replace the tests above.
+
 **Put new service logic in `src/core` behind `CorePlatform`, not inline in `src/main`.** That is the
 seam the Server Edition boots from; logic left in `src/main` silently does not exist there, and the
 boundary tests cannot tell you a feature is *missing*. This keeps happening to the same subsystem:

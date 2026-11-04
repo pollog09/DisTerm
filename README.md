@@ -369,8 +369,9 @@ on macOS** and applies to both canvas and kanban terminals.
 - **Three surfaces** — the desktop app, the browser **Server Edition**, and the
   **mobile companion** (a separate SwiftUI repo) all ride the same core + transport seams.
 
-See [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the design docs
-under [`docs/`](./docs) for deeper notes.
+See [`docs/architecture/`](./docs/architecture/README.md) for runtime diagrams and a code map
+generated from the imports, [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the
+design docs under [`docs/`](./docs) for deeper notes.
 
 ## 🤝 Contributing
 

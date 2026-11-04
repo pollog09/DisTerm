@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:unit": "vitest run test/remote",
     "diagnose:agents": "node scripts/agent-session-scan.mjs",
+    "arch:graph": "node scripts/architecture-graph.mjs",
     "rebuild": "node scripts/patch-node-pty.mjs && node scripts/patch-smart-whisper.mjs && electron-rebuild -f -w node-pty,smart-whisper && node scripts/stage-conpty-dll.mjs",
     "server:build": "esbuild src/server/main.ts --bundle --platform=node --format=cjs --outfile=out/server/main.cjs --external:node-pty --external:ws --external:smart-whisper --external:ssh2 --tsconfig=tsconfig.node.json",
     "host:build": "esbuild src/session-host/host.ts --bundle --platform=node --format=cjs --outfile=out/session-host/host.cjs --external:node-pty --tsconfig=tsconfig.node.json",
