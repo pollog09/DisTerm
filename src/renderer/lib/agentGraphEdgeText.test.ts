@@ -22,9 +22,9 @@ describe('skill, MCP and harness lines', () => {
   })
 
   it('names what happened on hover, the newest tool and the typed share included', () => {
-    expect(graphEdgeTitle(uses({ tool: 'echo_it' }))).toBe('3 calls to mcp demo this app run, newest echo_it')
-    expect(graphEdgeTitle(uses({ kind: 'uses-skill', traversals: 1, subject: 'grill' }))).toBe('1 call to skill grill this app run')
-    expect(graphEdgeTitle(uses({ kind: 'uses-skill', subject: 'grill', typedCalls: 2 }))).toBe('3 calls to skill grill this app run (2 typed as /grill)')
+    expect(graphEdgeTitle(uses({ tool: 'echo_it' }))).toBe('3 calls started to mcp demo this app run, newest echo_it')
+    expect(graphEdgeTitle(uses({ kind: 'uses-skill', traversals: 1, subject: 'grill' }))).toBe('1 call started to skill grill this app run')
+    expect(graphEdgeTitle(uses({ kind: 'uses-skill', subject: 'grill', typedCalls: 2 }))).toBe('3 calls started to skill grill this app run (2 typed as /grill)')
   })
 
   it('the legend lists a skill call and an MCP call only when drawn, and never the harness line', () => {

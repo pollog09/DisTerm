@@ -587,6 +587,9 @@ function agentGraphEventShared(event: unknown, ctx: AccessContext): boolean {
   if (field(event, 'kind') === 'delivery') {
     return sharedNode(field(event, 'from'), ctx) && sharedNode(field(event, 'to'), ctx)
   }
+  // A typed row's name is whatever followed `/` in a prompt, which can be a pasted token. Only the
+  // renderer can tell it is really a skill, so it never leaves for a peer who may not read prompts.
+  if (field(event, 'kind') === 'access' && field(event, 'typed') === true) return false
   return sharedNode(field(event, 'nodeId'), ctx)
 }
 

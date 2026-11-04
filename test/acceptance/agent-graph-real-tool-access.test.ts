@@ -99,7 +99,7 @@ describe('a session that calls a skill and an MCP tool, and a subagent that does
     const m = await model(SHIP)
     expect(m.nodes.find((n) => n.id === 'skill:demo-skill')!.runs).toBe(3)
     const line = m.edges.find((e) => e.id === 'uses:session:orch:skill:demo-skill')!
-    expect(graphEdgeTitle(line)).toBe('2 calls to skill demo-skill this app run (1 typed as /demo-skill)')
+    expect(graphEdgeTitle(line)).toBe('2 calls started to skill demo-skill this app run (1 typed as /demo-skill)')
   })
 
   it('the Harness box counts the session and the configured server', async () => {

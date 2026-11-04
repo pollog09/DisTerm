@@ -110,9 +110,9 @@ export function graphEdgeTitle(edge: GraphEdge): string | undefined {
     const what = edge.kind === 'uses-skill' ? 'skill' : 'mcp'
     const typed = edge.typedCalls ? ` (${edge.typedCalls} typed as /${edge.subject})` : ''
     const newest = edge.tool ? `, newest ${edge.tool}` : ''
-    return `${n} ${n === 1 ? 'call' : 'calls'} to ${what} ${edge.subject} this app run${typed}${newest}`
+    return `${n} ${n === 1 ? 'call' : 'calls'} started to ${what} ${edge.subject} this app run${typed}${newest}`
   }
-  if (edge.kind === 'harness') return 'This session runs on this machine\'s harness. A dot moves when it reports something.'
+  if (edge.kind === 'harness') return 'This session runs on this machine\'s harness. A dot moves on a state change, a message, a subagent, or a skill or MCP call.'
   if (edge.reason) return `Refused: ${edge.reason}`
   if (edge.maybe) return MAYBE_HINT
   if (edge.loop && edge.kind === 'observed' && !edge.undeclared) return OBSERVED_LOOP_HINT

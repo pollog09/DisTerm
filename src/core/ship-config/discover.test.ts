@@ -8,6 +8,7 @@ import {
   mergeAgents,
   newShipScriptNonce,
   MCP_FILE_MAX_BYTES,
+  reduceMcpFile,
   parseAgentFile,
   parseMcpServers,
   parseRemoteShipOutput,
@@ -394,5 +395,35 @@ describe('MCP servers', () => {
     const parsed = parseRemoteShipOutput(nonce, `\n${nonce} home /h\n\n${nonce} end\n`, false)
     const c = buildShipConfig(parsed.input, PATHS)
     expect(c).toMatchObject({ mcpServers: [], mcpRead: false })
+  })
+})
+
+describe('reduceMcpFile', () => {
+  it('keeps names and transport and nothing that can hold a token', () => {
+    const text = JSON.stringify({
+      oauthAccount: { accessToken: 'sk-SECRET' },
+      mcpServers: { a: { command: 'sk-SECRET', env: { T: 'sk-SECRET' } }, b: { type: 'http', url: 'https://sk-SECRET@x', headers: { A: 'sk-SECRET' } } },
+      projects: { '/p': { history: ['sk-SECRET'], mcpServers: { c: { type: 'sse', url: 'https://sk-SECRET' } } }, '/q': { history: [] } }
+    })
+    const reduced = reduceMcpFile(text)
+    expect(reduced).not.toContain('sk-SECRET')
+    expect(parseMcpServers([{ source: 'claude-json', text: reduced }], '/p', [])).toEqual([
+      { name: 'a', scope: 'global', transport: 'stdio' },
+      { name: 'b', scope: 'global', transport: 'http' },
+      { name: 'c', scope: 'project', transport: 'sse' }
+    ])
+  })
+
+  it('still reads as invalid, without keeping the text, when it does not parse', () => {
+    const warnings: string[] = []
+    const reduced = reduceMcpFile('{"token": "sk-SECRET"')
+    expect(reduced).not.toContain('sk-SECRET')
+    parseMcpServers([{ source: 'mcp-json', text: reduced }], null, warnings)
+    expect(warnings).toEqual(['.mcp.json is not valid JSON, so its MCP servers were not read.'])
+  })
+
+  it('finds a Windows project keyed with forward slashes', () => {
+    const text = JSON.stringify({ projects: { 'C:/work/app': { mcpServers: { w: { command: 'x' } } } } })
+    expect(parseMcpServers([{ source: 'claude-json', text }], 'C:\\work\\app', []).map((s) => s.name)).toEqual(['w'])
   })
 })

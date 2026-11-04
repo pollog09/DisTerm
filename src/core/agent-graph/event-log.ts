@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto'
 import {
   AGENT_GRAPH_LABEL_MAX,
   AGENT_GRAPH_LOG_CAPACITY,
+  mergeAgentGraphEvents,
+  type AgentGraphAccessEvent,
   type AgentGraphEvent
 } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
@@ -33,8 +35,9 @@ export class AgentGraphLog {
   /** Open subagents, id to parent, so a tail chunk (which knows only the id) can name its session. */
   private readonly open = new Map<string, string>()
   private readonly activityAt = new Map<string, number>()
-  /** Running count per access row, least recently called first, which is what bounds it. */
-  private readonly accessCounts = new Map<string, number>()
+  /** One row per access key, least recently called first, which is what bounds it. Apart from the
+   *  ring: a swarm of subagents must not push deliveries and subagent starts out of it. */
+  private readonly accessRows = new Map<string, AgentGraphAccessEvent>()
 
   constructor(readonly capacity = AGENT_GRAPH_LOG_CAPACITY) {}
 
@@ -45,6 +48,10 @@ export class AgentGraphLog {
       this.events.splice(0, over)
       this.droppedCount += over
     }
+    this.notify(event)
+  }
+
+  private notify(event: AgentGraphEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event)
@@ -98,19 +105,11 @@ export class AgentGraphLog {
   recordAccess(nodeId: string, access: ToolAccess, now = Date.now()): void {
     // A typed `/name` is its own row: the person typing it and the model calling it are different
     // facts, and the view only draws the typed kind when the machine says it is a skill or command.
-    const id = `access:${nodeId}:${access.subId ?? ''}:${access.target}:${access.name}${access.typed ? ':typed' : ''}`
-    const count = (this.accessCounts.get(id) ?? 0) + 1
-    this.accessCounts.delete(id)
-    this.accessCounts.set(id, count)
-    while (this.accessCounts.size > MAX_ACCESS_KEYS) {
-      const oldest = this.accessCounts.keys().next().value!
-      this.accessCounts.delete(oldest)
-      const before = this.events.length
-      this.events = this.events.filter((e) => e.id !== oldest)
-      this.droppedCount += before - this.events.length
-    }
-    this.events = this.events.filter((e) => e.id !== id)
-    this.push({
+    // `|` is outside every name alphabet, so a skill called `x:typed` cannot land on the typed `/x`.
+    const id = `access:${nodeId}:${access.subId ?? ''}:${access.target}:${access.name}${access.typed ? '|typed' : ''}`
+    const count = (this.accessRows.get(id)?.count ?? 0) + 1
+    this.accessRows.delete(id)
+    const row: AgentGraphAccessEvent = {
       kind: 'access',
       id,
       ts: now,
@@ -122,7 +121,13 @@ export class AgentGraphLog {
       ...(access.tool ? { tool: access.tool } : {}),
       ...(access.typed ? { typed: true as const } : {}),
       count
-    })
+    }
+    this.accessRows.set(id, row)
+    while (this.accessRows.size > MAX_ACCESS_KEYS) {
+      this.accessRows.delete(this.accessRows.keys().next().value!)
+      this.droppedCount++
+    }
+    this.notify(row)
   }
 
   private forget(subId: string): void {
@@ -131,7 +136,7 @@ export class AgentGraphLog {
   }
 
   snapshot(): { events: AgentGraphEvent[]; dropped: number; capacity: number } {
-    return { events: [...this.events], dropped: this.droppedCount, capacity: this.capacity }
+    return { events: mergeAgentGraphEvents(this.events, [...this.accessRows.values()]), dropped: this.droppedCount, capacity: this.capacity }
   }
 
   onEvent(listener: (event: AgentGraphEvent) => void): () => void {
@@ -145,7 +150,7 @@ export class AgentGraphLog {
     this.events = []
     this.open.clear()
     this.activityAt.clear()
-    this.accessCounts.clear()
+    this.accessRows.clear()
     this.droppedCount = 0
   }
 }

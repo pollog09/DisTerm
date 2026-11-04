@@ -101,3 +101,15 @@ describe('agent graph at the scoped-guest boundary', () => {
     }
   })
 })
+
+describe('a typed access at the viewer boundary', () => {
+  const typed = { kind: 'access', id: 't', ts: 1, nodeId: 'mine', target: 'skill', name: 'ghp_token', typed: true, count: 1 }
+  const called = { kind: 'access', id: 'c', ts: 1, nodeId: 'mine', target: 'skill', name: 'grill', count: 1 }
+
+  it('does not reach a viewer live or in a snapshot, while a called skill does', () => {
+    expect(filterOutboundEvent(ev(typed), ctx('viewer'))).toBe(false)
+    expect(filterOutboundEvent(ev(called), ctx('viewer'))).toBe(true)
+    const narrowed = narrowResponseForRole(IPC.agentGraphSnapshot, { events: [typed, called] }, ctx('viewer')) as { events: { id: string }[] }
+    expect(narrowed.events.map((e) => e.id)).toEqual(['c'])
+  })
+})

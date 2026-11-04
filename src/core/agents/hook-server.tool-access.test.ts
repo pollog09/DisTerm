@@ -90,4 +90,9 @@ describe('skill and MCP accesses on the hook route', () => {
     await send('claude', { hook_event_name: 'PreToolUse', tool_name: 'mcp__demo__echo_it', tool_input: { text: 'ghp_SECRET' } })
     expect(JSON.stringify(agentGraphLog.snapshot())).not.toContain('ghp_SECRET')
   })
+
+  it('records nothing for a node id that could not be a real one', async () => {
+    await post('claude', { nodeId: 'x'.repeat(4096), payload: JSON.stringify(at(1)) })
+    expect(access()).toEqual([])
+  })
 })

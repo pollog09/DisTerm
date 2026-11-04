@@ -1177,7 +1177,7 @@ export class HookServer {
           // inherited this node's id counts for nobody. Claude only: other agents' tool events are
           // not measured, and a custom agent built on claude posts under `claude` already. A throw
           // here must never fail the hook POST.
-          if (agentId === 'claude') {
+          if (agentId === 'claude' && isSafeNodeId(nodeId)) {
             try {
               const access = claudeToolAccess(payload)
               if (access) agentGraphLog.recordAccess(nodeId, access)

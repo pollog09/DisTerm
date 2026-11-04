@@ -826,7 +826,7 @@ function addAccess(
     newestBySession.set(e.nodeId, Math.max(newestBySession.get(e.nodeId) ?? 0, e.ts))
   }
   out.edges.push(...lines.values())
-  if (drawn.size) out.notices.push('Skill and MCP counts cover this app run.')
+  if (drawn.size) out.notices.push('Skill and MCP counts are calls started in this app run, including any later denied.')
   return { usage, newestBySession }
 }
 

@@ -232,8 +232,25 @@ describe('AgentGraphLog.recordAccess, typed and called', () => {
     log.recordAccess('n', { target: 'skill', name: 'grill', typed: true }, 2)
     log.recordAccess('n', { target: 'skill', name: 'grill' }, 3)
     expect(log.snapshot().events).toMatchObject([
-      { id: 'access:n::skill:grill:typed', count: 1, typed: true },
+      { id: 'access:n::skill:grill|typed', count: 1, typed: true },
       { id: 'access:n::skill:grill', count: 2 }
     ])
+  })
+
+  it('keeps a called skill apart from a typed one whose name ends the same way', () => {
+    const log = new AgentGraphLog()
+    log.recordAccess('n', { target: 'skill', name: 'x:typed' }, 1)
+    log.recordAccess('n', { target: 'skill', name: 'x', typed: true }, 2)
+    expect(log.snapshot().events.map((e) => (e.kind === 'access' ? [e.name, !!e.typed, e.count] : null))).toEqual([
+      ['x:typed', false, 1],
+      ['x', true, 1]
+    ])
+  })
+
+  it('never pushes a delivery out of the ring, however many rows it holds', () => {
+    const log = new AgentGraphLog(3)
+    log.push({ kind: 'turn-start', id: 'keep', ts: 0, nodeId: 'n' })
+    for (let i = 0; i < 10; i++) log.recordAccess('n', { target: 'skill', name: `s${i}` }, i + 1)
+    expect(log.snapshot().events.filter((e) => e.kind !== 'access').map((e) => e.id)).toEqual(['keep'])
   })
 })

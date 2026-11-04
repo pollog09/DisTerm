@@ -552,9 +552,9 @@ describe('skills and MCP servers that were used', () => {
     expect(m.usage.skills).toHaveLength(43)
   })
 
-  it('says the counts cover this app run only when something is drawn', () => {
+  it('says what the counts cover only when something is drawn', () => {
     const m = build({ sessions: [session('a')], snapshot: snap([access('a', 'mcp', 'demo', 1, 5)]) })
-    expect(m.notices).toContain('Skill and MCP counts cover this app run.')
+    expect(m.notices).toContain('Skill and MCP counts are calls started in this app run, including any later denied.')
   })
 })
 

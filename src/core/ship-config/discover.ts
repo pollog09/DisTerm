@@ -132,6 +132,8 @@ function listedNames(lists: ReadonlyArray<readonly string[]>): string[] {
 /** `~/.claude.json` and a project's `.mcp.json` are read whole, so they are bounded. Over this, the
  *  file is left out and a warning says so. */
 export const MCP_FILE_MAX_BYTES = 16 * 1024 * 1024
+/** A project's `.mcp.json` arrives in a clone and lists a few servers, so it gets far less room. */
+export const MCP_JSON_MAX_BYTES = 1024 * 1024
 const MAX_MCP_SERVERS = 100
 const MCP_NAME_RE = /^[A-Za-z0-9._-]{1,64}$/
 
@@ -191,8 +193,12 @@ export function parseMcpServers(
     if (file.source === 'claude-json') {
       found[0].push(...serversOf(root.mcpServers, 'global', skipped))
       const projects = root.projects
-      if (projectCwd && projects && typeof projects === 'object' && Object.hasOwn(projects, projectCwd)) {
-        const mine = (projects as Record<string, unknown>)[projectCwd]
+      // Claude is believed to key Windows projects with forward slashes, so both spellings are asked.
+      const projectKey = projectCwd && projects && typeof projects === 'object'
+        ? [projectCwd, projectCwd.replaceAll('\\', '/')].find((key) => Object.hasOwn(projects, key))
+        : undefined
+      if (projectKey) {
+        const mine = (projects as Record<string, unknown>)[projectKey]
         if (mine && typeof mine === 'object') found[1].push(...serversOf((mine as Record<string, unknown>).mcpServers, 'project', skipped))
       }
     } else {
@@ -362,9 +368,60 @@ async function readMcpFile(file: string, source: RawMcpFile['source'], label: st
     return {}
   }
   if (!stat.isFile()) return { problem: `${label} is not a regular file, so its MCP servers were not read.` }
-  if (stat.size > MCP_FILE_MAX_BYTES) return { problem: `${label} is larger than ${MCP_FILE_MAX_BYTES / 1024 / 1024} MB, so its MCP servers were not read.` }
-  const text = await readHead(file, MCP_FILE_MAX_BYTES)
-  return text === null ? { problem: `${label} could not be read, so its MCP servers were not listed.` } : { file: { source, text } }
+  const max = source === 'mcp-json' ? MCP_JSON_MAX_BYTES : MCP_FILE_MAX_BYTES
+  if (stat.size > max) return { problem: `${label} is larger than ${max / 1024 / 1024} MB, so its MCP servers were not read.` }
+  // The config is polled while a view is open and these parse synchronously, so an unchanged file is
+  // neither read nor parsed again. What is kept is the reduced text, which holds no secret.
+  const cached = mcpFileCache.get(file)
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return { file: { source, text: cached.text } }
+  const text = await readHead(file, max)
+  if (text === null) return { problem: `${label} could not be read, so its MCP servers were not listed.` }
+  const reduced = reduceMcpFile(text)
+  if (mcpFileCache.size >= MCP_FILE_CACHE_MAX) mcpFileCache.delete(mcpFileCache.keys().next().value!)
+  mcpFileCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, text: reduced })
+  return { file: { source, text: reduced } }
+}
+
+const mcpFileCache = new Map<string, { size: number; mtimeMs: number; text: string }>()
+const MCP_FILE_CACHE_MAX = 32
+
+/** A table of servers with only what `transportOf` looks at, as booleans in place of the values. */
+function reduceServers(table: unknown): unknown {
+  if (!table || typeof table !== 'object' || Array.isArray(table)) return undefined
+  const out: Record<string, unknown> = {}
+  for (const [name, entry] of Object.entries(table as Record<string, unknown>)) {
+    const e = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {}
+    Object.defineProperty(out, name, {
+      enumerable: true,
+      value: {
+        ...(e.type === 'stdio' || e.type === 'http' || e.type === 'sse' ? { type: e.type } : {}),
+        ...(typeof e.command === 'string' ? { command: '' } : {}),
+        ...(typeof e.url === 'string' ? { url: '' } : {})
+      }
+    })
+  }
+  return out
+}
+
+/** A config file cut down to what `parseMcpServers` reads, so no token outlives this call. Unparsable
+ *  or not an object comes back as itself minus its content, which parses to the same warning. */
+export function reduceMcpFile(text: string): string {
+  let doc: unknown
+  try {
+    doc = JSON.parse(text)
+  } catch {
+    return '{'
+  }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return '[]'
+  const root = doc as Record<string, unknown>
+  const projects: Record<string, unknown> = {}
+  if (root.projects && typeof root.projects === 'object' && !Array.isArray(root.projects)) {
+    for (const [key, value] of Object.entries(root.projects)) {
+      const servers = value && typeof value === 'object' ? reduceServers((value as Record<string, unknown>).mcpServers) : undefined
+      if (servers) Object.defineProperty(projects, key, { enumerable: true, value: { mcpServers: servers } })
+    }
+  }
+  return JSON.stringify({ mcpServers: reduceServers(root.mcpServers), projects })
 }
 
 export async function readLocalShipInput(

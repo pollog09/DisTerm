@@ -170,7 +170,9 @@ environment, URL and headers can hold tokens and are never read past the parser,
 **Limits.**
 
 - Claude only. Other CLIs do not report skill or MCP use.
-- Counts cover this app run. They are not saved, so a restart starts them again.
+- Counts are calls started in this app run, read from `PreToolUse`, so a call later denied still counts.
+  They are not saved, so a restart starts them again. On a relay tab that is not an Editor's, a typed
+  `/skill` is not counted: its name could be anything typed after `/`.
 - The newest 40 skills and servers used are drawn. Any more are named in a notice and still listed in
   the panel.
 - An SSH host's MCP config is not read, because `~/.claude.json` holds credentials. Its servers appear
