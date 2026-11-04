@@ -253,6 +253,70 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
     }
   },
   {
+    id: 'green-on-black',
+    label: 'Green on Black',
+    dark: true,
+    theme: {
+      background: '#000000',
+      foreground: '#00ff00',
+      cursor: '#00ff00',
+      cursorAccent: '#000000',
+      selectionBackground: '#005f00',
+      // Plain text is green, but the ANSI hues stay distinct: an all-green palette would make a
+      // red diff line or an error read the same as everything around it. Every slot but `black`
+      // keeps 4.5:1 on the background (themes.test.ts), which is what rules out xterm's own blue.
+      black: '#000000',
+      red: '#ff5f5f',
+      green: '#00d700',
+      yellow: '#d7d700',
+      blue: '#5f9fff',
+      magenta: '#d75fd7',
+      cyan: '#00d7d7',
+      white: '#afd7af',
+      brightBlack: '#5f9f5f',
+      brightRed: '#ff8787',
+      brightGreen: '#00ff00',
+      brightYellow: '#ffff5f',
+      brightBlue: '#87afff',
+      brightMagenta: '#ff87ff',
+      brightCyan: '#5fffff',
+      brightWhite: '#d7ffd7'
+    }
+  },
+  {
+    id: 'parrot-os',
+    label: 'Parrot OS',
+    dark: true,
+    theme: {
+      // Copied from Parrot's default Konsole setup (parrot-core, skel/.local/share/konsole:
+      // GreenOnBlack.colorscheme + Parrot.profile). Do not raise the low-contrast blue: matching
+      // the distribution is the point of this theme, and `green-on-black` is the readable one.
+      background: '#000000',
+      foreground: '#18f018',
+      cursor: '#ff0000',
+      cursorAccent: '#000000',
+      // The scheme names no selection colour because Konsole reverses selected cells.
+      selectionBackground: '#18f018',
+      selectionForeground: '#000000',
+      black: '#000000',
+      red: '#fa4b4b',
+      green: '#18b218',
+      yellow: '#b26818',
+      blue: '#1818b2',
+      magenta: '#e11ee1',
+      cyan: '#18b2b2',
+      white: '#b2b2b2',
+      brightBlack: '#686868',
+      brightRed: '#ff5454',
+      brightGreen: '#54ff54',
+      brightYellow: '#ffff54',
+      brightBlue: '#5454ff',
+      brightMagenta: '#ff54ff',
+      brightCyan: '#54ffff',
+      brightWhite: '#ffffff'
+    }
+  },
+  {
     id: 'nodeterm-light',
     label: 'nodeterm Light',
     dark: false,

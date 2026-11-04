@@ -62,6 +62,67 @@ describe('TERMINAL_THEMES', () => {
   })
 })
 
+describe('green-on-black', () => {
+  const channel = (v: number): number => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const luminance = (hex: string): number => {
+    const [r, g, b] = [1, 3, 5].map((i) => channel(parseInt(hex.slice(i, i + 2), 16) / 255))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi + 0.05) / (lo + 0.05)
+  }
+  const { theme, dark } = resolveTerminalTheme('green-on-black')
+
+  it('is green text on a black field, and resolves by its own id', () => {
+    expect(resolveTerminalTheme('green-on-black').id).toBe('green-on-black')
+    expect(dark).toBe(true)
+    expect(theme.background).toBe('#000000')
+    expect(theme.foreground).toBe('#00ff00')
+  })
+
+  // `black` is the background on purpose (Gruvbox and One Dark do the same). Every other slot is
+  // text that programs print, and agent CLIs print their dim lines in brightBlack.
+  it.each(ANSI_KEYS.filter((k) => k !== 'black'))('%s keeps 4.5:1 on the background', (key) => {
+    expect(contrast(theme[key]!, theme.background!)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('keeps selected text readable', () => {
+    expect(contrast(theme.foreground!, theme.selectionBackground!)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('parrot-os', () => {
+  it("matches Parrot's Konsole colours", () => {
+    const { id, dark, theme } = resolveTerminalTheme('parrot-os')
+    expect(id).toBe('parrot-os')
+    expect(dark).toBe(true)
+    expect([theme.background, theme.foreground, theme.cursor]).toEqual([
+      '#000000',
+      '#18f018',
+      '#ff0000'
+    ])
+    expect(ANSI_KEYS.map((key) => theme[key])).toEqual([
+      '#000000',
+      '#fa4b4b',
+      '#18b218',
+      '#b26818',
+      '#1818b2',
+      '#e11ee1',
+      '#18b2b2',
+      '#b2b2b2',
+      '#686868',
+      '#ff5454',
+      '#54ff54',
+      '#ffff54',
+      '#5454ff',
+      '#ff54ff',
+      '#54ffff',
+      '#ffffff'
+    ])
+  })
+})
+
 describe('the default theme reproduces the pre-themes appearance', () => {
   // LOAD-BEARING. Before themes, both call sites hardcoded these two colours and let xterm fill
   // in the rest from its own (Tango) palette. Anyone who never picks a theme must keep seeing
