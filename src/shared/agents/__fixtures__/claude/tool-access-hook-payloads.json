@@ -1,9 +1,9 @@
 {
- "_provenance": "captured live from Claude Code 2.1.318 (linux-x64) on 2026-11-04, logged-in account, interactive TUI, with --settings holding only capture hooks, one project skill (demo-skill) and one stdio MCP server (demo, tool echo_it). Kept: hook_event_name, tool_name, tool_input, tool_use_id, agent_id, agent_type, and the prompt only where it is a typed slash command. Session id replaced by a placeholder; tool_response bodies, paths, prompt ids and free text removed; the Agent call's description and prompt replaced by placeholders. Tool-use ids, agent ids and tool names are as captured.",
+ "_provenance": "captured live from Claude Code 2.1.318 (linux-x64) on 2026-11-04, logged-in account, print mode (`claude -p`), two runs, with --settings holding only capture hooks, one project skill (demo-skill) and one stdio MCP server (demo, tool echo_it). Kept: hook_event_name, tool_name, tool_input, tool_use_id, agent_id, agent_type, and the prompt only where it is a typed slash command. Session id replaced by a placeholder; tool_response bodies, paths, prompt ids and free text removed; the Agent call's description and prompt replaced by placeholders. Tool-use ids, agent ids and tool names are as captured.",
  "claudeVersion": "2.1.318",
  "scenarios": {
   "skill_mcp_subagent_typed": {
-   "mode": "interactive",
+   "mode": "print",
    "description": "one prompt that makes the model call the Skill tool, an MCP tool, and a foreground subagent that calls the MCP tool and the Skill tool itself (events 7-14 carry agent_id), then a typed /demo-skill",
    "events": [
     {

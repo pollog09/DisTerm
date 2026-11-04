@@ -26,9 +26,9 @@ const NODE_SIZE: Readonly<Record<GraphNodeKind, { width: number; height: number 
   subagent: { width: 196, height: 68 },
   note: { width: 168, height: 48 },
   ghost: { width: 168, height: 48 },
-  harness: { width: 196, height: 92 },
-  skill: { width: 168, height: 52 },
-  mcp: { width: 168, height: 52 }
+  harness: { width: 196, height: 112 },
+  skill: { width: 168, height: 60 },
+  mcp: { width: 168, height: 60 }
 }
 
 export function agentGraphNodeSize(kind: GraphNodeKind): { width: number; height: number } {

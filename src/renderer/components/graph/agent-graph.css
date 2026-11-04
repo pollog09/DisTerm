@@ -339,6 +339,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
+  line-height: 15px;
   color: var(--muted);
 }
 .agent-graph-node__badges {
@@ -567,4 +568,9 @@
 }
 .harness-panel__meta[data-status='enabled'] {
   color: var(--success);
+}
+
+/* Four facts on two rows: the shared two-row clip is what hides the last one if they wrap further. */
+.agent-graph-node--harness .agent-graph-node__badges {
+  max-height: none;
 }
