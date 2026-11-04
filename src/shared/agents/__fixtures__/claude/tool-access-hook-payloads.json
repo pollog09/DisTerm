@@ -1,0 +1,172 @@
+{
+ "_provenance": "captured live from Claude Code 2.1.318 (linux-x64) on 2026-11-04, logged-in account, interactive TUI, with --settings holding only capture hooks, one project skill (demo-skill) and one stdio MCP server (demo, tool echo_it). Kept: hook_event_name, tool_name, tool_input, tool_use_id, agent_id, agent_type, and the prompt only where it is a typed slash command. Session id replaced by a placeholder; tool_response bodies, paths, prompt ids and free text removed; the Agent call's description and prompt replaced by placeholders. Tool-use ids, agent ids and tool names are as captured.",
+ "claudeVersion": "2.1.318",
+ "scenarios": {
+  "skill_mcp_subagent_typed": {
+   "mode": "interactive",
+   "description": "one prompt that makes the model call the Skill tool, an MCP tool, and a foreground subagent that calls the MCP tool and the Skill tool itself (events 7-14 carry agent_id), then a typed /demo-skill",
+   "events": [
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "[prompt removed]"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Skill",
+     "tool_input": {
+      "skill": "demo-skill"
+     },
+     "tool_use_id": "toolu_01HLNd46oLZn9b6sp83FdYrX"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Skill",
+     "tool_input": {
+      "skill": "demo-skill"
+     },
+     "tool_use_id": "toolu_01HLNd46oLZn9b6sp83FdYrX"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "select:mcp__demo__echo_it",
+      "max_results": 1
+     },
+     "tool_use_id": "toolu_01SG7vnKK7mZyh1fmoYSectt"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "select:mcp__demo__echo_it",
+      "max_results": 1
+     },
+     "tool_use_id": "toolu_01SG7vnKK7mZyh1fmoYSectt"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "mcp__demo__echo_it",
+     "tool_input": {
+      "text": "hi"
+     },
+     "tool_use_id": "toolu_01HQrPcUNg1jyVSuLRSmzvqA"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "mcp__demo__echo_it",
+     "tool_input": {
+      "text": "hi"
+     },
+     "tool_use_id": "toolu_01HQrPcUNg1jyVSuLRSmzvqA"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[description removed]",
+      "prompt": "[prompt removed]"
+     },
+     "tool_use_id": "toolu_01V6L3QqMVzMT2FMhpTDkYJU"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "SubagentStart",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "select:mcp__demo__echo_it",
+      "max_results": 1
+     },
+     "tool_use_id": "toolu_01U4RhcKePG6riaEAobRvN8A",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "ToolSearch",
+     "tool_input": {
+      "query": "select:mcp__demo__echo_it",
+      "max_results": 1
+     },
+     "tool_use_id": "toolu_01U4RhcKePG6riaEAobRvN8A",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "mcp__demo__echo_it",
+     "tool_input": {
+      "text": "sub"
+     },
+     "tool_use_id": "toolu_01JK7mGugaTv6EBaozUdeqUH",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "mcp__demo__echo_it",
+     "tool_input": {
+      "text": "sub"
+     },
+     "tool_use_id": "toolu_01JK7mGugaTv6EBaozUdeqUH",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PreToolUse",
+     "tool_name": "Skill",
+     "tool_input": {
+      "skill": "demo-skill"
+     },
+     "tool_use_id": "toolu_01V1Ejm5tdyA5o7NMEMjhKvG",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Skill",
+     "tool_input": {
+      "skill": "demo-skill"
+     },
+     "tool_use_id": "toolu_01V1Ejm5tdyA5o7NMEMjhKvG",
+     "agent_id": "aeb451d35b610d56d",
+     "agent_type": "general-purpose"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "PostToolUse",
+     "tool_name": "Agent",
+     "tool_input": {
+      "description": "[description removed]",
+      "prompt": "[prompt removed]"
+     },
+     "tool_use_id": "toolu_01V6L3QqMVzMT2FMhpTDkYJU"
+    },
+    {
+     "session_id": "00000000-0000-4000-8000-000000000001",
+     "hook_event_name": "UserPromptSubmit",
+     "prompt": "/demo-skill"
+    }
+   ]
+  }
+ }
+}
