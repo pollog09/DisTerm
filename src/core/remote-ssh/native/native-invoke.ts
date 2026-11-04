@@ -47,6 +47,8 @@ export async function runSshArgv(
   if (p.kind === 'exec') return mux.exec(p, io)
   const cp = p.options.controlPath
   if (!cp) return result(255, '', 'native ssh transport: -O without a ControlPath\n')
+  const refused = mux.refusal(cp, p.target)
+  if (refused) return result(255, '', `${refused}\n`)
   switch (p.op) {
     case 'check':
       return mux.check(cp) ? result(0, '', 'Master running (pid=0)\n') : result(255, '', `${noMasterMessage(cp)}\n`)

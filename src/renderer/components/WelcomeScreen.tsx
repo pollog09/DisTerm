@@ -5,6 +5,7 @@ import { filterClosedProjects } from '../lib/closedHistory'
 import { ProjectGlyph } from './ProjectGlyph'
 import type { RecentConversation } from '@shared/recent-conversations'
 import { RecentConversations } from './RecentConversations'
+import { useCoreIsWindows } from '../terminal/use-core-platform'
 
 /**
  * Rows before the "Recently closed" filter box appears (issue #506). `.welcome__recent-list` is
@@ -65,6 +66,7 @@ export function WelcomeScreen({
   recentActionFor,
   onResumeRecent
 }: WelcomeScreenProps) {
+  const coreIsWindows = useCoreIsWindows()
   const [query, setQuery] = useState('')
   const visibleClosed = useMemo(
     () => filterClosedProjects(closedProjects, query),
@@ -164,7 +166,7 @@ export function WelcomeScreen({
             <rect x="3" y="5" width="18" height="14" rx="2" />
             <path d="M7 10l3 2-3 2M13 14h4" />
           </svg>
-          <span>Connect over SSH…</span>
+          <span>{coreIsWindows ? 'Connect over SSH or WSL…' : 'Connect over SSH…'}</span>
         </button>
       </div>
 

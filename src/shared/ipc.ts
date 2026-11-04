@@ -648,6 +648,14 @@ export const IPC = {
   sshFsMkdir: 'sshFs:mkdir',
   sshFsExists: 'sshFs:exists',
   sshFsQuickOpen: 'sshFs:quick-open',
+  /** The WSL distributions the new-project flow may offer. */
+  wslProjectList: 'wsl-project:list',
+  /** Set up a distribution the user just picked. Starts it, and never installs anything. */
+  wslProjectPrepare: 'wsl-project:prepare',
+  /** Record that the user created this project on a WSL endpoint. */
+  wslProjectBind: 'wsl-project:bind',
+  /** The user deleted a WSL project. The endpoint's last one stops its keepalive. */
+  wslProjectUnbind: 'wsl-project:unbind',
   sshProjectStatus: 'ssh-project:status',
   /** main → renderer: an SSH project's identity file is passphrase-protected and the ssh-agent
    *  does not hold the key (or the last answer was wrong), so show a prompt.

@@ -32,6 +32,7 @@ app.on('child-process-gone', (_event, details) => {
   console[level](`[process] ${msg}`)
 })
 import { nativeMux, setNativeWindowsAgentOptIn, useNativeSsh } from '../core/remote-ssh/native/native-runtime'
+import { wslEndpoints } from '../core/remote-ssh/native/wsl-endpoint'
 import { writeFilesToClipboard } from './clipboard-files'
 import { writeWindowsFileDrop } from './clipboard-files-win'
 import { micConsentDecision, micSettingsUrl } from './mic-consent'
@@ -5347,6 +5348,13 @@ app.whenReady().then(async () => {
   // Windows SSH projects: the opt-in to keep passphrase-unlocked keys in the Windows OpenSSH agent
   // (core/remote-ssh/native/agent-add.ts). Read at each unlock, so a toggle applies to the next one.
   setNativeWindowsAgentOptIn(() => settingsStore.get().windowsSshAgentAddKeys === true)
+  let keepDistroRunning = settingsStore.get().wslKeepDistroRunning === true
+  settingsStore.onChange((s) => {
+    const next = s.wslKeepDistroRunning === true
+    if (next === keepDistroRunning) return
+    keepDistroRunning = next
+    void wslEndpoints()?.keepaliveSettingChanged()
+  })
   sshProjectManager = initSshProject(
     (projectId) => {
       // On (re)connect, reconcile the server's .nodeterm/project.json with our offline cache by rev.
@@ -5434,7 +5442,8 @@ app.whenReady().then(async () => {
         return { install: new Set(plan.install), remove: new Set(plan.remove), decided: plan.decided }
       },
       integrationReceipts: integrations.receipts
-    }
+    },
+    () => settingsStore.get().wslKeepDistroRunning === true
   )
   settingsStore.onChange(() => sshProjectManager?.onIntegrationConsentChanged())
   // Pre-warm the ControlMasters of OPEN SSH projects, in the background, one host at a time.

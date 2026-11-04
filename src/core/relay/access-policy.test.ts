@@ -184,6 +184,23 @@ describe('access policy: the fs jail', () => {
 })
 
 describe('access policy: argument checks that "read" alone would not make safe', () => {
+  it('an editor’s pty:create cannot name a WSL project’s connection; other routes pass', () => {
+    const route = (host: string) => ({ controlPath: '/c', conn: { host, user: 'u' }, remoteCwd: '~' })
+    const wsl = [{ persistKey: 'n1', sshRemote: route('ubuntu-0123456789abcdef.wsl.nodeterm.invalid') }]
+    expect(decideAccess('req', IPC.ptyCreate, wsl, ctx('editor'))).toEqual({ allow: true, args: [{ persistKey: 'n1' }] })
+    const upper = [{ persistKey: 'n1', sshRemote: route('UBUNTU-0123456789ABCDEF.WSL.NODETERM.INVALID') }]
+    expect(decideAccess('req', IPC.ptyCreate, upper, ctx('editor'))).toEqual({ allow: true, args: [{ persistKey: 'n1' }] })
+    const plain = [{ persistKey: 'n1', sshRemote: route('h.example.com') }]
+    expect(decideAccess('req', IPC.ptyCreate, plain, ctx('editor'))).toEqual({ allow: true })
+  })
+
+  it('no peer below owner reaches a WSL project channel', () => {
+    for (const ch of [IPC.wslProjectList, IPC.wslProjectPrepare, IPC.wslProjectBind, IPC.wslProjectUnbind]) {
+      expect(decideAccess('req', ch, [], ctx('viewer')).allow).toBe(false)
+      expect(decideAccess('req', ch, [], ctx('commenter')).allow).toBe(false)
+    }
+  })
+
   it('an editor cannot store a WSL distribution in a project’s local settings', () => {
     const save = (shell: string) =>
       decideAccess('req', IPC.projectSettingsUpdateLocal, ['P', { terminal: { shell } }], ctx('editor'))

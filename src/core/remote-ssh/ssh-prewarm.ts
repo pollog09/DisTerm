@@ -20,6 +20,7 @@
 //    fresh masters to N hosts are N independent budgets and nothing paces the logins themselves.
 
 import type { SshConnection } from '../../shared/ssh'
+import { isWslHost } from '../../shared/wsl-project'
 
 /** One project to pre-warm: everything `SshProjectManager.prewarm` needs, and nothing else. */
 export interface SshPrewarmTarget {
@@ -48,6 +49,9 @@ export function planSshPrewarm(input: SshPrewarmPlanInput): SshPrewarmTarget[] {
   const out: SshPrewarmTarget[] = []
   for (const p of input.projects) {
     if (!p.ssh || p.closed) continue
+    // Dialing one boots the distro, and a stuck distro can hang for minutes. Starting it is the
+    // user's choice, made when they switch to the project.
+    if (isWslHost(p.ssh.server.host)) continue
     if (input.busy(p.id)) continue
     // A project can appear twice in a malformed index; one master per id is all there is.
     if (out.some((t) => t.projectId === p.id)) continue

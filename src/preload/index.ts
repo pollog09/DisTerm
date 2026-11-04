@@ -322,6 +322,12 @@ const api: NodeTerminalApi = {
     remove: (id) => ipcRenderer.invoke(IPC.sshDelete, id),
     importCandidates: () => ipcRenderer.invoke(IPC.sshImport)
   },
+  wslProject: {
+    list: () => ipcRenderer.invoke(IPC.wslProjectList),
+    prepare: (distro, browseId) => ipcRenderer.invoke(IPC.wslProjectPrepare, distro, browseId),
+    bind: (projectId, host) => ipcRenderer.invoke(IPC.wslProjectBind, projectId, host),
+    unbind: (projectId, host) => ipcRenderer.invoke(IPC.wslProjectUnbind, projectId, host)
+  },
   sshProject: {
     connect: (projectId, conn, remoteCwd) =>
       ipcRenderer.invoke(IPC.sshConnectProject, projectId, conn, remoteCwd),

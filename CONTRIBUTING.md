@@ -293,6 +293,7 @@ distribution from `useWslTerminalsFor` / `wslTerminalsForProject` (`state/wslTer
 passes the row's `shell` to the node. That list is already empty off Windows and for SSH and relay
 projects, so do not add a platform check, and do not list distributions yourself: that starts
 `wsl.exe`. No test can catch a new menu that forgets this.
+
 ## The agent graph view
 
 The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.

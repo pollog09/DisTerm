@@ -16,6 +16,14 @@ describe('SshReconnector', () => {
     return { rec, connect, respawn }
   }
 
+  it('stops listening for changes when disposed', () => {
+    const unsubscribe = vi.fn()
+    const rec = new SshReconnector({ connect: vi.fn(), respawn: vi.fn(), onMayDialChange: () => unsubscribe })
+    expect(unsubscribe).not.toHaveBeenCalled()
+    rec.dispose()
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
   it('reconnects after a drop and respawns the reported node', async () => {
     const { rec, connect, respawn } = make()
     rec.reportDrop('p1', 'n1')

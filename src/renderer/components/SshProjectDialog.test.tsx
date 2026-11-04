@@ -11,6 +11,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SshProjectDialog } from './SshProjectDialog'
 import { useSshServers } from '../state/sshServers'
+import { SessionContext } from '../session/session'
+import type { WslPrepareResult } from '@shared/wsl-project'
 import type { SshServer } from '@shared/ssh'
 
 // React refuses act() outside a configured test environment without this flag.
@@ -74,6 +76,135 @@ describe('SshProjectDialog', () => {
   }
   const serverButtons = (): HTMLButtonElement[] =>
     [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Saved SSH servers"] button')]
+
+  describe('WSL distributions', () => {
+    const wslServer: SshServer = {
+      id: 'wsl-1',
+      label: 'WSL: My Distro',
+      host: 'my-distro-0123456789abcdef.wsl.nodeterm.invalid',
+      user: 'dev',
+      wslDistro: 'My Distro'
+    }
+
+    async function renderWsl(prepare: (d: string, b: string) => Promise<WslPrepareResult>, onCreate = vi.fn()) {
+      const list = vi.fn(async () => ({ available: true, distros: ['My Distro'] }))
+      const api = { wslProject: { list, prepare, bind: vi.fn() } }
+      root = createRoot(host)
+      await act(async () => {
+        root!.render(
+          <SessionContext.Provider value={{ api } as never}>
+            <SshProjectDialog onCreate={onCreate} onManage={vi.fn()} onClose={vi.fn()} />
+          </SessionContext.Provider>
+        )
+      })
+      return { list }
+    }
+
+    const wslRow = (): HTMLButtonElement => {
+      const b = document.querySelector<HTMLButtonElement>('[aria-label="WSL distributions"] button')
+      if (!b) throw new Error('no WSL row')
+      return b
+    }
+
+    it('lists without starting anything, and starts only the row that is picked', async () => {
+      const prepare = vi.fn(async (): Promise<WslPrepareResult> => ({ ok: true, server: wslServer, warnings: [] }))
+      connect.mockResolvedValue({ controlPath: '/c' })
+      await renderWsl(prepare)
+      expect(prepare).not.toHaveBeenCalled()
+      expect(connect).not.toHaveBeenCalled()
+      await act(async () => {
+        wslRow().click()
+      })
+      expect(prepare).toHaveBeenCalledWith('My Distro', expect.stringMatching(/^ssh-browse-/))
+      expect(connect).toHaveBeenCalledWith(expect.stringMatching(/^ssh-browse-/), wslServer)
+    })
+
+    it('creates a project holding the distro and the Linux folder', async () => {
+      const prepare = vi.fn(async (): Promise<WslPrepareResult> => ({ ok: true, server: wslServer, warnings: [] }))
+      connect.mockResolvedValue({ controlPath: '/c' })
+      const onCreate = vi.fn()
+      await renderWsl(prepare, onCreate)
+      await act(async () => {
+        wslRow().click()
+      })
+      await act(async () => {
+        click(buttonByText('Use this folder'))
+      })
+      expect(onCreate).toHaveBeenCalledWith({ server: wslServer, remoteCwd: '~', label: '~ · WSL: My Distro' })
+    })
+
+    it('shows a named warning and still lets the project be created', async () => {
+      const prepare = vi.fn(
+        async (): Promise<WslPrepareResult> => ({
+          ok: true,
+          server: wslServer,
+          warnings: [{ kind: 'tmux', message: 'tmux is not installed in "My Distro".', install: 'sudo apt install tmux' }]
+        })
+      )
+      connect.mockResolvedValue({ controlPath: '/c' })
+      await renderWsl(prepare)
+      await act(async () => {
+        wslRow().click()
+      })
+      expect(document.body.textContent).toContain('tmux is not installed in "My Distro".')
+      expect(buttonByText('Use this folder')).toBeTruthy()
+    })
+
+    it('names a missing sshd with its command, and Retry runs the setup again', async () => {
+      const prepare = vi.fn(
+        async (): Promise<WslPrepareResult> => ({
+          ok: false,
+          code: 'sshd-missing',
+          error: 'sshd is not installed in "My Distro". Run: sudo apt install openssh-server',
+          install: 'sudo apt install openssh-server'
+        })
+      )
+      await renderWsl(prepare)
+      await act(async () => {
+        wslRow().click()
+      })
+      expect(document.body.textContent).toContain('sudo apt install openssh-server')
+      expect(connect).not.toHaveBeenCalled()
+      await act(async () => {
+        click(buttonByText('Retry'))
+      })
+      expect(prepare).toHaveBeenCalledTimes(2)
+    })
+
+    it.each([
+      ['Cancel', () => click(buttonByText('Cancel'))],
+      ['Esc', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+      ['unmounting', () => root?.unmount()]
+    ])('%s while setup is pending starts no connection after it finishes', async (name, leave) => {
+      let finish: (r: WslPrepareResult) => void = () => {}
+      const prepare = vi.fn(() => new Promise<WslPrepareResult>((r) => (finish = r)))
+      await renderWsl(prepare)
+      await act(async () => {
+        wslRow().click()
+      })
+      await act(async () => {
+        leave()
+      })
+      await act(async () => {
+        finish({ ok: true, server: wslServer, warnings: [] })
+      })
+      expect(connect).not.toHaveBeenCalled()
+      if (name === 'unmounting') root = undefined
+    })
+
+    it('offers nothing when the core has no WSL', async () => {
+      const api = { wslProject: { list: vi.fn(async () => ({ available: false, distros: [] })), prepare: vi.fn(), bind: vi.fn() } }
+      root = createRoot(host)
+      await act(async () => {
+        root!.render(
+          <SessionContext.Provider value={{ api } as never}>
+            <SshProjectDialog onCreate={vi.fn()} onManage={vi.fn()} onClose={vi.fn()} />
+          </SessionContext.Provider>
+        )
+      })
+      expect(document.querySelector('[aria-label="WSL distributions"]')).toBeNull()
+    })
+  })
 
   it('keeps a large server collection in its own scroll region above the actions', () => {
     useSshServers.setState({

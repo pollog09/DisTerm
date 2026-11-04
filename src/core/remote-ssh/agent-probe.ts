@@ -32,6 +32,7 @@
 // Fail-open in the pre-#427 direction: no ambient socket, an unreadable `ssh -G`, a timeout, or
 // an identityagent value we do not recognise all yield `undefined` — the bare command, today's
 // behavior, one passphrase prompt at worst. Never a blocked connect.
+import { isWslHost } from '../../shared/wsl-project'
 import { execFile } from 'child_process'
 import path from 'path'
 import { findSshBinary } from './native/native-runtime'
@@ -143,6 +144,8 @@ export function probeAgentSockToPin(
   conn: SshConnection,
   deps: AgentProbeDeps = {}
 ): Promise<string | undefined> {
+  // A WSL project authenticates with its own key: no ssh_config or agent has a say.
+  if (isWslHost(conn.host)) return Promise.resolve(undefined)
   const env = deps.env ?? process.env
   const ambient = env.SSH_AUTH_SOCK
   // Nothing to pin without an ambient agent; skip the subprocess entirely.
