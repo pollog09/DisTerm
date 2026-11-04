@@ -296,7 +296,7 @@ export function setDeliveryQueue(q: DeliveryQueue | null): void {
 
 /** The board-log author for a queue-level record (an app action, not a person's) — the same stamp
  *  `recordDelivery` uses. */
-const QUEUE_TRACE_AUTHOR = { name: 'nodeterm', color: '#8b8b8b' } as const
+const QUEUE_TRACE_AUTHOR = { name: 'DisTerm', color: '#8b8b8b' } as const
 
 /**
  * Build the deliver-on-idle queue against a messaging deps record, WIRING both trace legs required

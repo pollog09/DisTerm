@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   shareProbeCommand, parseShareProbe, teamCliCommand, parseTeamCliOutput,
-  killVerifyCommand, parseKillVerify, paneCommandsByNode, SHARE_INSTALL_SCRIPT, SERVER_INSTALL_URL
+  killVerifyCommand, parseKillVerify, paneCommandsByNode, shareInstallScript
 } from './share-team-remote'
 
 const run = promisify(execFile)
@@ -126,6 +126,9 @@ const innerScript = (command: string): string => {
   return command.slice("sh -c '".length, -1).split("'\\''").join("'")
 }
 const noSystemUnit = (): string => path.join(dir, 'etc', 'no-such.service')
+
+const SERVER_INSTALL_URL = 'https://installer.example/install-server.sh'
+const SHARE_INSTALL_SCRIPT = shareInstallScript(SERVER_INSTALL_URL)
 
 describe.skipIf(process.platform === 'win32')('share-team remote shell (real /bin/sh, fake host)', () => {
   it('probes a user install: unit, node, main, data dir, meta, bootstrap verb, status, real cwd, panes', async () => {
@@ -310,7 +313,8 @@ describe.skipIf(process.platform === 'win32')('share-team remote shell (real /bi
       innerScript(shareProbeCommand('~/proj')),
       innerScript(teamCliCommand({ node: '/usr/bin/node', main: '/x/main.cjs', dataDir: '/d d' }, ['resume', '--project', 'p 1', '--json'])),
       innerScript(killVerifyCommand(['term-1', 'term-a.1'])),
-      SHARE_INSTALL_SCRIPT
+      SHARE_INSTALL_SCRIPT,
+      shareInstallScript(undefined)
     ]
     for (const s of scripts) {
       expect(s).not.toContain("\\'")
@@ -398,6 +402,14 @@ describe.skipIf(process.platform === 'win32')('share-team remote shell (real /bi
   it('the install script downloads to a temp file (a curl failure is an error, not an empty bash run)', () => {
     expect(SHARE_INSTALL_SCRIPT).toContain(SERVER_INSTALL_URL)
     expect(SHARE_INSTALL_SCRIPT).not.toMatch(/\|\s*bash/)
+  })
+  it('with no installer configured it fetches nothing, says so and fails', async () => {
+    const script = shareInstallScript(undefined)
+    expect(script).not.toContain('curl')
+    await expect(run('/bin/sh', ['-c', script])).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining('NODETERM_SERVER_INSTALL_URL')
+    })
   })
   it('the install script runs the download, passes its exit code through and removes the temp file on every exit', async () => {
     const curlBin = path.join(dir, 'bin-curl')

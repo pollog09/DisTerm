@@ -31,9 +31,9 @@ const labelOf = (id: IntegrationAgentId): string => AGENT_CONFIG[id]?.label ?? i
 
 /** What an integration writes, in one sentence (the same words everywhere it is offered). */
 export const INTEGRATION_WRITES =
-  'nodeterm adds a status hook to each agent’s own settings and installs two small skills ' +
+  'DisTerm adds a status hook to each agent’s own settings and installs two small skills ' +
   '(canvas control, reading linked nodes) in its skills folder. Nothing is added to your ' +
-  'AGENTS.md / GEMINI.md, and turning an agent off removes exactly what nodeterm added.'
+  'AGENTS.md / GEMINI.md, and turning an agent off removes exactly what DisTerm added.'
 
 export const INTEGRATION_UNAVAILABLE =
   `Terminals always work. Without an integration, that agent has no ${FEATURES_NEEDING_INTEGRATION.join('; no ')}.`
@@ -54,7 +54,7 @@ export function IntegrationPromptBanner({ onChoose }: { onChoose: () => void }):
     <div className="announce-banner announce-banner--info" role="status" data-testid="integration-prompt">
       <span className="announce-banner__dot" />
       <div className="announce-banner__content">
-        <span className="announce-banner__title">Integrate nodeterm with your agent CLIs?</span>
+        <span className="announce-banner__title">Integrate DisTerm with your agent CLIs?</span>
         <span className="announce-banner__body">
           {INTEGRATION_WRITES} {INTEGRATION_UNAVAILABLE}
         </span>
@@ -92,7 +92,7 @@ export function IntegrationGrandfatherNotice({ onOpenSettings }: { onOpenSetting
         <span className="announce-banner__title">Agent integrations are now a choice</span>
         <span className="announce-banner__body">
           They stay on for every agent, as before. You can turn any agent (or any SSH host) off in
-          Settings → Agents — nodeterm then removes exactly what it added.
+          Settings → Agents — DisTerm then removes exactly what it added.
         </span>
       </div>
       <button
@@ -133,7 +133,7 @@ export function HostIntegrationBanner({
       <div className="announce-banner__content">
         <span className="announce-banner__title">Integrate with the agents on {hostLabel ?? hostKey}?</span>
         <span className="announce-banner__body">
-          nodeterm writes the same hooks and skills into your agent config on that host. Nothing is
+          DisTerm writes the same hooks and skills into your agent config on that host. Nothing is
           installed there until you say. {INTEGRATION_UNAVAILABLE}
         </span>
       </div>
@@ -179,7 +179,7 @@ function IntegrationRow({
         </Button>
       )}
       {choice === 'enabled' && (
-        <Button onClick={() => onChoose('declined')} aria-label={`Remove the ${label} integration and what nodeterm added`}>
+        <Button onClick={() => onChoose('declined')} aria-label={`Remove the ${label} integration and what DisTerm added`}>
           Remove
         </Button>
       )}
@@ -249,7 +249,7 @@ export function IntegrationSettings(): React.JSX.Element {
       )}
       {!!status?.retained.length && (
         <div className="pt-2 text-[12px] text-muted" data-testid="integration-retained">
-          Kept because you changed them since nodeterm wrote them (remove by hand if you no longer
+          Kept because you changed them since DisTerm wrote them (remove by hand if you no longer
           want them):
           <ul className="list-disc pl-5">
             {status.retained.map((p) => (

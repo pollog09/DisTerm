@@ -87,6 +87,7 @@ function baseDeps(over: Partial<PushNotifyDeps> = {}): PushNotifyDeps {
     mobilePushDone: () => true,
     isPackaged: () => true,
     getNodeTitle: () => undefined,
+    apiBase: 'https://api.nodeterm.dev',
     env: {},
     fetchImpl: fetchMock as unknown as typeof fetch,
     now: () => clock,
@@ -282,7 +283,7 @@ describe('createPushNotify', () => {
   it('honors NODETERM_API_BASE override', async () => {
     const em = makeEmitter()
     const h = createPushNotify(
-      baseDeps({ subscribe: em.subscribe, env: { NODETERM_API_BASE: 'http://localhost:9999' } })
+      baseDeps({ subscribe: em.subscribe, apiBase: undefined, env: { NODETERM_API_BASE: 'http://localhost:9999' } })
     )
     em.emit(iev({ nodeId: 'a' }))
     await vi.advanceTimersByTimeAsync(2000)
@@ -328,6 +329,9 @@ describe('createPushNotify', () => {
     })
     it('unpackaged without a local API base', async () => {
       await expectNoPost({ isPackaged: () => false, env: {} })
+    })
+    it('no configured API base, even packaged: push has no default server', async () => {
+      await expectNoPost({ apiBase: undefined, env: {} })
     })
   })
 
@@ -966,6 +970,7 @@ describe('createLiveUpdatePush', () => {
       mobileLiveActivities: () => true,
       isPackaged: () => true,
       getNodeTitle: () => undefined,
+      apiBase: 'https://api.nodeterm.dev',
       env: {},
       fetchImpl: fetchMock as unknown as typeof fetch,
       now: () => clock,
@@ -1184,7 +1189,7 @@ describe('createLiveUpdatePush', () => {
   })
 
   it('honors NODETERM_API_BASE override', async () => {
-    const { h, st } = wire({ env: { NODETERM_API_BASE: 'http://localhost:9999' } })
+    const { h, st } = wire({ apiBase: undefined, env: { NODETERM_API_BASE: 'http://localhost:9999' } })
     st.emit({ nodeId: 'a', event: 'start', state: 'working', ts: 1 })
     await vi.advanceTimersByTimeAsync(1000)
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:9999/v1/push/live-update')
@@ -1227,6 +1232,9 @@ describe('createLiveUpdatePush', () => {
     })
     it('unpackaged without a local API base', async () => {
       await expectNoPost({ isPackaged: () => false, env: {} })
+    })
+    it('no configured API base, even packaged: push has no default server', async () => {
+      await expectNoPost({ apiBase: undefined, env: {} })
     })
   })
 
@@ -1709,6 +1717,7 @@ describe('push payload ts is Unix MILLISECONDS (the mirror is the source)', () =
       mobilePushEnabled: () => true,
       mobileLiveActivities: () => true,
       isPackaged: () => true,
+      apiBase: 'https://api.nodeterm.dev',
       env: {},
       fetchImpl: fetchMock as unknown as typeof fetch,
       now: () => clock,
@@ -1731,6 +1740,7 @@ describe('push payload ts is Unix MILLISECONDS (the mirror is the source)', () =
       mobilePushEnabled: () => true,
       mobileLiveActivities: () => true,
       isPackaged: () => true,
+      apiBase: 'https://api.nodeterm.dev',
       env: {},
       fetchImpl: fetchMock as unknown as typeof fetch,
       now: () => clock,
@@ -2318,6 +2328,7 @@ describe('host-mode push proves possession of the host key (hostAuth session)', 
         mobilePushEnabled: () => true,
         mobileLiveActivities: () => true,
         isPackaged: () => true,
+        apiBase: 'https://api.nodeterm.dev',
         env: {},
         fetchImpl: fetchMock as unknown as typeof fetch,
         now: () => clock,

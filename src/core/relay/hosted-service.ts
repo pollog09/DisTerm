@@ -76,8 +76,9 @@ export type HostedPending = SharedHostedPending
  *  `replaced`: the same device connected again, and its newer request took this one's place. Shared
  *  with the renderer, so a reason added here without its owner-dialog handling fails to compile there. */
 export type PendingClosedReason = HostedPendingClosedReason
-/** `stopped`: a `stop()` landed after this `start()` was called and before it finished; it wins. */
-export type HostedStartResult = 'started' | 'no-team' | 'host-key-unreadable' | 'stopped'
+/** `no-relay`: this server has no relay configured (NODETERM_RELAY_URL), so there is nothing to host on.
+ *  `stopped`: a `stop()` landed after this `start()` was called and before it finished; it wins. */
+export type HostedStartResult = 'started' | 'no-team' | 'no-relay' | 'host-key-unreadable' | 'stopped'
 /** `not-running`: the key was rotated on a service that was not hosting, and hosting stays off. */
 export type HostedRotateResult = HostedStartResult | 'not-running'
 /** Hosting's first verdict: a listener is open (`up`), the backend refused to mint (`refused`, with
@@ -126,6 +127,8 @@ export interface HostedInfo { relayEndpoint: string; hostId: string; hostPublicK
 
 export interface HostedStatus {
   enabled: boolean
+  /** Set when this server has no relay configured, so hosting cannot start at all. */
+  noRelay?: true
   scheduler: SchedulerStatus | null
   peers: Array<{ label: string; role: TeamRole; connected: boolean }>
   pending: HostedPending[]
@@ -568,6 +571,7 @@ export function createHostedService(deps: HostedServiceDeps): HostedService {
     if (scheduler) return 'started'
     if (my !== epoch) return 'stopped'
     if (!team.exists()) return 'no-team'
+    if (!deps.relayUrl) return 'no-relay'
     // The team BEFORE the key: status() then shows the members even when the key is unreadable.
     await team.load()
     let k: KeyPair | null
@@ -668,7 +672,8 @@ export function createHostedService(deps: HostedServiceDeps): HostedService {
     },
     joinCode() {
       const i = api.info()
-      return i ? encodeJoinCode({ v: 1, ...i, label: i.label.slice(0, JOIN_LABEL_MAX) }) : null
+      // A code with no relay in it would only be refused by whoever pasted it.
+      return i && deps.relayUrl ? encodeJoinCode({ v: 1, ...i, label: i.label.slice(0, JOIN_LABEL_MAX) }) : null
     },
     status() {
       const connected = new Set<string>()
@@ -678,6 +683,7 @@ export function createHostedService(deps: HostedServiceDeps): HostedService {
       }
       return {
         enabled: scheduler !== null,
+        ...(deps.relayUrl || !team.exists() ? {} : { noRelay: true as const }),
         scheduler: scheduler?.status() ?? null,
         peers: team.current().peers.map((p) => ({ label: p.label, role: p.role, connected: connected.has(p.pubkeyB64) })),
         pending: pendingList()
@@ -699,7 +705,7 @@ export function createHostedService(deps: HostedServiceDeps): HostedService {
         if (!scheduler) return { refused: 'Hosting is not running on this server.' }
         const s = scheduler.status()
         if (s.state === 'backend-refused') {
-          return { refused: s.lastError ?? 'The nodeterm API refused to issue relay tokens.' }
+          return { refused: s.lastError ?? 'The API refused to issue relay tokens.' }
         }
         if (s.idle > 0 || s.bridged > 0) return 'up'
         return null

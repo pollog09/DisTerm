@@ -13,7 +13,7 @@ export function reconnectDelayMs(attempt: number): number {
 
 /** What an unattended reconnect says, once per streak, while the service's per-network limiter
  *  holds it back (R41). */
-export const THROTTLED_NOTICE = 'The nodeterm service is limiting requests from this network — retrying in a minute.'
+export const THROTTLED_NOTICE = 'The DisTerm service is limiting requests from this network — retrying in a minute.'
 
 /** A throttled retry never comes sooner than this, whatever Retry-After says (R41). */
 export const THROTTLE_MIN_DELAY_MS = 60_000
@@ -140,7 +140,7 @@ export function joinStopMessage(f: JoinFailure, teamLabel: string): string | nul
     case 'E_JOIN_RATE':
       return `Too many join attempts for ${team} today. Try again tomorrow.`
     case 'E_JOIN_THROTTLED':
-      return 'The nodeterm service is limiting requests from this network. Try again in a minute.'
+      return 'The DisTerm service is limiting requests from this network. Try again in a minute.'
     case 'E_JOIN_BAD_CODE':
       return `The invite code for ${team} is not valid. Ask an owner for a fresh code.`
     case 'E_JOIN_KEY_LOCKED':

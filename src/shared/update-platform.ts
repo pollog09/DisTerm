@@ -8,10 +8,12 @@
  * still download the full ~231MB AppImage for nothing. For that case we degrade to a
  * manual-download link. macOS (dmg/zip) self-installs as before.
  *
- * The unsigned Windows beta reaches the same manual-download link by a different route: its
- * release package carries the `nodeTermUpdates=manual` build marker (see `updateDelivery`), not a
- * platform rule — so the day a signed Windows release drops the marker it self-installs with
- * nothing to edit here.
+ * An unsigned package reaches the same manual-download link by a different route: the
+ * `nodeTermUpdates=manual` build marker (see `updateDelivery`), not a platform rule.
+ *
+ * DisTerm has no default feed: a package reaches a feed only when it was built with
+ * `-c.extraMetadata.distermUpdateFeed=<https url>`. Forgetting the flag can therefore never pull an
+ * update from anywhere; such a build is `no-channel` (see `updateDelivery`).
  */
 import type { UpdateInfo } from './types'
 
@@ -22,15 +24,28 @@ export function isManualUpdatePlatform(platform: string, hasAppImage: boolean): 
 
 /**
  * The build marker that asks for a feed check WITHOUT self-install: the updater learns which
- * version is out, never downloads it and never installs it. `dist:win:release` stamps it on the
- * unsigned Windows beta — an unsigned auto-update is a downgrade in trust, a "new version is
+ * version is out, never downloads it and never installs it. No script stamps it today; pass
+ * `-c.extraMetadata.nodeTermUpdates=manual` for an unsigned package — an unsigned auto-update is a downgrade in trust, a "new version is
  * available — download it" card is not.
  */
 export const MANUAL_UPDATE_MODE = 'manual'
 
+/**
+ * The feed a packaged build was stamped with (`distermUpdateFeed`), or null. https only: an update
+ * is code this app will run, and the value is read from package.json where any text can sit.
+ */
+export function validUpdateFeed(feed: unknown): string | null {
+  if (typeof feed !== 'string' || !feed) return null
+  try {
+    return new URL(feed).protocol === 'https:' ? feed : null
+  } catch {
+    return null
+  }
+}
+
 /** True when updater networking should be initialized for this runtime/build. */
-export function shouldEnableUpdater(isPackaged: boolean, updateMode: unknown): boolean {
-  return isPackaged && updateMode !== 'disabled'
+export function shouldEnableUpdater(isPackaged: boolean, updateMode: unknown, feed: unknown): boolean {
+  return isPackaged && updateMode !== 'disabled' && validUpdateFeed(feed) !== null
 }
 
 /** Cap on release-notes text forwarded to the renderer: the card shows a few highlights, and a
@@ -97,11 +112,11 @@ export function installReadiness(
  *                     Linux .deb/.rpm (no APPIMAGE, so quitAndInstall throws), and any build
  *                     stamped `nodeTermUpdates=manual` (the unsigned Windows beta, until signing
  *                     lands). We know which version is out; the user installs it themselves.
- *  - `no-channel`     there is no feed AT ALL — the build was packaged with updates switched off
- *                     (`nodeTermUpdates=disabled`, which every LOCAL `dist*` script sets). This
- *                     build can never learn that a newer version exists, so a
- *                     check must say so and point at the download page. Reporting "up to date"
- *                     here — what shipped before issue #814 — is a false statement, not feedback.
+ *  - `no-channel`     there is no feed AT ALL: the build carries no valid `distermUpdateFeed` (the
+ *                     default for every package), or was stamped `nodeTermUpdates=disabled`. This
+ *                     build can never learn that a newer version exists, so a check must say so.
+ *                     Reporting "up to date" here — what shipped before issue #814 — is a false
+ *                     statement, not feedback.
  *  - `dev`            unpackaged. Deliberately keeps the old quiet "up to date" reply: a developer
  *                     running `npm run dev` is not a user who can be misled about their install.
  *
@@ -114,13 +129,15 @@ export type UpdateDelivery = 'self-install' | 'manual-install' | 'no-channel' | 
 export function updateDelivery(opts: {
   isPackaged: boolean
   updateMode: unknown
+  /** The packaged `distermUpdateFeed` value, unvalidated. Anything but an https url is no feed. */
+  feed: unknown
   platform: string
   hasAppImage: boolean
 }): UpdateDelivery {
   if (!opts.isPackaged) return 'dev'
   // Composed from the two primitives above rather than re-deciding either — one definition of
   // "has a feed" and one of "can self-install", so the wiring and the copy cannot drift apart.
-  if (!shouldEnableUpdater(opts.isPackaged, opts.updateMode)) return 'no-channel'
+  if (!shouldEnableUpdater(opts.isPackaged, opts.updateMode, opts.feed)) return 'no-channel'
   // The marker wins over the platform: it is the build saying "never install yourself".
   if (opts.updateMode === MANUAL_UPDATE_MODE) return 'manual-install'
   return isManualUpdatePlatform(opts.platform, opts.hasAppImage) ? 'manual-install' : 'self-install'
@@ -141,15 +158,15 @@ export function mayQuitAndInstall(delivery: UpdateDelivery): boolean {
 export interface NoSelfInstallCopy {
   title: string
   body: string
-  /** Label of the button that opens the download page. */
-  action: string
+  /** Label of the button that opens the download page. Absent = there is no page to send them to. */
+  action?: string
 }
 
 /**
  * The two "you install it yourself" sentences, side by side so neither can quietly become the
  * other. They are NOT interchangeable: `manual-install` names a version we actually saw on the
- * feed and asks the user to install that package; `no-channel` knows no version at all and can
- * only send the user to look. Swapping them sends someone to the wrong place.
+ * feed and asks the user to install that package; `no-channel` knows no version at all and has
+ * nowhere to send the user. Swapping them sends someone to the wrong place.
  *
  * `manual-install`'s wording is the one Linux .deb/.rpm installs have always shown — keep it
  * byte-identical, it is the pinned no-change path.
@@ -161,15 +178,12 @@ export function noSelfInstallCopy(
   if (delivery === 'manual-install') {
     return {
       title: 'Update available',
-      body: `nodeterm v${version ?? ''} is available. Download it to update.`,
+      body: `DisTerm v${version ?? ''} is available. Download it to update.`,
       action: 'Download'
     }
   }
   return {
-    title: 'No update channel',
-    body:
-      'This build has no update channel, so it cannot tell you when a new version is out. ' +
-      'Download the latest installer to update.',
-    action: 'Open download page'
+    title: 'Updates not configured',
+    body: 'Updates are not configured for this build, so it cannot tell you when a new version is out. Rebuild DisTerm from source to update.'
   }
 }

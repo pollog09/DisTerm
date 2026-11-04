@@ -48,7 +48,7 @@
  * two copies of one diagnosis drift into two diagnoses.
  */
 export const STALE_ENDPOINT_HINT =
-  'The endpoint this session was handed appears stale (nodeterm may have quit or restarted since this terminal was created), and no live fallback endpoint answered. If nodeterm is running, retry once — it re-advertises the endpoint on start.'
+  'The endpoint this session was handed appears stale (DisTerm may have quit or restarted since this terminal was created), and no live fallback endpoint answered. If DisTerm is running, retry once — it re-advertises the endpoint on start.'
 
 export const HOOK_ENDPOINT_FALLBACK_SH = [
   '# --- Endpoint failover helpers (shared: managed hook script + both sh shims) ---------------',
@@ -264,10 +264,10 @@ nt_probe_endpoint() {
  * `OWNER_UNREACHABLE_LEAD` is quoted verbatim by the agent-facing bodies (see
  * `ownerUnreachableGuidanceLines`), so the docs and the script cannot drift apart.
  */
-export const OWNER_UNREACHABLE_LEAD = 'The nodeterm connection that owns this node is unreachable.'
+export const OWNER_UNREACHABLE_LEAD = 'The DisTerm connection that owns this node is unreachable.'
 
 export const FOREIGN_ENDPOINT_HINT =
-  `${OWNER_UNREACHABLE_LEAD} Other nodeterm endpoints on this machine were skipped: they keep a ` +
+  `${OWNER_UNREACHABLE_LEAD} Other DisTerm endpoints on this machine were skipped: they keep a ` +
   'different identity for this node, so their answer would describe a different canvas. This is temporary — for an SSH ' +
   "project it usually means the desktop's reverse tunnel is down (the desktop is asleep, offline or " +
   'reconnecting). Retry the same command after it reconnects.'
@@ -281,7 +281,7 @@ export const FOREIGN_ENDPOINT_HINT =
  */
 export const TUNNEL_DOWN_HINT =
   `${OWNER_UNREACHABLE_LEAD} This session reaches it through an SSH project's reverse tunnel, and ` +
-  'the tunnel is not answering: the desktop is asleep, offline or reconnecting, or nodeterm on it ' +
+  'the tunnel is not answering: the desktop is asleep, offline or reconnecting, or DisTerm on it ' +
   'has quit. This is temporary — retry the same command after the desktop reconnects.'
 
 /** The agent-facing half of FOREIGN_ENDPOINT_HINT, rendered into all four bodies (canvas skill +
@@ -290,7 +290,7 @@ export const TUNNEL_DOWN_HINT =
 export function ownerUnreachableGuidanceLines(): string[] {
   return [
     `Owner unreachable: if a call fails with "${OWNER_UNREACHABLE_LEAD.replace(/\.$/, '')}", the`,
-    'nodeterm app that owns this session is not answering right now; for an SSH project that usually',
+    'DisTerm app that owns this session is not answering right now; for an SSH project that usually',
     "means the desktop's reverse tunnel is down (asleep, offline or reconnecting). This is temporary:",
     'retry the same command later rather than giving up.'
   ]

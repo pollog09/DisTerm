@@ -1,6 +1,6 @@
-# nodeterm Server Edition (Phase 2)
+# DisTerm Server Edition (Phase 2)
 
-Run nodeterm's canvas in a browser, backed by a headless Node server on your own
+Run DisTerm's canvas in a browser, backed by a headless Node server on your own
 machine or box. The server serves the **same** built renderer the desktop app uses
 and speaks a WebSocket-RPC protocol to it; a browser-side `window.nodeTerminal`
 shim (`src/renderer/bridge/`) stands in for the Electron preload, so the React UI is
@@ -91,13 +91,27 @@ The Server Edition doubles as a **headless notification host**: a background pro
 Linux box that gives a phone SSHing into it full push / Live-Activity coverage — **without
 serving the browser UI and without opening a single port**.
 
-### One-line install
+**In DisTerm this does nothing for a phone until you supply a backend.** The fork ships no push
+backend: with `NODETERM_API_BASE` unset, push is off on this host even when a grant exists. The
+service, the hook server and the session budget still run. Setting that variable also redirects the
+license, check and project-limit calls to your server: read the warning under "Off by default" in the
+[README](../README.md#off-by-default-anything-that-needs-a-relay), including `LICENSE` clause (b), first.
+
+### Install from your own clone
+
+DisTerm publishes no server repository, so the installer needs a source. Run it from a checkout,
+naming a git URL you control:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/install-server.sh | bash
+NODETERM_REPO_URL=<your clone's git url> bash scripts/install-server.sh
 ```
 
-The installer (`scripts/install-server.sh`) is idempotent — re-run it any time to update. It:
+The installer (`scripts/install-server.sh`) is idempotent — re-run it any time to update. With
+`NODETERM_REPO_URL` unset it uses the `origin` of an existing `~/.nodeterm-server-app`, and with
+neither it refuses. Before any fetch it checks both values, case-insensitively, against upstream's
+repository: `NODETERM_REPO_URL` naming upstream is refused, and a checkout whose origin is upstream's
+gets `NODETERM_REPO_URL` as its new origin, or is refused if that is unset. It installs the source's
+`main` branch. It:
 
 - needs only `git`, `curl` and `tar` on the host — **Node.js is no longer a prerequisite**: if a
   system Node ≥ 20 (with npm) is present it's used as-is, otherwise the installer downloads a
@@ -126,13 +140,10 @@ The installer also installs a `nodeterm-server-update.service` (a `oneshot`) plu
 `nodeterm-server-update.timer` (`OnCalendar=daily`, `RandomizedDelaySec=3600`, `Persistent=true`),
 with the **same root/user split** as the main service (a system unit under
 `/etc/systemd/system/`, or a per-user unit under `~/.config/systemd/user/`). When it fires, the
-service:
-
-1. `git pull --ff-only` in `~/.nodeterm-server-app` — updating the checkout **including this
-   updater script**, so the updater logic keeps itself current;
-2. re-execs the freshly-pulled `scripts/install-server.sh`, which rebuilds and restarts the
-   service. The installer is idempotent, so an already-current pull just no-ops through a harmless
-   rebuild.
+service runs `scripts/install-server.sh` from `~/.nodeterm-server-app`. The installer first makes the
+source checks above, so neither an install nor the daily update pulls from upstream's repository. Then
+it pulls, rebuilds and restarts the service. The
+installer is idempotent, so a run with nothing new just no-ops through a harmless rebuild.
 
 **Opt out:** run the installer with `NODETERM_NO_AUTOUPDATE=1` — it skips the timer, and (so a
 re-run can turn auto-update off) **removes an existing** timer/service. The installer prints the

@@ -87,7 +87,7 @@ export const STATION_SWEEP_MS = 30_000
 export const STATION_RATE_RETRY_MAX_MS = 60_000
 
 /** The author of the board-log line — the app, like every other trace it writes. */
-const NOTICE_AUTHOR = { name: 'nodeterm', color: '#8b8b8b' } as const
+const NOTICE_AUTHOR = { name: 'DisTerm', color: '#8b8b8b' } as const
 
 export interface StationNoticeDeps {
   now(): number

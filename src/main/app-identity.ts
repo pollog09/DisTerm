@@ -10,7 +10,7 @@
  * dropped or mis-attributed with no error at all (Windows never emits Notification 'failed').
  * `app-identity.test.ts` pins the two together.
  */
-export const APP_USER_MODEL_ID = 'com.nodeterm.app'
+export const APP_USER_MODEL_ID = 'com.distriib.disterm'
 
 /**
  * The id to pass to `app.setAppUserModelId`, or null where there is nothing to set.

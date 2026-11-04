@@ -11,10 +11,10 @@ import nacl from 'tweetnacl'
 export type PopPurpose = 'host-token' | 'push'
 export type PopRefusal = 'pop_required' | 'pop_invalid'
 export const POP_REFUSED_MESSAGE =
-  "The relay refused this host's key proof — update nodeterm, or run `team rotate-key` if the key was replaced."
+  "The relay refused this host's key proof — update DisTerm, or run `team rotate-key` if the key was replaced."
 /** The desktop phone relay's copy: `team rotate-key` exists only in the Server Edition. */
 export const POP_REFUSED_MESSAGE_DESKTOP =
-  "The relay refused this computer's key proof — update nodeterm; if it persists after updating, contact support."
+  "The relay refused this computer's key proof — update DisTerm; if it persists after updating, contact support."
 
 const PROOF_LABEL = 'nodeterm/relay-pop/v1'
 const hmac = (key: Buffer | Uint8Array, data: string): Buffer => createHmac('sha256', key).update(data).digest()

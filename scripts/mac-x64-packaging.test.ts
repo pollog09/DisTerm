@@ -34,7 +34,6 @@ describe('Intel Mac packaging', () => {
     expect(builder).toContain('--mac --x64')
     expect(builder).not.toContain('arm64')
     expect(builder).toContain('-c.mac.identity=null')
-    expect(builder).toContain('-c.extraMetadata.nodeTermUpdates=disabled')
   })
 
   it('restores the native node-pty afterwards, or `npm run dev` on Apple silicon breaks', () => {

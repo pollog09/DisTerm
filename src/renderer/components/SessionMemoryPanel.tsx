@@ -273,7 +273,7 @@ export function SessionMemoryPanel({
       {measured && !relay && hostCost && (
         <div
           className="sessmem-host"
-          title="Measured working set of nodeterm's session host and the console hosts it runs for each terminal. It is shared, so it belongs to no session above."
+          title="Measured working set of DisTerm's session host and the console hosts it runs for each terminal. It is shared, so it belongs to no session above."
         >
           <span className="sessmem-host__label">{hostOverheadLabel(hostCost)}</span>
           <span className="sessmem-host__mb">{formatMb(hostCost.totalMb)}</span>
@@ -282,13 +282,13 @@ export function SessionMemoryPanel({
 
       {/* Whose memory this is. The feature exists because a user reported "Claude terminals are
           killing my memory" — their NUMBER was right and their attribution was wrong: it is the
-          agent CLI's own V8 heap, and nodeterm allocates none of it. Showing those numbers inside
-          nodeterm's chrome with nothing said about it lets the panel repeat the mistake it was
+          agent CLI's own V8 heap, and DisTerm allocates none of it. Showing those numbers inside
+          DisTerm's chrome with nothing said about it lets the panel repeat the mistake it was
           built to correct. One line, no figures: the measurements vary per machine and per model,
           and quoting one here would age into a lie (docs/session-memory.md §1 has them). */}
       <div className="sessmem-panel__attrib">
         Memory held by each session's own processes — the agent CLI and what it spawned, not
-        nodeterm itself.
+        DisTerm itself.
       </div>
 
       {/* nodeterm's OWN processes, below the attribution line on purpose: they
@@ -301,10 +301,10 @@ export function SessionMemoryPanel({
       {measured && !relay && scopeKey === '' && appSelf && (
         <div
           className="sessmem-app"
-          title="nodeterm's own processes, in the same accounting as the rows above (on macOS: physical footprint, which includes graphics memory that ps does not show). CPU is time used since each process started."
+          title="DisTerm's own processes, in the same accounting as the rows above (on macOS: physical footprint, which includes graphics memory that ps does not show). CPU is time used since each process started."
         >
           <div className="sessmem-host">
-            <span className="sessmem-host__label">nodeterm itself</span>
+            <span className="sessmem-host__label">DisTerm itself</span>
             <span className="sessmem-host__mb">
               {appSelf.ok ? (appSelf.totalMb !== undefined ? formatMb(appSelf.totalMb) : '—') : ''}
             </span>
@@ -320,7 +320,7 @@ export function SessionMemoryPanel({
               </div>
             ))
           ) : (
-            <div className="sessmem-panel__note">Could not measure nodeterm&apos;s own processes.</div>
+            <div className="sessmem-panel__note">Could not measure DisTerm&apos;s own processes.</div>
           )}
         </div>
       )}

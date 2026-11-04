@@ -60,12 +60,6 @@ export const OnboardingFlow = withSuspense(
 export const DictationOverlay = withSuspense(
   lazy(() => import('./DictationOverlay').then((m) => ({ default: m.DictationOverlay })))
 )
-export const BugReportDialog = withSuspense(
-  lazy(() => import('./BugReportDialog').then((m) => ({ default: m.BugReportDialog })))
-)
-export const MobileLaunchCard = withSuspense(
-  lazy(() => import('./MobileLaunchCard').then((m) => ({ default: m.MobileLaunchCard })))
-)
 // Pulls `qrcode` (the live pairing QR) — a whole encoder in the startup chunk for a popover most
 // launches never open.
 export const PhonePairPopover = withSuspense(

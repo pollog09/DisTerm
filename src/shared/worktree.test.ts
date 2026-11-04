@@ -491,7 +491,7 @@ describe('worktreeRemoveMessage', () => {
   it('an adopted worktree defaults to unbind, and says so; the disk opt-in is spelled out', () => {
     const adopted = { ...base, canDelete: false, deleteFromDisk: false }
     const unbind = worktreeRemoveMessage(adopted)
-    expect(unbind).toContain('not created by nodeterm')
+    expect(unbind).toContain('not created by DisTerm')
     expect(unbind).not.toContain('DELETED')
     expect(worktreeRemoveMessage({ ...adopted, deleteFromDisk: true })).toContain(
       '⚠ The worktree directory will be DELETED. Its branch is kept.'

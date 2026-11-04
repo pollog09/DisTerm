@@ -136,7 +136,7 @@ describe('automatic downloads are quiet', () => {
 
   it('a manual-delivery payload (check-only build) still opens its card', () => {
     act(() => fire.available({ version: '0.6.0', notes: '', manual: true }))
-    expect(text()).toContain('nodeterm v0.6.0 is available. Download it to update.')
+    expect(text()).toContain('DisTerm v0.6.0 is available. Download it to update.')
   })
 
   it('an automatic "up to date" says nothing', () => {
@@ -168,7 +168,7 @@ describe('the ready card', () => {
     const busy = container.querySelector<HTMLButtonElement>('button[disabled]')
     expect(busy?.textContent).toContain('Preparing…')
     act(() => fire.installing({ phase: 'restarting', version: '0.6.0' }))
-    expect(text()).toContain('Restarting nodeterm…')
+    expect(text()).toContain('Restarting DisTerm…')
     expect(container.querySelector<HTMLButtonElement>('button[disabled]')?.textContent).toContain('Restarting…')
   })
 

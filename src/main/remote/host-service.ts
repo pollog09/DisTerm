@@ -60,12 +60,16 @@ import { browseHostDirectory, isWithinRootsFor, type BrowseFs } from '../../core
 import { stripAnsi } from '../../core/transcript-reader'
 import type { VisibleCapture } from '../../core/watch-link/capture-route'
 import { resumeRepaintText } from '../../shared/capture-paint'
+import { RELAY_UNAVAILABLE_REASON } from '../../shared/relay-availability'
 
-// Default relay endpoint; `NODETERM_RELAY_URL` overrides it (mirrors license.ts's API_BASE /
-// CHECKOUT_URL env-override pattern — used both as the dev gate and for local testing).
-export const RELAY_URL = process.env.NODETERM_RELAY_URL || 'wss://relay.nodeterm.dev'
+// The relay endpoint. There is no default: DisTerm ships with no relay server, and everything that
+// rides one stays off (`relayAllowed`) until `NODETERM_RELAY_URL` names one.
+export const RELAY_URL = process.env.NODETERM_RELAY_URL || ''
 
-export const API_BASE = process.env.NODETERM_API_BASE || 'https://api.nodeterm.dev'
+// The backend for relay tokens and everything else that is not the license or the project limit
+// (core/license.ts and core/project-limit.ts have their own). Empty = no backend: a fetch against it
+// fails like any unreachable server, and nothing reaches it while the relay is off anyway.
+export const API_BASE = process.env.NODETERM_API_BASE || ''
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -1511,12 +1515,11 @@ export async function mintPairingToken(entitlement: string): Promise<PairTokenRe
 // advertising the SAME host identity through their existing import.
 export { loadOrCreateHostKeyPair as loadOrCreateKeyPair, HostKeyLockedError }
 
-// --- dev gate ----------------------------------------------------------------
+// --- relay gate --------------------------------------------------------------
 
-// Never hit the real relay/API from an unpackaged build unless a relay is explicitly targeted
-// (mirrors license.ts's `allowed()` gate). Packaged builds are always allowed.
+// The relay exists only when one is explicitly configured, packaged or not.
 export function relayAllowed(): boolean {
-  return app.isPackaged || !!process.env.NODETERM_RELAY_URL
+  return !!process.env.NODETERM_RELAY_URL
 }
 
 // --- shared host session (interactive host + standing phone host) ------------
@@ -1793,14 +1796,14 @@ export function initRemoteHost(
 
   ipcMain.handle(IPC.remoteHostStart, async (): Promise<{ offer: string }> => {
     if (!isPremium()) {
-      throw new Error('Remote access requires nodeterm Pro.')
+      throw new Error('Remote access requires DisTerm Pro.')
     }
     if (!relayAllowed()) {
-      throw new Error('Remote access is unavailable in development builds (set NODETERM_RELAY_URL).')
+      throw new Error(RELAY_UNAVAILABLE_REASON)
     }
     const entitlement = getStoredEntitlement()
     if (!entitlement) {
-      throw new Error('No entitlement found — please re-activate nodeterm Pro.')
+      throw new Error('No entitlement found — please re-activate DisTerm Pro.')
     }
 
     // Already hosting → tear the old session down before starting a fresh one.

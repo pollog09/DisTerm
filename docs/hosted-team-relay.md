@@ -4,6 +4,14 @@
 possession and Share with team. Everything below was checked against the code. Where a design spec
 says something else, the code wins; the specs are local planning files and are not the reference.
 
+**In DisTerm this is off by default.** The fork ships no relay and no backend: hosting answers
+`no-relay` and no join code exists until the server is started with `NODETERM_RELAY_URL` and
+`NODETERM_API_BASE` naming services you run. On the desktop, Share with team is disabled for the same
+reason, and its installer step also needs `NODETERM_SERVER_INSTALL_URL`. There is no default for any
+of the three. `NODETERM_API_BASE` also redirects the license, check and project-limit calls to your
+server: read the warning under "Off by default" in the
+[README](../README.md#off-by-default-anything-that-needs-a-relay), including `LICENSE` clause (b), first.
+
 **Builds on:** `docs/remote-sessions.md` (relay tabs, the trust gate, Team Access) and
 `docs/team-presence.md` (presence, co-attach, canvas sync).
 
@@ -45,8 +53,8 @@ two steps, run on the host **as the unix user the nodeterm service runs as** (th
 it as):
 
 ```bash
-# 1. Install (or update) nodeterm-server: a systemd service plus a daily auto-update.
-curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/install-server.sh | bash
+# 1. Install (or update) nodeterm-server from your own clone: a systemd service plus a daily auto-update.
+NODETERM_REPO_URL=<your clone's git url> bash scripts/install-server.sh
 
 # 2. Team, owner, project and share in one step. It prints the join code.
 APP=~/.nodeterm-server-app/out/server/main.cjs
@@ -55,7 +63,7 @@ node $APP team bootstrap --owner-key <your device key> --adopt <folder> [--owner
 
 The installer builds the app from source in `~/.nodeterm-server-app` (about 600 MB), keeps the
 data in `~/.nodeterm-server`, and installs a per-user `systemd --user` service, or a system service
-when run as root (`docs/SERVER.md`, "One-line install"). When it provisioned its own Node, `node`
+when run as root (`docs/SERVER.md`, "Install from your own clone"). When it provisioned its own Node, `node`
 may not be on `PATH`; the service's `ExecStart` line (`systemctl --user cat nodeterm-server`, or
 the system unit for a root install) names the exact binary and script to use. Your device key comes
 from your desktop: see [Your desktop's device key](#your-desktops-device-key). `--adopt` is the
@@ -1412,7 +1420,7 @@ on a Mac and a second desktop as a teammate. Record `team status --json` at each
     moment. Both moves stay, on both screens and after a service restart.
 15. **A Windows joiner.** A teammate on a Windows desktop joins, moves a card and adds a column; both
     are still there after a service restart.
-16. **Key proof against production.** With nodeterm-server deployed and `POP_SECRET` set (its boot
+16. **Key proof against your backend.** With nodeterm-server deployed and `POP_SECRET` set (its boot
     log does not say `relay proof-of-possession is DISABLED`):
     1. The hosted core's first mint carries `popChallenge`/`popProof`, and `team status` stays
        running (`Hosting: ON — listening for teammates.`, no key-proof line).
@@ -1421,7 +1429,7 @@ on a Mac and a second desktop as a teammate. Record `team status --json` at each
        join code's `hostDeviceId` and `hostPublicKeyB64` from `node $APP team info --json`, then:
 
        ```bash
-       curl -sS -w ' %{http_code}\n' -X POST https://api.nodeterm.dev/v1/relay/host-token \
+       curl -sS -w ' %{http_code}\n' -X POST "$NODETERM_API_BASE/v1/relay/host-token" \
          -H 'content-type: application/json' \
          -d '{"deviceId":"<hostDeviceId>","hostPublicKeyB64":"<hostPublicKeyB64>"}'
        # {"error":"pop_required"} 403

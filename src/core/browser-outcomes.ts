@@ -61,5 +61,5 @@ export const BROWSER_OUTCOME_LABEL: Record<BrowserOutcomeKind, string> = {
   switchOff: 'browser control is off for this project — you cannot turn it on, ask the user',
   notDrivable: 'the node is not a browser node you opened this run — open one with `open-browser` first',
   userStopped: 'the user stopped agent control of this node — it stays stopped until they re-enable it',
-  unsupportedEdition: 'there is no browser control on the nodeterm Server Edition — permanent, never retry'
+  unsupportedEdition: 'there is no browser control on the DisTerm Server Edition — permanent, never retry'
 }

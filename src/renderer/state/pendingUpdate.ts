@@ -29,7 +29,9 @@ export const usePendingUpdate = create<PendingUpdateState>((set) => ({
   setPending: (pending) => set({ pending })
 }))
 
-export const RELEASES_URL = 'https://nodeterm.dev/releases'
+/** Where a build that has a feed but cannot self-install sends its user. A build with no feed never
+ *  reaches this: its card has no link (`noSelfInstallCopy('no-channel')`). */
+export const RELEASES_URL = 'https://distriib.com'
 
 /**
  * A USER-initiated update check. The card listens for `nodeterm:update-checking` to know the user

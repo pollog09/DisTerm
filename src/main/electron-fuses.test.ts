@@ -32,7 +32,7 @@ import expectedFuses from '../../scripts/electron-fuses.json'
  *    process, measured against an unfused control below, and that bypasses the gate outright.
  *    The cost, accepted and recorded with its mitigation decision in docs/project-limit.md:
  *    - Main-process HTTPS is Node's `fetch` (no Electron `net` anywhere), so it loses a corporate
- *      CA: `core/license.ts`, `check.ts`, `project-limit.ts` (claims), `main/telemetry.ts`,
+ *      CA: `core/license.ts`, `check.ts`, `project-limit.ts` (claims),
  *      `core/agent-env-ipc.ts` (gateway discovery), `core/usage/*`, `core/git-service.ts`,
  *      `main/pairing-service.ts`, `main/remote/{host-service,standing-host}.ts`.
  *    - Descendants lose both vars: the tmux server (from its next start), and with it every shell

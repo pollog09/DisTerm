@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 rem =============================================================================================
-rem bootstrap-windows.bat — take a fresh Windows checkout to an installed, buildable nodeterm.
+rem bootstrap-windows.bat — take a fresh Windows checkout to an installed, buildable DisTerm.
 rem
 rem What it does: verifies the toolchain a native-module Electron build needs (Node >= 20, npm,
 rem Visual Studio Build Tools with the C++ workload + x64 Spectre libraries, Python 3 — node-pty
@@ -37,7 +37,7 @@ if errorlevel 86 (
     exit /b 1
 )
 
-echo === nodeterm Windows bootstrap ===
+echo === DisTerm Windows bootstrap ===
 echo Repository: "%REPO%"
 echo.
 

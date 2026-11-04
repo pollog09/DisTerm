@@ -46,7 +46,7 @@ describe('the body says a machine wrote it, and carries the marker', () => {
   )
 
   it('never claims a person reported it', () => {
-    expect(body).toContain('Filed automatically by a nodeterm agent')
+    expect(body).toContain('Filed automatically by a DisTerm agent')
     expect(body).toContain('A human has not read this')
   })
 

@@ -51,6 +51,7 @@ const { updaterEvents, autoUpdater } = vi.hoisted(() => {
       checkForUpdates: vi.fn(() => Promise.resolve(null)),
       downloadUpdate: vi.fn(() => Promise.resolve([])),
       quitAndInstall: vi.fn(),
+      setFeedURL: vi.fn(),
       on: (ev: string, fn: (...a: unknown[]) => void) => {
         events[ev] = fn
       }
@@ -77,13 +78,13 @@ const realReadFileSync = fs.readFileSync
  * what is under test is which marker produces which wiring, not fs. `undefined` is a normal
  * release (no marker); `null` makes the read throw, i.e. an unreadable package.
  */
-function packageWith(marker: string | null | undefined): void {
+function packageWith(marker: string | null | undefined, feed: unknown = 'https://updates.example/disterm'): void {
   appMock.appPath = path.join(path.sep, 'fake-app-path')
   const target = path.join(appMock.appPath, 'package.json')
   vi.spyOn(fs, 'readFileSync').mockImplementation(((file: unknown, ...rest: unknown[]) => {
     if (file !== target) return realReadFileSync(file as never, ...(rest as []))
     if (marker === null) throw new Error('ENOENT: no such file or directory')
-    return JSON.stringify(marker === undefined ? { name: 'x' } : { name: 'x', nodeTermUpdates: marker })
+    return JSON.stringify({ name: 'x', ...(feed === null ? {} : { distermUpdateFeed: feed }), ...(marker === undefined ? {} : { nodeTermUpdates: marker }) })
   }) as typeof fs.readFileSync)
 }
 
@@ -209,10 +210,42 @@ describe('the paths that must not move', () => {
     })
   })
 
-  it('an unreadable packaged package.json still behaves like a release', () => {
+  it('an unreadable packaged package.json is no channel: no feed read means no feed', () => {
     setPlatform('darwin')
     packageWith(null)
     initUpdater()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    check()
+    expect(channels()).toEqual([IPC.appUpdateNoChannel])
+  })
+
+  it('a package with no feed is no channel, whatever else it carries: a forgotten flag pulls nothing', () => {
+    setPlatform('darwin')
+    packageWith(undefined, null)
+    let loaded = false
+    initUpdaterReal(undefined, {
+      loadUpdater: () => {
+        loaded = true
+        return autoUpdater as unknown as import('electron-updater').AppUpdater
+      }
+    })
+    expect(loaded).toBe(false)
+    check()
+    expect(channels()).toEqual([IPC.appUpdateNoChannel])
+  })
+
+  it('a feed that is not https is no feed', () => {
+    setPlatform('darwin')
+    packageWith(undefined, 'http://updates.example/disterm')
+    initUpdater()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+  })
+
+  it('the stamped https feed is the one electron-updater is pointed at', () => {
+    setPlatform('darwin')
+    packageWith(undefined)
+    initUpdater()
+    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: 'https://updates.example/disterm' })
     expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 })
@@ -220,7 +253,7 @@ describe('the paths that must not move', () => {
 const restart = (): void => ipcOn[IPC.appRestartToUpdate]?.()
 
 /**
- * The unsigned Windows beta (`dist:win:release` → `nodeTermUpdates=manual`): it must LEARN that a
+ * A package stamped `nodeTermUpdates=manual` (no script does this today): it must LEARN that a
  * new version is out — a passive "available, download it" card — and must never download or
  * install it, because an unsigned auto-update is a downgrade in trust.
  */

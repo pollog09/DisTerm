@@ -43,16 +43,16 @@ export type UpdatePrepShutdown =
 /** The steps for a STAGED host: nothing has to stop. Kept beside the legacy steps so the dialog,
  *  the installer text and the docs say the same thing. */
 export const STAGED_UPDATE_STEPS: readonly string[] = [
-  'Quit nodeterm — if it keeps running in the system tray, right-click the tray icon and choose Quit.',
-  'Run the installer. Your sessions keep running in the background session host and reattach when nodeterm starts again.',
-  'Only if the installer still says nodeterm is running: reopen nodeterm and use Prepare for update to stop the sessions.'
+  'Quit DisTerm — if it keeps running in the system tray, right-click the tray icon and choose Quit.',
+  'Run the installer. Your sessions keep running in the background session host and reattach when DisTerm starts again.',
+  'Only if the installer still says DisTerm is running: reopen DisTerm and use Prepare for update to stop the sessions.'
 ]
 
 /** The manual steps, for a host that cannot shut itself down (or did not confirm it did). Kept in
  *  one place so the dialog and the docs say the same thing. */
 export const MANUAL_UPDATE_STEPS: readonly string[] = [
   'Save work in every terminal and agent, and exit each program and its shell normally. Do not use End session or delete nodes — those remove the nodes.',
-  'Quit nodeterm and wait at least 30 seconds: an empty session host shuts itself down.',
+  'Quit DisTerm and wait at least 30 seconds: an empty session host shuts itself down.',
   'If nodeterm-session-host.exe is still running, open Task Manager → Details, verify it is this installation’s host for your user, and end only that process (every process it owns stops).',
   'Run the installer. Your canvas nodes stay; agents resume from their saved conversations on the next launch.'
 ]

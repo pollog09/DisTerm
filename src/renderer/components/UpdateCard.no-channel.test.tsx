@@ -65,10 +65,10 @@ const text = (): string => container.textContent ?? ''
 describe('the no-channel card', () => {
   beforeEach(() => act(() => fire.noChannel()))
 
-  it('says the build has no channel and points at the download page', () => {
-    expect(text()).toContain('No update channel')
-    expect(text()).toContain('This build has no update channel')
-    expect(text()).toContain('Download the latest installer to update.')
+  it('says updates are not configured and how to update instead', () => {
+    expect(text()).toContain('Updates not configured')
+    expect(text()).toContain('Updates are not configured for this build')
+    expect(text()).toContain('Rebuild DisTerm from source to update.')
   })
 
   it('never claims the user is up to date', () => {
@@ -76,13 +76,9 @@ describe('the no-channel card', () => {
     expect(text()).not.toContain('latest version')
   })
 
-  it('offers the download page through the same link the manual card uses', () => {
-    const btn = [...container.querySelectorAll('button')].find(
-      (b) => b.textContent === 'Open download page'
-    )
-    expect(btn).toBeTruthy()
-    act(() => btn!.click())
-    expect(opened).toEqual(['https://nodeterm.dev/releases'])
+  it('links nowhere: there is no page to send the user to', () => {
+    expect([...container.querySelectorAll('button')].some((b) => /download/i.test(b.textContent ?? ''))).toBe(false)
+    expect(opened).toEqual([])
   })
 
   it('stays put — no auto-dismiss timer, unlike the up-to-date toast', () => {
@@ -90,7 +86,7 @@ describe('the no-channel card', () => {
     act(() => {
       vi.advanceTimersByTime(30_000)
     })
-    expect(text()).toContain('No update channel')
+    expect(text()).toContain('Updates not configured')
   })
 
   it('is dismissible, and nothing else remains', () => {
@@ -107,14 +103,14 @@ describe('the states either side of it are unchanged', () => {
     act(() => window.dispatchEvent(new CustomEvent('nodeterm:update-checking')))
     act(() => fire.notAvailable())
     expect(text()).toContain("You're up to date")
-    expect(text()).toContain('nodeterm is on the latest version.')
-    expect(text()).not.toContain('No update channel')
+    expect(text()).toContain('DisTerm is on the latest version.')
+    expect(text()).not.toContain('Updates not configured')
   })
 
   it('a Linux .deb update still names its version on the manual card', () => {
     act(() => fire.available({ version: '0.3.8', notes: '', manual: true }))
     expect(text()).toContain('Update available')
-    expect(text()).toContain('nodeterm v0.3.8 is available. Download it to update.')
-    expect(text()).not.toContain('No update channel')
+    expect(text()).toContain('DisTerm v0.3.8 is available. Download it to update.')
+    expect(text()).not.toContain('Updates not configured')
   })
 })

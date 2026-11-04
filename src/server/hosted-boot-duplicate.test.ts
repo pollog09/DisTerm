@@ -42,7 +42,7 @@ describe.skipIf(process.platform === 'win32')('a second server on the same data 
       })
       await srv.close()
       const text = logs.join('\n')
-      expect(text).toMatch(/Hosted team relay: NOT started — another nodeterm server/)
+      expect(text).toMatch(/Hosted team relay: NOT started — another DisTerm server/)
       expect(text).not.toMatch(/host key could not be read/)
       // The other server's socket is still there and still answering.
       expect(fs.lstatSync(adminSocketPath(dataDir)).isSocket()).toBe(true)

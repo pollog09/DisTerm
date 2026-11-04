@@ -235,8 +235,8 @@ export const GLASS_CHIP_WASH_MAX = 0.24
 /** Every hue a glass status badge can be: the text-safe and fill tokens those badges read under
  *  Liquid Glass, dark then light values (styles.palette.test.ts pins them to the stylesheet). */
 export const GLASS_CHIP_HUES = [
-  '#30d158', '#6cb0ff', '#ff9f0a', '#ff453a', '#ffd60a', '#98989d', '#bf5af2',
-  '#1f7a38', '#0060df', '#a85c00', '#c62a1f', '#34c759', '#806100', '#8e8e93', '#af52de'
+  '#30d158', '#7dd3fc', '#ff9f0a', '#ff453a', '#ffd60a', '#98989d', '#bf5af2',
+  '#1f7a38', '#0369a1', '#a85c00', '#c62a1f', '#34c759', '#806100', '#8e8e93', '#af52de'
 ]
 /** The glass header's own layer over the node tint (see `glassTint().header`). */
 const HEADER_LAYER_ALPHA = 0.35

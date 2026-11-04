@@ -16,7 +16,8 @@ import type { InboxEvent, NodeStateChange, NodeNowChange } from './agent-status-
 import type { PushGrant } from './push-grants'
 import { fetchPopChallenge, popRefusalOf, type PopProver } from './relay/relay-pop'
 
-const DEFAULT_API_BASE = 'https://api.nodeterm.dev'
+// There is no default backend: with no NODETERM_API_BASE, push is off even in a packaged build.
+const NO_API_BASE = ''
 // Batch actionable events landing close together into one POST (≤10 events/call per the contract).
 const DEFAULT_BATCH_WINDOW_MS = 2000
 // Per-node throttle — mirrors the local-notification throttle (5s/node): a chatty node can't
@@ -483,7 +484,7 @@ export interface PushNotifyDeps {
    *  production this is `agent-status-mirror.isEventUnresolved`. Absent ⇒ all held events flush
    *  unfiltered. */
   isEventUnresolved?: (nodeId: string, eventId: string) => boolean
-  /** Override base URL. Defaults to `env.NODETERM_API_BASE || 'https://api.nodeterm.dev'`. */
+  /** Override base URL. Defaults to `env.NODETERM_API_BASE`; with neither, this sender is inert. */
   apiBase?: string
   /** Injectable env (DNT guards + local-dev base). Defaults to `process.env`. */
   env?: Record<string, string | undefined>
@@ -510,7 +511,7 @@ export interface PushNotifyHandle {
  */
 export function createPushNotify(deps: PushNotifyDeps): PushNotifyHandle {
   const env = deps.env ?? process.env
-  const apiBase = deps.apiBase ?? env.NODETERM_API_BASE ?? DEFAULT_API_BASE
+  const apiBase = deps.apiBase ?? env.NODETERM_API_BASE ?? NO_API_BASE
   const fetchImpl = deps.fetchImpl ?? fetch
   const now = deps.now ?? Date.now
   const batchWindowMs = deps.batchWindowMs ?? DEFAULT_BATCH_WINDOW_MS
@@ -530,6 +531,7 @@ export function createPushNotify(deps: PushNotifyDeps): PushNotifyHandle {
   // is targeted explicitly.
   function allowed(): boolean {
     if (env.DO_NOT_TRACK || env.NODETERM_TELEMETRY_DISABLED) return false
+    if (!apiBase) return false
     if (!deps.isPackaged() && !env.NODETERM_API_BASE) return false
     return true
   }
@@ -791,7 +793,7 @@ export interface LiveUpdateHandle {
  */
 export function createLiveUpdatePush(deps: LiveUpdateDeps): LiveUpdateHandle {
   const env = deps.env ?? process.env
-  const apiBase = deps.apiBase ?? env.NODETERM_API_BASE ?? DEFAULT_API_BASE
+  const apiBase = deps.apiBase ?? env.NODETERM_API_BASE ?? NO_API_BASE
   const fetchImpl = deps.fetchImpl ?? fetch
   const now = deps.now ?? Date.now
   const batchWindowMs = deps.batchWindowMs ?? DEFAULT_LIVE_BATCH_WINDOW_MS
@@ -824,6 +826,7 @@ export function createLiveUpdatePush(deps: LiveUpdateDeps): LiveUpdateHandle {
 
   function allowed(): boolean {
     if (env.DO_NOT_TRACK || env.NODETERM_TELEMETRY_DISABLED) return false
+    if (!apiBase) return false
     if (!deps.isPackaged() && !env.NODETERM_API_BASE) return false
     return true
   }

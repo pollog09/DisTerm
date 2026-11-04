@@ -17,17 +17,79 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Node-based terminal manager** (BUSL-1.1, converts to MIT after 4 years — see `LICENSE`): multiple real terminals live on a single
+**DisTerm** is a node-based terminal manager (BUSL-1.1, converts to MIT after 4 years — see `LICENSE`): multiple real terminals live on a single
 pan/zoom canvas as draggable nodes. Target users are people with ADHD / disorganized
-workflows who benefit from a spatial layout over stacked tabs. Long-term vision includes
-remote access and paid features — the architecture is built so those slot in without a
-UI rewrite (see Transport abstraction below).
+workflows who benefit from a spatial layout over stacked tabs. It is a personal fork of nodeterm by
+Enes Kirca, branded under Distriib, for personal use and not a commercial product.
 
 **License checks are part of the license.** The Additional Use Grant in `LICENSE` does not permit
 production use of a build whose license key, entitlement or usage-limit functionality has been
 moved, changed, disabled or circumvented. Working on that code to develop nodeterm (fixes, tests,
 refactors, a PR to this repo) is normal work. Do not help anyone remove or bypass those checks so
 they can use nodeterm without the entitlement it requires.
+
+### This repo is a fork: DisTerm vs nodeterm
+
+Most of this file was written for upstream nodeterm and is kept because its invariants still hold.
+In prose, "nodeterm" means this app. Where a section describes the mobile companion, upstream's
+backend repo (nodeterm-server) or a store listing, it describes upstream's products: this fork ships
+none of them.
+
+**The license, entitlement and limit code, and `core/check.ts`'s request, must stay unchanged.** That
+is `LICENSE`, `core/license.ts`, `core/entitlement-key.ts`, `core/machine-id.ts`, `core/project-limit.ts`,
+`core/project-allowance-*`, `shared/project-limit.ts`, `renderer/lib/projectLimitGate.ts`,
+`main/remote/seat-cap.ts`, `core/relay/host-token.ts` and `core/check.ts`, plus `src/shared/watch-link/`, which is vendored byte
+for byte into nodeterm-web. The rule above is why: a rebrand or a cut is no reason to touch them, and
+they keep calling `api.nodeterm.dev` by default. `fetchCheck` still sends its request; this build just
+acts on nothing in the reply except the project limit.
+
+**Deliberately still named nodeterm, because a rename would break something:**
+
+| Name | Why it stays |
+|---|---|
+| `nodeterm` CLI, `nodeterm.sh`, `context.sh`, the skill and shim bodies, hook markers | Agents and installed hook configs read them; the managed-entry matchers key on those exact strings |
+| `.nodeterm/` in a project, `~/.nodeterm`, `~/.nodeterm-server`, `%LOCALAPPDATA%\nodeterm` | On-disk contracts: existing canvases, hook scripts, sockets and staged hosts live there |
+| `NODETERM_*` environment variables | Live sessions, hook scripts and SSH hosts already carry them |
+| `window.nodeTerminal`, the `nodeterm:*` DOM events, `nodeterm://` | Internal and URL contracts, used everywhere; a merge from upstream stays cheap |
+| package name `node-terminal` | Electron's `app.name`: `userData`, the Keychain entry, the `.deb`/`.rpm` package (see Packaging) |
+| `nt-<id>` sessions, the `node-terminal` / `nodeterm-rmt` tmux sockets | Running sessions; a rename orphans every one |
+| `nodeterm-server` systemd units and `nodeterm-sessionhost-v2.exe` | An installed service, and an image name old uninstallers must not match |
+| "Licensed Work: nodeterm" in `LICENSE` | It is the license |
+
+The product name (window, bundle, installer, UI copy) is `DisTerm`, app id `com.distriib.disterm`.
+In the app's UI copy, a remaining "nodeterm" names a true destination (`api.nodeterm.dev`) or an
+upstream product (*nodeterm mobile*). **Text an agent or a hook reads is a different matter, and still
+says nodeterm even where it means this app:** the skill and shim bodies (`canvas-control-core.ts`,
+`context-link-core.ts`, e.g. "Not a nodeterm session"), and the generated scripts tests pin
+(`Denied from nodeterm.` in `hooks/managed-script.ts`, "Restart nodeterm to reinstall it." in
+`hooks/windows-hook-wrapper.ts`). A person can see these in a pane or an agent's reply. Log prefixes
+and generated-file markers also say nodeterm.
+
+**Help menu and issue reports.** Help → Report a bug and Documentation stay visible, disabled with a
+reason (`renderer/lib/bugReport.ts`), and `BugReportDialog` has no route left to it. GitHub repository
+opens `https://github.com/pollog09/GrafoTerm`. The `report-issue` verb refuses a project whose own
+repository is upstream's (`report-upstream-repo`, `core/github/report-issue-service.ts`), so a clone of
+upstream cannot file there. `canvas/help-menu.source.test.ts` pins the menu.
+
+**What the fork cut:** the default update feed, the telemetry ping (`main/telemetry.ts`), announcement
+banners and popups, the mandatory-update policy, the mobile launch card and the onboarding phone step,
+the default relay and API base (so phone access, Team Access, hosted teams, Live Links and push are
+off), store links (`mobileStoreLinks()` answers `[]`), the install and download infrastructure
+(`scripts/install.sh`, curl one-liners, site feeds, `.github/FUNDING.yml`, the download badge), and
+the automatic release trigger and feed verification in `release.yml`.
+
+**The env vars that turn things back on, none with a default:** `NODETERM_RELAY_URL` (relay features),
+`NODETERM_API_BASE` (relay tokens and push), `NODETERM_SERVER_INSTALL_URL` (Share with team's
+installer), `NODETERM_REPO_URL` (`scripts/install-server.sh`, required on a first install; before any
+fetch that script checks this and the checkout's real origin, case-insensitively, replacing an upstream
+origin with this value when set and refusing otherwise). Note that
+`core/license.ts`, `core/project-limit.ts` and `core/check.ts` read `NODETERM_API_BASE` too, so setting
+it also moves those calls to that server, whatever else it is set for, and a check-shaped reply with
+no `limits` key reads as "off" (`sanitizeLimits`). `LICENSE` clause (b) does not permit production use
+of a copy whose license or usage-limit functionality was moved, changed, disabled or circumvented, and
+permits changing it for non-production purposes such as developing and testing. A working relay needs
+both variables. The README's "Off by default: anything that needs a relay" section carries this warning,
+and the app's relay and push messages may point at it, so keep that heading stable.
 
 ## Platform support
 
@@ -7052,7 +7114,9 @@ information: it neither fires nor resets the held level.
 
 A live link shows ONE node in a plain browser — read-only, or typeable on a Control link by a viewer
 who also has its password — until it expires (≤ 24 h, or never for Unlimited) or is stopped; creating
-one is Pro and the backend is the gate. Reference: **`docs/live-links.md`**. Invariants:
+one is Pro and the backend is the gate. Reference: **`docs/live-links.md`**. In DisTerm it is disabled
+with no relay configured, and `WATCH_LINK_ORIGIN` still names `nodeterm.dev` (the vendored
+`shared/watch-link/` stays unchanged), so this fork has no viewer site. Invariants:
 - `watchLink:*` (owner IPC) is host-only: no relay peer, hosted editors included, may create, list (a
   view carries the secret URL), stop, kick, chat, or change a link's control (typing, password, lock).
   The viewer protocol is `watch:*` and must never start with `watchLink:` — relay-host refuses
@@ -7309,7 +7373,7 @@ colour. MEASURED against the live hook server before the change; both faces are 
   contains no agent hex as a literal on a non-comment line. A second copy of a colour table is the
   drift this file warns about everywhere else, and it has already happened once (see mobile below).
 - **`SYSTEM_NODE_COLORS` is the subset for surfaces where the value is drawn as TEXT or as an
-  opaque fill** — the app accent (`--accent` sits under hardcoded `#fff`), a project colour (the
+  opaque fill** — the app accent (`--accent` sits under `--on-accent`), a project colour (the
   active tab's label is `color: p.color`) and a kanban column colour (`ColumnPill` draws the title
   in the raw hex at 10 px). It is also the **auto-assign rotation** for new frames, spawned teams
   and fresh columns: rotating a frame onto Claude's orange says "this frame is Claude's" and means
@@ -7342,6 +7406,12 @@ colour. MEASURED against the live hook server before the change; both faces are 
 
 
 ## Semantic colours (one role per meaning)
+
+**The accent is DisTerm's sky, with dark text on it.** `--accent` is `#0ea5e9` dark and `#0284c7`
+light, and text on an accent fill is `--on-accent` (`#13111c`), never white. `settings.accent` defaults
+to `#0ea5e9` and Canvas removes the inline `--accent` while the setting equals that default, so the
+light theme's own value applies; a colour the user picked is set inline and wins. A settings.json that
+stored upstream's old default `#0a84ff` keeps it. "Sky" is the last `SYSTEM_NODE_COLORS` swatch.
 
 Status and accent colours are TOKENS in `styles.css`, never hues at a call site. Two layers:
 the Apple system palette `--sys-red … --sys-gray` (dark values in `:root`, light values in the light
@@ -9710,8 +9780,8 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `keydown-intercept.test.ts` pins both the stolen chords and the suspended item ids (including
   that the list does not silently grow) — `getMenuItemById` answers `null` for a typo and the
   fail-safe is to do nothing, which is indistinguishable from the feature working.
-- **Theme**: macOS dark palette as CSS tokens in `styles.css` `:root` (`--accent` = systemBlue,
-  label/separator opacities, SF font stack). Canvas background is black with dot grid.
+- **Theme**: macOS dark palette as CSS tokens in `styles.css` `:root` (`--accent` = sky `#0ea5e9`,
+  label/separator opacities, SF font stack). Dark canvas background is `#13111c` with dot grid.
 
 ## Idle energy: an animation is a frame loop, not a decoration
 
@@ -10199,6 +10269,17 @@ has no messaging, canvas control, tmux persistence or transcript reads, because 
 
 ## Remote access (phone relay) — free, not Pro
 
+**In DisTerm the relay is off by default.** `RELAY_URL` and `API_BASE` have no default
+(`main/remote/host-service.ts`, `server/index.ts`), and `relayAllowed()` is `!!NODETERM_RELAY_URL`,
+packaged or not. With none set, phone access, Team Access, the remote dialog, Live Links and Share with
+team are disabled with ONE sentence, `RELAY_UNAVAILABLE_REASON` (`shared/relay-availability.ts`), read
+through `state/relayAvailability.ts`, whose unanswered state counts as "not available". The push webhook
+panel is disabled with its own sentence (`PUSH_WEBHOOK_OFF_REASON`), and push is off without
+`NODETERM_API_BASE` even in a packaged build. The
+Upgrade dialog and ProCompare state which paid or free rows are unavailable and give that same reason;
+price, checkout and gates are unchanged. A new surface that rides the relay owes the same gate. The rules below describe what happens once a
+relay is configured.
+
 - **Relay key intake: no low-order keys, one spelling per key, a 10-digit SAS** (security audit
   2026-10, relay-crypto F1–F5). (1) `deriveSharedKey` (`core/relay/e2ee.ts`) refuses a peer key whose
   RAW X25519 output is all zero (`WeakPeerKeyError`, `E_WEAK_PEER_KEY`): tweetnacl's `box.before`
@@ -10469,7 +10550,8 @@ approves every link in a confirm sheet. Spec + as-built decisions:
 
 Settings → Phone → **Push webhook** mints a per-host bearer token; anything that can run `curl`
 then pushes a plain-text notification to the phones relay-paired with this machine
-(`POST https://api.nodeterm.dev/v1/push/webhook`, `{"title","body"}`). Agents already push through
+(`POST $NODETERM_API_BASE/v1/push/webhook`, `{"title","body"}`; with that variable unset the panel is
+disabled and the client refuses before calling anything). Agents already push through
 their hooks; this is for the jobs that have no agent in the loop. The backend half lives in
 nodeterm-server (`src/routes/push-webhook.ts`, `src/lib/host-proof.ts`); the desktop half is
 `core/push-webhook.ts` (client), `shared/push-webhook.ts` (types, copy, the example) and
@@ -10547,6 +10629,9 @@ relay. **Mobile:** the Inbox-open gap above needs an iOS release; an iOS follow-
 `kind: 'webhook'` its own Inbox row and tap target.
 
 ## Hosted team relay (Server Edition as a relay host)
+
+**In DisTerm this needs `NODETERM_RELAY_URL` and `NODETERM_API_BASE` on the server.** With no relay,
+`relayAllowed` is false, hosting answers `no-relay`, `team status` says why, and there is no join code.
 
 A Server Edition core can host a team over the E2EE relay: a standing listener on the tunnel
 dialect, owner approval, roles, a `team` admin CLI, and desktops joining with a
@@ -10729,7 +10814,8 @@ The invariants, each with its reason:
   removals are last-writer-wins VALUES; only node, edge, column, label and view removals are rule-4
   deletions.
 
-**Share with team (SSH → hosted team)** (doc section "Share with team from the desktop"). A desktop
+**Share with team (SSH → hosted team)** (doc section "Share with team from the desktop"; disabled in
+DisTerm unless a relay is configured). A desktop
 SSH project's "Share with team…" installs (or just probes) nodeterm-server on the host as the SSH
 login user, runs `team bootstrap` (init + owner + adoption by real path + share, one idempotent
 admin verb), hands the terminals over (`team resume`) and joins. The renderer sequences it
@@ -10883,7 +10969,9 @@ invariants:
   stderr only. Bootstrap starts hosting and waits up to 15 s for the relay's first verdict BEFORE it
   writes an owner, a project or a share: a refusal (`E_HOSTING_OFF`) writes none of them, and no
   verdict yet (`hosting:'starting'`) is still a success.
-- **`curl | bash` is a trap: download to a temp file first** (`SHARE_INSTALL_SCRIPT`). With no
+- **The installer has no default URL, and `curl | bash` is a trap: download to a temp file first**
+  (`shareInstallScript`). DisTerm publishes no installer, so with `NODETERM_SERVER_INSTALL_URL` unset
+  on the desktop the step prints that and exits 1, leaving the host as it was. With one set: with no
   `pipefail`, a failed download pipes an EMPTY script into bash, which exits 0, so a failed install
   reads as a success; the temp file goes on every exit, HUP/INT/TERM included. Related: the probe
   never RUNS a server bundle it has not recognised (`BOOTSTRAP_MARKER` grepped from `main.cjs`),
@@ -11012,34 +11100,50 @@ Voice-to-text input captured via microphone, turned into terminal text via on-de
 ## Packaging & auto-update
 
 Built with **electron-builder** (config in the `package.json` `build` block: appId
-`com.nodeterm.app`, productName `nodeterm`, mac dmg+zip for arm64 **and** x64, `asarUnpack`
-node-pty, output `dist/`). The app icon is generated from the nodeterm mark by
+`com.distriib.disterm`, productName `DisTerm`, mac dmg+zip for arm64 **and** x64, `asarUnpack`
+node-pty, output `dist/`, `publish: null`). The app icon is generated from the Distriib isologo by
 `scripts/make-icon.mjs` (sharp → `build/icon.png` 1024² + multi-resolution `build/icon.ico`
 for Windows, both gitignored — regenerated by `make-icon`, which every dist script runs first);
 the same script hand-packs `build/icon.icns` (size-checked frames — issue #369) and `build/icon.ico`, which electron-builder embeds as-is. Scripts: `npm run make-icon`, `npm run dist`
 (local **unsigned** arm64 `.dmg` smoke test; `npm run dist:mac:x64` is the same for Intel, and `release` already builds both), `npm run dist:win` (unsigned x64 NSIS installer +
-zip, `--publish never`). Production release signing/notarization and the update-feed hosting are
-handled outside this repo.
+zip, `--publish never`). `release.yml` is `workflow_dispatch` only: run it by hand against a version
+tag. It attaches the packages to a GitHub Release that stays a prerelease, and publishes no feed.
 
-**The running app's name is `node-terminal`, not `nodeterm`.** Electron reads `app.name` from
+**DisTerm has no update feed by default, and that is the fail-safe.** A package reaches a feed only
+when built with `-c.extraMetadata.distermUpdateFeed=<https url>` plus
+`-c.publish.provider=generic -c.publish.url=<url>`. `validUpdateFeed` (`shared/update-platform.ts`)
+accepts https only, and anything else is `no-channel`, so a forgotten flag can never pull an update from
+anywhere; the card then says updates are not configured and to rebuild from source, with no link.
+`build.publish` is `null` on purpose: absent, electron-builder writes an `app-update.yml` from the git
+remote. `RELEASES_URL` (`state/pendingUpdate.ts`) is `https://distriib.com`, reached only by a build
+that has a feed but cannot self-install. The electron-updater rules below apply to a build with a feed.
+
+**The running app's name is `node-terminal`, not `DisTerm`.** Electron reads `app.name` from
 package.json's top-level `name`; `productName` lives only under `build`, which electron-builder
 strips from the packaged package.json, so it names the bundle and the installer and nothing else.
 Everything keyed by the app NAME therefore says `node-terminal` on every build, dev or installed:
 `userData` (`~/Library/Application Support/node-terminal`, `~/.config/node-terminal`,
 `%APPDATA%\node-terminal`), the `node-terminal Safe Storage` Keychain entry, electron-updater's
-`node-terminal-updater` cache. Only what is keyed by the bundle id (`com.nodeterm.app`) or the
-bundle itself (`/Applications/nodeterm.app`) carries `nodeterm`. `scripts/uninstall.sh` looked
+`node-terminal-updater` cache, and WM_CLASS/StartupWMClass on Linux. Some Linux notification daemons
+may show it as the sender (not checked). `tmux -L node-terminal` and the Linux package and launcher
+names say it too. What is keyed by the bundle id (`com.distriib.disterm`) or the
+bundle itself (`/Applications/DisTerm.app`) carries `DisTerm`, and so do the labels that would otherwise
+come from the name, which are written out: the macOS menu's About, Hide and Quit DisTerm, the off-mac
+File item ("Exit" on Windows, "Quit DisTerm" on Linux) and the BrowserWindow title. No `app.name` read
+remains in `src/main` or `src/core`; `main/app-name-labels.source.test.ts` pins the menu labels.
+`scripts/uninstall.sh` looked
 under `…/nodeterm` and never found the desktop's data; `scripts/uninstall.test.ts` now ties its
-`APP_NAME` to package.json `name`.
+`APP_NAME` to package.json `name`. That script and `scripts/run-dev.sh` target the DisTerm bundle and
+also an older `/Applications/nodeterm.app`, and the uninstaller covers both bundle ids.
 
 **Linux ships AppImage + deb + rpm**, all unsigned, all built by `release-linux` on a plain
 `ubuntu-latest` runner (`npm run dist:linux` locally). Three things about it are easy to get wrong:
 
-- **The packages are named `node-terminal`, the AppImage is named `nodeterm`.** electron-builder's
+- **The packages are named `node-terminal`, the AppImage is named `DisTerm`.** electron-builder's
   `linuxPackageName` is package.json's `name`, not `productName` (it only falls back to the product
   name for an `@scope/…` name), so the artifacts are `node-terminal_<version>_amd64.deb`,
-  `node-terminal-<version>.x86_64.rpm` and `nodeterm-<version>.AppImage`, the launcher is
-  `/usr/bin/node-terminal`, and the install prefix is `/opt/nodeterm` (that one IS the productName).
+  `node-terminal-<version>.x86_64.rpm` and `DisTerm-<version>.AppImage`, the launcher is
+  `/usr/bin/node-terminal`, and the install prefix is `/opt/DisTerm` (that one IS the productName).
   Anything that matches on the package name (`scripts/uninstall.sh`'s `dpkg -s` / `rpm -q` probes,
   the README's install lines) must say `node-terminal` or it silently never fires. Renaming the
   package to match the app would strand existing `.deb` installs on a package apt no longer tracks,
@@ -11086,25 +11190,20 @@ update feed), but our pipeline is electron-builder end-to-end and NSIS is built 
 extra dependency, and is what electron-updater's generic provider expects on Windows — so
 Squirrel was not adopted. Builds are **unsigned** (no Windows cert; electron-builder skips
 signing when no cert env is present; SmartScreen warns on install). Release wiring is
-`release.yml`'s `release-win` job: on every version tag it uploads the NSIS installer + zip as
-GitHub Release assets — **best-effort by design** (the `publish` promote gate does not wait on
-it, so a Windows failure never strands the mac+linux release) and with a **passive notice feed
-only**: it builds `dist:win:release`, which stamps `nodeTermUpdates=manual` →
-`updateDelivery` = `manual-install` (the marker wins over the platform), and uploads `latest.yml`
-beside the installer + zip. The app checks the feed and shows the same "vX is available —
-Download" card a Linux .deb gets; it never downloads, never installs on quit, and main refuses
+`release.yml`'s `release-win` job: it builds `dist:win` and uploads the NSIS installer + zip as
+GitHub Release assets — **best-effort by design** (the `publish` job does not wait on it). There is
+no `dist:win:release` and no `latest.yml`: a package has no feed. A build given a feed AND stamped
+`nodeTermUpdates=manual` still behaves as a check-only notice: `updateDelivery` = `manual-install` (the
+marker wins over the platform), it shows the same "vX is available — Download" card a Linux .deb gets,
+it never downloads, never installs on quit, and main refuses
 `appRestartToUpdate` for any build that is not `self-install`/`dev` (`mayQuitAndInstall`), so
-`quitAndInstall` cannot run on the unsigned beta whatever the renderer sends. A failed
-AUTOMATIC check on that marker build is not carded (offline, or a mirror that does not
+`quitAndInstall` cannot run on an unsigned build whatever the renderer sends. A failed
+AUTOMATIC check on that marker build is not carded (offline, or a feed that does not
 serve `latest.yml` yet, must not raise an error card on every launch) but is recorded
-(`lastUpdateCheck`) and logged as one warning that names a 404 on `latest*.yml` as the mirror
-missing the file (`describeCheckFailure`); a user-initiated check still reports its failure. Local `dist:win`
-keeps `disabled` (never polls). Do not add `*.blockmap` (or a broad `*.yml`) to that job's
+(`lastUpdateCheck`) and logged as one warning that names a 404 on `latest*.yml` as the feed
+missing the file (`describeCheckFailure`); a user-initiated check still reports its failure. Do not add `*.blockmap` (or a broad `*.yml`) to that job's
 upload globs — differential downloads are the self-install leg, and it waits on signing; guarded
-by `src/main/release-win-workflow.test.ts`. The nodeterm.dev/updates mirror serving `latest.yml`
-lives outside this repo; `release.yml`'s `verify-feed` job (after the promote, never a gate) curls
-each `latest*.yml` there and compares `version:` to the tag — mac/linux are errors, `latest.yml` a
-warning until the mirror is confirmed to serve it. `bootstrap-windows.bat` (repo root) takes a fresh Windows
+by `src/main/release-win-workflow.test.ts`. `bootstrap-windows.bat` (repo root) takes a fresh Windows
 machine to a built checkout: it verifies Node ≥ 20 / VS Build Tools C++ / Python 3 with exact
 winget hints (it never installs machine-wide tools itself, and the full bootstrap refuses to run
 elevated) and runs `npm ci`. Its `--check-vs-build-tools` mode is the narrow exception used by
@@ -11127,7 +11226,7 @@ verify and stop any remaining host. Never recommend **End session** (it deletes 
 resume depends on supported, saved conversation history; it does not preserve running tasks.
 See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
 **Unattended runs wait** (silent or `--updated`, the app's own handoff, which starts while
-nodeterm.exe is still exiting): on preflight exit 10 they poll up to ~30 s; exit 20 stays fatal at
+DisTerm.exe is still exiting): on preflight exit 10 they poll up to ~30 s; exit 20 stays fatal at
 once, nothing is ever killed, and the machine-wide name match stays (old uninstallers kill by
 name). A timed-out `--updated` install writes `%LOCALAPPDATA%\nodeterm\update-failed.json` and
 relaunches the installed build before quitting; the updater reads + deletes that note on start
@@ -11169,7 +11268,7 @@ Rules a refactor must not undo:
   installer; a browser must never end every session on the server). Mobile: N/A — a phone cannot
   authorize an update shutdown; it sees its sessions end like any other end.
 
-**Staged host runtime (#829 step 3).** The host used to run as a hard link of `nodeterm.exe` INSIDE
+**Staged host runtime (#829 step 3).** The host used to run as a hard link of `DisTerm.exe` INSIDE
 the install dir, so it mapped the installed exe/DLLs/`resources.pak` and every update stopped until
 the user ended it (and every session). Packaged Windows builds now copy what the host needs into
 `%LOCALAPPDATA%\nodeterm\session-host\<version>-<fingerprint>\` and launch
@@ -11198,9 +11297,8 @@ of a version). Rules a refactor must not undo:
   (protocol v1/v2 + `hello` features); an unsupported one is left running and reported
   (`SessionHostProtocolCompatibilityError`), never killed. ~250 MB of disk per staged version.
 
-**Follow-ups, in order:** code signing, then Windows self-install (drop the `manual` marker from
-`dist:win:release` and upload blockmaps — blocked on signing: an unsigned auto-update is a
-downgrade in trust; the passive notice already ships), and the fork's PE-identity polish (electron-builder leaves `OriginalFilename`
+**Follow-ups upstream had planned:** code signing, then Windows self-install (blocked on signing: an
+unsigned auto-update is a downgrade in trust), and the fork's PE-identity polish (electron-builder leaves `OriginalFilename`
 empty; the fork's
 `resedit`-based afterSign hook fixes it — cosmetic for NSIS, load-bearing only for Squirrel).
 
@@ -11218,7 +11316,7 @@ claim to the user and to review — unicast LAN access needs the usage descripti
 what makes the denial grantable; it is not itself proof anyone's access came back. Guarded as an
 allowlist-with-reasons by `src/main/info-plist.test.ts`, the sibling of the entitlements guard.
 
-Auto-update uses **electron-updater** (`src/main/updater.ts`, `initUpdater(hooks)` from `index.ts`):
+Auto-update, in a build given a feed, uses **electron-updater** (`src/main/updater.ts`, `initUpdater(hooks)` from `index.ts`):
 runs **only when `app.isPackaged`** (dev = no-op), checks on launch + every 6h, auto-downloads,
 forwards the lifecycle (`update-available` / `download-progress` / `update-downloaded` / errors)
 to the renderer over IPC. `components/UpdateCard.tsx` shows the strip + **Restart to update** →
@@ -11256,10 +11354,19 @@ Rules a refactor must not undo (pure + tested: `shared/update-gate.ts`, `rendere
   portal, feed 5xx) only logs; a background download retries at 15/30/60/120 min. User-initiated
   checks (every button goes through `checkForUpdatesNow`, which is how the card knows) get a plain
   sentence (`friendlyUpdateErrorMessage`). Automatic checks are silent until `downloaded`.
-- The mandatory policy is re-read every 6 h (one 60 s retry after an empty/failed first read); release
-  highlights come from the feed's `releaseNotes` or `/v1/check` `update.notes` + `latestVersion`.
+- The mandatory policy is re-read every 6 h (one 60 s retry after an empty/failed first read), and in
+  DisTerm its handler always answers "not mandatory" (`src/main/index.ts`); release
+  highlights come from the feed's `releaseNotes`.
 Server Edition: no updater (stubs; `onInstalling`/`onFlushRequest` are documented no-ops). Mobile: N/A.
 The "auto-download off" setting is NOT here — that is PR #956's.
+
+**In DisTerm the feed's only consumer is the project limit.** `core/check.ts` itself and its request
+are unchanged, and `core/project-limit.ts` reads the reply's `limits` through its own `fetchCheck`
+calls. The announcement and policy IPC handlers answer empties (`src/main/index.ts`), so no banner,
+popup or mandatory update reaches the UI: `AnnouncementBanner` and `AnnouncementPopup` are unmounted
+and the telemetry ping (`src/main/telemetry.ts`) is deleted. Settings → Privacy's toggle controls ONLY
+the open-project count on that check. The description below is the unchanged check and upstream's
+surfaces.
 
 **Backend check feed** (`src/core/check.ts`, successor to the static `announcements.json`): the
 **main process** calls `GET https://api.nodeterm.dev/v1/check?deviceId=&version=&os=&arch=&channel=stable&plan=`
@@ -11301,11 +11408,10 @@ anonymous — the backend cannot look a device's plan up, and matches only on wh
 that sends no plan sees only audience-less messages). So an answer belongs to the plan it was asked
 with: the 5-min cache is keyed by plan, a failed read after a plan change keeps the update policy but
 NOT the other plan's messages, and the banner re-asks when `useEntitlement.isPremium` flips — else a
-"try Pro" message stays up for six hours after the user pays. **Telemetry** (`src/main/telemetry.ts`) is a separate opt-out
-ping to `api.nodeterm.dev/v1/ping` (version/OS on launch + daily), gated on
-`settings.telemetryEnabled` + the same build/DNT guards; toggle in Settings → Privacy. **That toggle
-gates the ping AND the check's `openProjects` count — never the check itself**, which runs whatever
-it says (only DNT / `NODETERM_TELEMETRY_DISABLED` / an unpackaged build stop it).
+"try Pro" message stays up for six hours after the user pays. **Telemetry:** the separate ping is
+gone in DisTerm. `settings.telemetryEnabled` (Settings → Privacy) now gates only the check's
+`openProjects` count — **never the check itself**, which runs whatever it says (only DNT /
+`NODETERM_TELEMETRY_DISABLED` / an unpackaged build stop it).
 
 ## Atomic writes (never a bare `fs.rename`)
 
@@ -11633,9 +11739,11 @@ hooks never fired and every agent message to it expired as `targetStatusStale`.
   the subagent-driven-development workflow), use the latest model, **Opus 5**
   (`claude-opus-5`). This overrides any cheaper-model defaults in a skill's model-selection
   guidance.
-- **Three surfaces — design every feature for all of them.** nodeterm now ships on three
+- **Three surfaces — design every feature for all of them.** Upstream nodeterm ships on three
   fronts, and a feature is not "done" until you've decided how it behaves on each (even if
-  the decision is "not applicable here"):
+  the decision is "not applicable here"). DisTerm itself ships the first two; the mobile entry is
+  upstream's product, kept because the wire contracts for it are still in this code. In this fork a
+  mobile implication is a note in the change, and there is nobody to hand it to:
   1. **Desktop** (Electron) — the primary app (`src/main` + `src/renderer` via the preload).
   2. **Server Edition** (Linux, browser) — `src/server` + the `src/renderer/bridge` shim (see
      the `src/server/` bullet above and docs/SERVER.md).

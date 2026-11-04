@@ -55,9 +55,9 @@ export async function assertHookEndpointAvailable(file: string): Promise<void> {
     // bearer AND rejects an unrelated one, including pre-421 nodeterm releases.
     const negative = answer === 204 && env.NODETERM_HOOK_TOKEN ? await probe(randomUUID()) : null
     if (answer === 204 && (negative === 403 || negative === 421)) {
-      throw new HookSocketOwnedError('A live nodeterm owner authenticated the advertised bearer')
+      throw new HookSocketOwnedError('A live DisTerm owner authenticated the advertised bearer')
     }
-    throw new HookSocketOwnedError('The advertised listener could not be authenticated as nodeterm')
+    throw new HookSocketOwnedError('The advertised listener could not be authenticated as DisTerm')
   }
 }
 

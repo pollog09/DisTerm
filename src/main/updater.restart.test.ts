@@ -63,7 +63,8 @@ const { autoUpdater } = vi.hoisted(() => {
       autoInstallOnAppQuit: true,
       checkForUpdates: vi.fn(() => Promise.resolve(null)),
       downloadUpdate: vi.fn(() => Promise.resolve([])),
-      quitAndInstall: vi.fn()
+      quitAndInstall: vi.fn(),
+      setFeedURL: vi.fn()
     })
   }
 })
@@ -89,7 +90,7 @@ function release(platform: string): void {
   appMock.appPath = path.join(path.sep, 'fake-app-path')
   const target = path.join(appMock.appPath, 'package.json')
   vi.spyOn(fs, 'readFileSync').mockImplementation(((file: unknown, ...rest: unknown[]) =>
-    file === target ? JSON.stringify({ name: 'x' }) : realReadFileSync(file as never, ...(rest as []))) as typeof fs.readFileSync)
+    file === target ? JSON.stringify({ name: 'x', distermUpdateFeed: 'https://updates.example/disterm' }) : realReadFileSync(file as never, ...(rest as []))) as typeof fs.readFileSync)
 }
 
 const hooks = () => ({
@@ -307,7 +308,7 @@ describe('a staged update is announced once per version', () => {
     autoUpdater.emit('update-downloaded', { version: '1.1.0' })
     expect(of(IPC.appUpdateAvailable)).toHaveLength(1)
     expect(of(IPC.appUpdateDownloaded)).toHaveLength(1)
-    expect(notifications).toEqual(['nodeterm 1.1.0 is ready to install.'])
+    expect(notifications).toEqual(['DisTerm 1.1.0 is ready to install.'])
     expect(h.onUpdateReady).toHaveBeenCalledTimes(1)
     expect(h.onUpdateReady).toHaveBeenCalledWith('1.1.0')
   })

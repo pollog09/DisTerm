@@ -763,6 +763,8 @@ export const IPC = {
   // Standing (phone) relay host: renderer toggles it on/off (settings.phoneAccessEnabled). Main
   // starts/stops the always-on host connection so a paired phone can reach this Mac over the relay.
   remoteStandingHostSet: 'remote:standing-host:set',
+  /** Whether this core has a relay server configured (NODETERM_RELAY_URL). Desktop only. */
+  remoteRelayConfigured: 'remote:relay-configured',
   // Revoke a paired PEER (by its stable box public key). Unpinning alone only refuses the NEXT
   // handshake — the open relay socket keeps full shell access — so this ALSO cuts the live session
   // (revocation.ts's whole point; see relay-host.ts's killRelayHostsByPeerKey).

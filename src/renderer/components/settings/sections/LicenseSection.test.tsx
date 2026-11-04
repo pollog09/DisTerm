@@ -161,7 +161,7 @@ describe('LicenseSection — the Pro line prints the subscription term, never th
 
   it('tells an App Store subscriber where the renewal is managed', async () => {
     await mount(PRO, APPLE)
-    expect(screenText()).toMatch(/managed by Apple, not by nodeterm/)
+    expect(screenText()).toMatch(/managed by Apple, not by DisTerm/)
     expect(screenText()).toMatch(/open the App Store on that phone/)
   })
 })

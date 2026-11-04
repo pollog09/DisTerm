@@ -195,7 +195,7 @@ const EMPTY_TEXT: Record<LoadState, { title: string; detail?: string }> = {
   // like it, no Retry (waiting cannot change which file is this node's).
   ambiguous: {
     title: GROK_AMBIGUOUS_SESSION_MESSAGE,
-    detail: 'nodeterm will not guess which one belongs to this node.'
+    detail: 'DisTerm will not guess which one belongs to this node.'
   },
   exportError: {
     title: "Couldn't read this opencode session.",

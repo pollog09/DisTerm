@@ -456,8 +456,8 @@ export function AgentsSection({ isActive }: { isActive: boolean }): React.JSX.El
       id="agents"
       title="Agents"
       description={agentChip
-        ? `Choose which agents the Add menus show and the default (${agentChip}), and whether nodeterm installs its hooks and skills into each agent.`
-        : 'Choose which agents the Add menus show and the default, and whether nodeterm installs its hooks and skills into each agent.'}
+        ? `Choose which agents the Add menus show and the default (${agentChip}), and whether DisTerm installs its hooks and skills into each agent.`
+        : 'Choose which agents the Add menus show and the default, and whether DisTerm installs its hooks and skills into each agent.'}
       isActive={isActive}
       searchEntries={ENTRIES}
     >
@@ -502,8 +502,8 @@ export function AgentsSection({ isActive }: { isActive: boolean }): React.JSX.El
         <FieldRow
           label="Hooks & skills (integrations)"
           description={
-            'Files nodeterm installs into each agent CLI’s own config: a status hook (RUNNING / NEEDS YOU badges, notifications) ' +
-            'and two skills (canvas control, reading linked nodes). Remove deletes exactly what nodeterm added. ' +
+            'Files DisTerm installs into each agent CLI’s own config: a status hook (RUNNING / NEEDS YOU badges, notifications) ' +
+            'and two skills (canvas control, reading linked nodes). Remove deletes exactly what DisTerm added. ' +
             'Without it the agent still runs in a terminal, just without those features. This is separate from the menu list above.'
           }
           control={null}
@@ -650,7 +650,7 @@ export function AgentsSection({ isActive }: { isActive: boolean }): React.JSX.El
                   always
                     ? undefined
                     : sessionWaived
-                      ? 'Waived until nodeterm quits, in every project (you chose that in an agent\u2019s dialog). Revoke restores the dialog now.'
+                      ? 'Waived until DisTerm quits, in every project (you chose that in an agent\u2019s dialog). Revoke restores the dialog now.'
                       : inProjects.length
                         ? `Waived permanently in ${inProjects.map((r) => `"${r.name}"`).join(', ')} \u2014 revoke below.`
                         : undefined
@@ -726,7 +726,7 @@ export function AgentsSection({ isActive }: { isActive: boolean }): React.JSX.El
       <SearchableRow {...ROWS.nodeIdentity}>
         <FieldRow
           label="Require verified node identity for canvas control"
-          description={`Commands that open, write to or close nodes — and that read a linked node's context — must present the identity NodeTerm issued to the node they say they came from. Automatic starts refusing the ones that can't from ${NODE_IDENTITY_STRICT_DATE}; until then they still run and the reply tells you to restart that node. Set this to "Not required" if an upgrade left a running session unable to drive the canvas: it restores the behaviour from before this feature, past ${NODE_IDENTITY_STRICT_DATE} as well. Browser control is the one exception — it always requires verified identity and this setting never releases it. An identity that is actually forged is refused whatever you pick here.`}
+          description={`Commands that open, write to or close nodes — and that read a linked node's context — must present the identity DisTerm issued to the node they say they came from. Automatic starts refusing the ones that can't from ${NODE_IDENTITY_STRICT_DATE}; until then they still run and the reply tells you to restart that node. Set this to "Not required" if an upgrade left a running session unable to drive the canvas: it restores the behaviour from before this feature, past ${NODE_IDENTITY_STRICT_DATE} as well. Browser control is the one exception — it always requires verified identity and this setting never releases it. An identity that is actually forged is refused whatever you pick here.`}
           control={
             <Select
               aria-label="Require verified node identity"

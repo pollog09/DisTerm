@@ -609,7 +609,7 @@ export function resolveGitHubReadProject(input: {
   if (targetProjectId !== undefined && targetProjectId !== callerProjectId) {
     if (!input.grantsOtherProjects) {
       return {
-        refuse: `project-target-refused: on nodeterm Server Edition, ${verb} reads only your own project`
+        refuse: `project-target-refused: on DisTerm Server Edition, ${verb} reads only your own project`
       }
     }
     return { projectId: targetProjectId }

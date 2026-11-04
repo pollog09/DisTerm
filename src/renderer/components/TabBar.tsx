@@ -32,6 +32,7 @@ import { CONFIRM_WAIVABLE_VERBS, WAIVABLE_VERB_ACTIONS, otherWaiverHint } from '
 import { projectWaiverRow, setControlConfirmWaivedForProject } from '../state/controlConfirmGate'
 import { useControlConfirm } from '../state/controlConfirm'
 import { isBrowserRuntime } from '../bridge/runtime'
+import { BrandMark } from './BrandMark'
 
 interface TabBarProps {
   onSwitch: (id: string) => void
@@ -354,11 +355,11 @@ export function TabBar({
             className="tabbar__update"
             title={
               pendingUpdate.kind === 'downloaded'
-                ? `nodeterm v${pendingUpdate.version} is ready, restart to update`
+                ? `DisTerm v${pendingUpdate.version} is ready, restart to update`
                 : pendingUpdate.kind === 'available'
-                  ? `nodeterm v${pendingUpdate.version} is available, click to download it`
+                  ? `DisTerm v${pendingUpdate.version} is available, click to download it`
                   : pendingUpdate.kind === 'manual'
-                    ? `nodeterm v${pendingUpdate.version} is available, download it to update`
+                    ? `DisTerm v${pendingUpdate.version} is available, download it to update`
                     : 'This version is no longer supported, update to continue'
             }
             onClick={() => runPendingUpdate(pendingUpdate)}
@@ -368,27 +369,8 @@ export function TabBar({
           </button>
         )}
         <div className="brand">
-          <svg className="brand__mark" viewBox="0 0 48 48" width="22" height="22" aria-hidden="true">
-            <defs>
-              <linearGradient id="ntg" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#a38dff" />
-                <stop offset="1" stopColor="#622994" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M13 12 L31 24 L13 36"
-              fill="none"
-              stroke="url(#ntg)"
-              strokeWidth="5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="13" cy="12" r="3.6" fill="#a38dff" />
-            <circle cx="13" cy="36" r="3.6" fill="#a38dff" />
-            <circle cx="31" cy="24" r="3.6" fill="#fff" />
-            <rect x="33.5" y="32.5" width="10.5" height="5" rx="2.5" fill="#a38dff" />
-          </svg>
-          <span className="brand__name">nodeterm</span>
+          <BrandMark className="brand__mark" size={22} />
+          <span className="brand__name">DisTerm</span>
         </div>
 
         {/* The board's tab: first after the brand and outside the strip, so it neither scrolls

@@ -29,7 +29,7 @@ export function normalizeUnread(n: unknown): number {
 
 export function trayMenuModel(state: TrayState): TrayMenuItem[] {
   const items: TrayMenuItem[] = [
-    { type: 'normal', label: 'Open nodeterm', enabled: true, action: 'open' },
+    { type: 'normal', label: 'Open DisTerm', enabled: true, action: 'open' },
     { type: 'separator' }
   ]
   const unread = normalizeUnread(state.unread)
@@ -41,13 +41,13 @@ export function trayMenuModel(state: TrayState): TrayMenuItem[] {
     items.push({ type: 'normal', label: `Restart to update v${state.updateReady}`, enabled: true, action: 'restart-update' })
   // Quit goes through the ordinary app.quit() → before-quit path (confirm dialog included), so a
   // tray quit tears down exactly what the menu Quit (Ctrl+Q on Linux, File → Exit on Windows) does.
-  items.push({ type: 'normal', label: 'Quit nodeterm', enabled: true, action: 'quit' })
+  items.push({ type: 'normal', label: 'Quit DisTerm', enabled: true, action: 'quit' })
   return items
 }
 
 export function trayTooltip(state: TrayState): string {
   const unread = normalizeUnread(state.unread)
-  return unread > 0 ? `nodeterm — ${unreadLabel(unread)}` : 'nodeterm'
+  return unread > 0 ? `DisTerm — ${unreadLabel(unread)}` : 'DisTerm'
 }
 
 /** Identity of a state for rebuild de-duplication: the menu is rebuilt only when this changes. */

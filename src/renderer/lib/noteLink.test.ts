@@ -147,9 +147,9 @@ describe('one edge per pair (hiddenLinkIds / linkIdsCoveredByRopes)', () => {
 })
 
 describe('buildNotePushMessage', () => {
-  it('wraps the note text with the nodeterm prefix and title', () => {
+  it('wraps the note text with the DisTerm prefix and title', () => {
     expect(buildNotePushMessage('Deploy notes', 'use the staging key')).toBe(
-      '[nodeterm] Sticky note "Deploy notes" linked as context: use the staging key'
+      '[DisTerm] Sticky note "Deploy notes" linked as context: use the staging key'
     )
   })
   it('returns null for empty or whitespace-only text', () => {
@@ -224,7 +224,7 @@ describe('buildLinkMap agent identity', () => {
 describe('buildContextLinkNote', () => {
   it('claude gets the skill wording', () => {
     const msg = buildContextLinkNote('claude', 'Builder', '/x/context.sh')
-    expect(msg).toContain('[nodeterm] You are now linked to "Builder"')
+    expect(msg).toContain('[DisTerm] You are now linked to "Builder"')
     expect(msg).toContain('get-linked-context skill')
   })
   it('cursor (reads ~/.claude/skills) gets the skill wording; grok, unverified, keeps the CLI', () => {
@@ -445,7 +445,7 @@ describe('the note builders cannot be made to submit a second line', () => {
       'linked to "Builder".'
     )
     expect(buildNotePushMessage('Deploy notes', 'use the staging key')).toBe(
-      '[nodeterm] Sticky note "Deploy notes" linked as context: use the staging key'
+      '[DisTerm] Sticky note "Deploy notes" linked as context: use the staging key'
     )
     // The readable ⏎ collapse still owns the ordinary multi-line note.
     expect(buildNotePushMessage('T', 'one\ntwo')).toContain('one ⏎ two')

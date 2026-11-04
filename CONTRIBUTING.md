@@ -1,18 +1,44 @@
-# Contributing to nodeterm
+# Contributing to DisTerm
 
 Thanks for looking. This file is the short door: enough to get running, plus the house rules that
 actually get a pull request sent back. The long version — every subsystem and the reasoning behind
 its invariants — lives in `CLAUDE.md` at the repo root, which is also loaded automatically if you
 work with an AI coding agent.
 
-nodeterm is licensed **BUSL-1.1** (converts to MIT after four years — see `LICENSE`). Contributions
+DisTerm is a personal fork of nodeterm, so issues and pull requests here may not be actively
+maintained. Contributions meant for the upstream project go to
+[eneskirca/nodeterm](https://github.com/eneskirca/nodeterm).
+
+DisTerm is licensed **BUSL-1.1** (converts to MIT after four years — see `LICENSE`). Contributions
 are accepted under that license. Its Additional Use Grant does not cover production use of a build
 whose license or usage-limit checks were removed or bypassed; changing that code in a PR here is
 ordinary work.
 
+## What is different in this fork
+
+- **Leave the license, entitlement and limit code alone, and `core/check.ts`'s request too.** That
+  includes `LICENSE`, `core/license.ts`, `core/project-limit.ts`, the machine-id and allowance token
+  code, `main/remote/seat-cap.ts`, `core/relay/host-token.ts`, and the vendored
+  `src/shared/watch-link/`. They keep calling `api.nodeterm.dev` by default. The full list is in
+  `CLAUDE.md`, "This repo is a fork".
+- **Identifiers stay named nodeterm** (the `nodeterm` CLI, `.nodeterm/`, `NODETERM_*`,
+  `window.nodeTerminal`, the `node-terminal` package name): they are on-disk and wire contracts. Use
+  "DisTerm" in new user-visible copy.
+- **There is no default relay, API base, update feed or server installer.** `NODETERM_RELAY_URL` turns
+  relay features on (phone access, Team Access, hosted teams, Live Links) and `NODETERM_API_BASE` adds
+  relay tokens and push. That variable also moves the license, check and project-limit calls, and a
+  check-shaped reply with no `limits` key reads as "off" (`sanitizeLimits`), so read `LICENSE` clause
+  (b) before using it on a production copy. A surface that rides
+  the relay must gate on `useRelayConfigured()` and show `RELAY_UNAVAILABLE_REASON`, never a guess.
+  `NODETERM_SERVER_INSTALL_URL` names Share with team's installer, and `NODETERM_REPO_URL` the source
+  for `scripts/install-server.sh`.
+- **A package has no feed unless you build it with one**:
+  `-c.extraMetadata.distermUpdateFeed=<https url> -c.publish.provider=generic -c.publish.url=<url>`.
+  Without it the build reads `no-channel` and says so; do not add a default.
+
 ## Getting set up
 
-You need Node.js 20+ (22 for the Server Edition) on Linux or **macOS 12 Monterey or newer** —
+You need Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` (`engines` in `package.json`) on Linux or **macOS 12 Monterey or newer** —
 the macOS floor is Electron's and esbuild's, and the README's *Build from source* section says
 what fails on an older Mac.
 
@@ -132,10 +158,10 @@ Coalesce renderer updates before building the workspace map, without resetting t
 Intermediate publications retain resolved transcript paths only for unchanged identities; changing
 a session/account/location/hook path or removing the target invalidates that cache immediately.
 
-Windows updates (unsigned beta): `release-win` builds `dist:win:release` (`nodeTermUpdates=manual`)
-and uploads `latest.yml`, so the app shows a passive "new version — Download" card; it never
-downloads or installs, and main refuses restart-to-update for any non-self-installing build.
-Keep local `dist:win` on `disabled`, and never upload Windows `*.blockmap`s until signing lands.
+Windows updates: `release-win` builds `dist:win` and uploads only the installer and zip, so a package
+has no feed. A build given a feed and stamped `nodeTermUpdates=manual` shows a passive "new version —
+Download" card; it never downloads or installs, and main refuses restart-to-update for any
+non-self-installing build. Never upload Windows `*.blockmap`s until signing lands.
 
 Updater UX: an update-check button must call `checkForUpdatesNow()` (`state/pendingUpdate.ts`) —
 the card treats every other check as automatic and silent. Never flip quitting flags before
@@ -158,7 +184,7 @@ once the host process is confirmed gone. `shutdown` is a negotiated hello featur
 a host that did not advertise it, and never add a taskkill/name-kill fallback — an older host gets
 the manual steps. The flow never deletes a node. Server Edition: degraded stub (`unsupported`).
 A host classified `staged` (runs from its `%LOCALAPPDATA%` copy) only needs a quit, so the dialog
-leads with "Quit nodeterm (sessions keep running)"; `unknown` must never be treated as staged.
+leads with "Quit DisTerm (sessions keep running)"; `unknown` must never be treated as staged.
 The NSIS preflight waits (bounded, exit 10 only) in silent/`--updated` runs and never kills.
 
 Staged host runtime (#829 step 3): a packaged Windows build launches the host from a private
@@ -179,12 +205,10 @@ applicable here":
 
 1. **Desktop** (Electron)
 2. **Server Edition** (Linux, browser)
-3. **Mobile companion** — *nodeterm mobile*, two **private** repos: `nodeterm-ios` (SwiftUI) and
-   `eneskirca/nodeterm-android` (Kotlin, in development). You cannot open a PR against either, so
-   this is normally a follow-up note rather than same-PR work: say in your PR what the mobile side
-   would need, and **mention @eneskirca** so it gets picked up there. "Not applicable" is a fine
-   answer — just make it a stated one. Never assume the phone is an iPhone in desktop copy or
-   defaults.
+3. **Mobile companion** — upstream's *nodeterm mobile* apps, which live in upstream's private repos.
+   DisTerm ships no phone app and advertises none, but the wire contracts for one are still in this
+   code. So say in your change what a phone client would need, or that it is not applicable. Never
+   assume the phone is an iPhone in desktop copy or defaults.
 
 Anything reachable from `window.nodeTerminal` needs a **real** implementation in
 `src/renderer/bridge/`, or a deliberate, documented degrade. The `satisfies NodeTerminalApi` gate
@@ -337,7 +361,7 @@ things can go wrong quietly:
 
 On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`:
 
-1. `file <app>/Contents/MacOS/nodeterm` says x86_64, and `<app>/Contents/Resources/bin/tmux` exists and
+1. `file <app>/Contents/MacOS/DisTerm` says x86_64, and `<app>/Contents/Resources/bin/tmux` exists and
    runs (`--version`).
 2. `ls <app>/Contents/Resources/app.asar.unpacked/node_modules/@img/` lists `sharp-darwin-x64`.
 3. A terminal opens and survives a quit and relaunch, a project icon upload works, and dictation loads.
@@ -395,7 +419,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
   influenced text: a process name is chosen by the process, so parse each owner group on its own and
   never let a name reach a pid (see CLAUDE.md → Dev-server ports).
 
-- **App-originated text goes only into an empty prompt.** A note nodeterm types into an agent on
+- **App-originated text goes only into an empty prompt.** A note the app types into an agent on
   its own (the context-link discovery note, a sticky pushed over a note link) goes through
   `linkNoteRefusal` + `pty.sendToEmptyPrompt`, never a bare `pty.sendText`: `sendText` pastes and
   presses Enter, so it submits whatever the user had half-typed with it (#1144) and answers an open
@@ -476,7 +500,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
 - **The Antigravity hook is a gate in front of every `agy` tool call on the machine — treat its
   stdout as a decision.** `agy` reads hook stdout as JSON and our hook, in the global
   `~/.gemini/config/hooks.json`, is subscribed to `PreToolUse`. Measured: silence runs the tool, but
-  `{}`, any stray non-JSON byte and a non-zero exit DENY it — in nodeterm and in the user's own
+  `{}`, any stray non-JSON byte and a non-zero exit DENY it — in DisTerm and in the user's own
   terminals. So: change answers only in `antigravity-decision.ts` (the one table); print nothing
   after the answer; keep the Windows command free of quotes (agy escapes them as `\"`, which cmd.exe
   cannot read) and test Windows dispatch WITHOUT `windowsVerbatimArguments`; keep the `AutoRun`
@@ -499,7 +523,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
   sessions. (The separate Windows `Path`→`PATH` key fix-up applies to every Windows spawn.)
 
 - **Our hooks.json bundle is the user's to switch off.** `"enabled": false` on `nodeterm-status` in
-  `~/.gemini/config/hooks.json` is agy's own switch and nodeterm's only opt-out; the installer
+  `~/.gemini/config/hooks.json` is agy's own switch and the app's only opt-out; the installer
   carries it across every rewrite. hooks.json is published through the shared settings transaction
   (`updateSettingsFile`) — never a bare write, which replaced a symlinked file with a regular one.
 
@@ -512,7 +536,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
   **What a dialog may grant is bounded by SCOPE, not by permanence.** It offers, as radios visible
   from the start with "ask me again" selected, "don't ask again for agents in <project>"
   (machine-local, keyed by project id, pruned like `settings.sidebarCollapsedItems`) or "don't ask
-  again in any project until nodeterm quits" (in-memory — not `settings.json`, not `localStorage`,
+  again in any project until DisTerm quits" (in-memory — not `settings.json`, not `localStorage`,
   so quitting restores the gate). Hiding a reach behind a checkbox made it read as missing. The
   per-project answer can also be given up front from the project tab's "Agents may, without asking"
   menu; it writes the same machine-local map through the same `withProjectWaiver`, never a second
@@ -668,7 +692,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
   only used cells; an xterm buffer (the renderer, the Windows session host's headless emulator,
   `NativeWindowsPane`) allocates every line at full width. Size them with `xtermScrollback` from
   `src/shared/scrollback.ts` (≤ 10k), so the host never keeps history the renderer cannot show.
-- **The app's own environment is not the panes' environment.** Whatever launched nodeterm (often an
+- **The app's own environment is not the panes' environment.** Whatever launched DisTerm (often an
   agent CLI's shell) leaves markers in `process.env` that describe THAT session. `buildPtyEnv` strips
   an explicit list (`TMUX`, `NESTED_AGENT_ENV_STRIP`); add a name there, with its measurement, rather
   than a prefix sweep — `CLAUDE_CONFIG_DIR`/`CODEX_HOME` select managed accounts and must survive.
@@ -856,7 +880,7 @@ On a real Intel Mac, after `node scripts/build-tmux.mjs && npm run dist:mac:x64`
 - **Normalize BOTH sides of a path comparison, through one function.** A marker normalized where
   it is built and matched raw where it is used is a no-op on the machine you wrote it on and a
   silent defect on Windows. That is issue #558: the managed-hook marker was folded to `/` while
-  the stored command still carried `\`, so nodeterm stopped recognizing its own hook entries and
+  the stored command still carried `\`, so the app stopped recognizing its own hook entries and
   appended a fresh copy of all nine on every launch — nine hook processes per event, nine
   concurrent 45 s permission waits racing one prompt. Write the normalizer once, use it on both
   sides, and pin it with a `C:\`-shaped test.
@@ -1059,7 +1083,7 @@ working sessions. See `docs/shared-codex-node-identity.md`.
 **A plain Codex TUI must not join Codex's own auto-started daemon.** From codex-cli 0.157.0 a
 plain `codex` starts (or joins) ONE background app-server per `CODEX_HOME` that keeps the
 environment of the pane that STARTED it, so every later node's hooks and tool shells run with the
-first node's `NODETERM_NODE_ID` (measured on 0.159.2). Every nodeterm codex line therefore ends in
+first node's `NODETERM_NODE_ID` (measured on 0.159.2). Every codex line the app builds therefore ends in
 `--no-daemon` when the CLI that will run it advertised the flag — added in the two assemblers
 (`shared/agents/launch.ts` via `withCodexNoDaemon`), fed by `ApprovalCaps.codexNoDaemon`. A new
 codex launch site goes through those assemblers and threads the caps; never type a bare `codex` line
@@ -1109,7 +1133,7 @@ condition per caller.
 "Share `~/.claude/skills` with this account" (issue #643) links each system skill into a managed
 account's own `skills/` and removes those links again when switched off — one wrong removal deletes
 somebody's real skills folder. Three habits made it safe and they generalize: link the LEAVES, not
-the containing directory (nodeterm writes its own canvas skill into `<configDir>/skills/`, so a
+the containing directory (the app writes its own canvas skill into `<configDir>/skills/`, so a
 directory-level link would have written it into the user's system folder); decide ownership by an
 anchored SHAPE (a symlink at `<name>` pointing at `<system>/<name>`) so what the on-switch creates
 is exactly what the off-switch removes, and a real directory can never qualify; and compare
@@ -1491,8 +1515,8 @@ the confirm sheet is its whole authority. It is off unless the user turns on
 for an agent the user ENABLED in `settings.agentIntegrations`, removed when they decline, and left
 alone while they have not answered. Do not add a direct call to an installer; add the artifact to
 the lifecycle (local) or to the `RemoteHooks` artifact plan (SSH), and give it a removal that
-deletes only what nodeterm wrote. `src/core/agent-integrations-wiring.test.ts` fails on a new call
-site. **A file nodeterm writes at every boot is never evidence of a pre-consent install** — the
+deletes only what the app wrote. `src/core/agent-integrations-wiring.test.ts` fails on a new call
+site. **A file the app writes at every boot is never evidence of a pre-consent install** — the
 grandfathering check (`detectExistingIntegrations`) counted the always-written userData shims and
 silently enabled every agent on a fresh install's second boot (#1149). Only a non-empty
 `~/.nodeterm/agent-hooks/` counts, and only on an install's first boot (the fresh-install marker). Do not merge text into `AGENTS.md` / `GEMINI.md` — agents get skills (progressive disclosure)
@@ -1508,13 +1532,13 @@ measurements.
 Claude/Gemini settings must go through the guarded transactions in
 `src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Confirmed absence or a successfully read empty/whitespace file may start from `{}`;
 malformed, non-object and unreadable files must survive unchanged.
-Keep unrelated settings and foreign hook handlers. Stage writes, serialize nodeterm writers,
+Keep unrelated settings and foreign hook handlers. Stage writes, serialize the app's writers,
 and compare the original bytes again before publishing; never use `cat … || echo '{}'` or a
 catch-all read fallback. Local and SSH symlinked profiles update and lock the resolved target without replacing
 the link; recheck resolution before publishing. SSH uses plain readlink and cd -P (no GNU -f),
 and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
 with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
-coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
+coordinate the app, not external editors, so do not claim a filesystem-wide compare-and-swap.
 **Creating an agent node is not proof it started.** Control opens retain their launch command
 until delivery is acknowledged, and report `queued` while it is held. A successful terminal send
 proves delivery only; never describe it as a healthy/running agent without agent evidence.
@@ -1607,7 +1631,7 @@ lives in `MemInfo.display`, which nothing else reads. CLAUDE.md, Session memory.
 **Run the suite with a scratch `HOME`, and know what else points at your real config.** The worker
 setup (`test/setup/agent-env.ts`) strips `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`,
 `COPILOT_HOME`, `GEMINI_CLI_HOME`, `XDG_CONFIG_HOME` and the `NODETERM_*` session variables, because
-a suite run from inside a nodeterm agent session inherits them and code under test resolves the
+a suite run from inside a DisTerm agent session inherits them and code under test resolves the
 LIVE agent config dir from them — a scratch `HOME` alone did not stop a test from rewriting the
 running session's own skills and hooks (#744). A test that needs one sets it itself.
 
@@ -1665,7 +1689,7 @@ tokens missing that were all present. Normalize at the read
 a read that slices a `\n`-bearing literal without it.
 
 **A test never touches a live tmux server.** You will most likely run `npm test` from inside a
-nodeterm terminal, where `-L node-terminal` and `-L nodeterm-rmt` are the servers holding every
+DisTerm terminal, where `-L node-terminal` and `-L nodeterm-rmt` are the servers holding every
 node you have open — one stray `kill-server` there ends your whole canvas, not your test. Every run
 therefore gets a private `TMUX_TMPDIR` (`test/setup/tmux-sandbox.ts`), which re-points every socket
 name at once. Write real-tmux suites the normal way — pick your own socket name, and use
@@ -1675,9 +1699,9 @@ tmux without carrying `TMUX_TMPDIR` into it, which is the one way left to escape
 production socket on purpose; adding a third is a review conversation, not a checkbox.
 
 **A test never touches the real home.** The hook installers write `~/.codex/config.toml` (Codex's
-trust in nodeterm's hooks), `~/.claude/settings.json` and friends, and they use
+trust in the app's hooks), `~/.claude/settings.json` and friends, and they use
 `import { homedir } from 'os'`, which `vi.spyOn(os, 'homedir')` does not reach — one test doing that
-rewrote a developer's real Codex config and Codex stopped running nodeterm's hooks. Every run points
+rewrote a developer's real Codex config and Codex stopped running the app's hooks. Every run points
 HOME/USERPROFILE at a private sandbox (`test/setup/home-sandbox.ts`) and clears `CODEX_HOME`,
 `CLAUDE_CONFIG_DIR` and the other relocation variables (one list, `HOME_OVERRIDE_ENV` in
 `src/core/test-home.ts`, which `test/setup/agent-env.ts` reuses). If a test needs its own home, mock the
@@ -1808,7 +1832,7 @@ still cancel both kinds of pending attention.
 
 Optional hook ownership failures must never stop Desktop window creation or Server boot. Use the
 shared nonfatal startup path and surface its actionable diagnostic. A responding HTTP port is not
-nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
+app identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
 ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
 is not permission to replace another installation's advertisement.
 

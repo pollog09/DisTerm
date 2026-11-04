@@ -23,7 +23,6 @@ import { sessionName } from '../tmux-naming'
 import { CONTROL_RE } from '../relay/team-admin'
 import { isRecord } from '../../shared/is-record'
 
-export const SERVER_INSTALL_URL = 'https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/install-server.sh'
 /** Where a root-installed nodeterm-server's unit lives (the installer's system mode). */
 const SYSTEM_UNIT_PATH = '/etc/systemd/system/nodeterm-server.service'
 /** The most of `team status --json` the probe carries back; the reply is a few hundred bytes. */
@@ -51,20 +50,28 @@ function refuseNested(value: string, what: string): void {
   }
 }
 
-/** The official installer, downloaded first: `curl … | bash` runs an EMPTY script and exits 0 when
+/** The server installer, downloaded first: `curl … | bash` runs an EMPTY script and exits 0 when
  *  the download fails (no pipefail), so a failed download would look like a successful install.
  *  The temp file goes on every exit: a hang-up or kill (the ssh session dropped, the runner's
- *  timeout) runs the EXIT trap through the signal traps, which sh does not do on its own. */
-export const SHARE_INSTALL_SCRIPT = [
-  'f=$(mktemp) || exit 1',
-  `trap 'rm -f "$f"' EXIT`,
-  "trap 'exit 129' HUP",
-  "trap 'exit 130' INT",
-  "trap 'exit 143' TERM",
-  `if ! curl -fsSL ${posixQuote(SERVER_INSTALL_URL)} -o "$f"; then echo 'nodeterm: could not download the installer.' >&2; exit 1; fi`,
-  'bash "$f"; rc=$?',
-  'exit $rc'
-].join('\n')
+ *  timeout) runs the EXIT trap through the signal traps, which sh does not do on its own.
+ *
+ *  DisTerm publishes no installer, so there is no default url: with none named, this says so and
+ *  fails, and the host is left as it was. */
+export function shareInstallScript(url: string | undefined = process.env.NODETERM_SERVER_INSTALL_URL): string {
+  if (!url) {
+    return `echo 'DisTerm: no server installer is configured on this computer (set NODETERM_SERVER_INSTALL_URL).' >&2\nexit 1`
+  }
+  return [
+    'f=$(mktemp) || exit 1',
+    `trap 'rm -f "$f"' EXIT`,
+    "trap 'exit 129' HUP",
+    "trap 'exit 130' INT",
+    "trap 'exit 143' TERM",
+    `if ! curl -fsSL ${posixQuote(url)} -o "$f"; then echo 'DisTerm: could not download the installer.' >&2; exit 1; fi`,
+    'bash "$f"; rc=$?',
+    'exit $rc'
+  ].join('\n')
+}
 
 /**
  * One round trip that tells `sharePlan` everything: the OS and login, whether git/curl exist, which

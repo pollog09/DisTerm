@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { PairedDevice } from '@shared/types'
-import { ANDROID_PLAY_STORE_URL, IOS_APP_STORE_URL } from '@renderer/lib/links'
 import { PhoneSection } from './PhoneSection'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -27,7 +26,7 @@ beforeEach(() => {
       webhookStatus: vi.fn(async () => ({ ok: true, value: null })),
       webhookEndpoint: vi.fn(async () => 'https://api.test')
     },
-    remoteHost: { setPhoneAccess: vi.fn() },
+    remoteHost: { setPhoneAccess: vi.fn(), relayConfigured: vi.fn(async () => true) },
     shell: { openExternal }
   }
   host = document.createElement('div')
@@ -49,15 +48,8 @@ describe('PhoneSection copy is platform-neutral', () => {
     expect(text).toContain('Pair the nodeterm mobile app')
     expect(text).not.toContain('nodeterm iOS app')
     expect(text).toContain('Android') // the device list shows the phone-sent name
-    const button = (label: string): HTMLButtonElement | undefined =>
-      [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
-    const store = button('Get it on the App Store')
-    expect(store).toBeTruthy()
-    act(() => store!.click())
-    expect(openExternal).toHaveBeenCalledWith(IOS_APP_STORE_URL)
-    const play = button('Get it on Google Play')
-    expect(play).toBeTruthy()
-    act(() => play!.click())
-    expect(openExternal).toHaveBeenCalledWith(ANDROID_PLAY_STORE_URL)
+    // No store is advertised: the mobile apps are upstream's.
+    expect(text).not.toContain('Get it on')
+    expect(text).not.toContain("Don't have the app yet")
   })
 })

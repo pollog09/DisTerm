@@ -20,7 +20,7 @@ export function micDeniedMessage(platform: MicPlatform): string {
     case 'win32':
       return 'Microphone access is blocked by Windows — turn on "Microphone access" and "Let desktop apps access your microphone" in Settings → Privacy & security → Microphone, then try again.'
     case 'darwin':
-      return 'Microphone access was denied — allow nodeterm in System Settings → Privacy & Security → Microphone and try again.'
+      return 'Microphone access was denied — allow DisTerm in System Settings → Privacy & Security → Microphone and try again.'
     case 'browser':
       return "Microphone access was denied — allow it in this site's browser settings and try again."
     default:

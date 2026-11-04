@@ -46,7 +46,7 @@ describe('isAtRecordingCap', () => {
 // to show a "See nodeterm Pro" action beside the inline error, so pin the substring match here.
 describe('isProGateError', () => {
   it('matches the Pro-gate error thrown by SpeechService', () => {
-    expect(isProGateError('The base model requires nodeterm Pro — the tiny model is free.')).toBe(
+    expect(isProGateError('The base model requires DisTerm Pro — the tiny model is free.')).toBe(
       true
     )
   })

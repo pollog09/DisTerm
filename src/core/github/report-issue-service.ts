@@ -107,6 +107,9 @@ export function resetReportRunCounters(): void {
   filedThisRun.clear()
 }
 
+/** Lower-cased: GitHub repository names are case-insensitive. */
+const UPSTREAM_REPOSITORY = 'eneskirca/nodeterm'
+
 /**
  * Turn a failure from `contextForProject` into a sentence an agent can act on. Every one of these
  * is TERMINAL for this turn: none of them is fixed by retrying, and an agent that retries a
@@ -223,6 +226,15 @@ export async function reportIssue(
   } catch (error) {
     const message = describeContextError(error)
     return { ok: false, error: message.split(':')[0], message }
+  }
+
+  // A project whose own origin is upstream's repository (a clone of it) has a "repository of its
+  // own", so the no-fallback rule above does not stop this. DisTerm's reports never go there.
+  if (repository.toLowerCase() === UPSTREAM_REPOSITORY) {
+    const message =
+      'report-upstream-repo: this project\'s repository is the upstream nodeterm one, and DisTerm does not ' +
+      'file reports there. Do not retry, and do not file it anywhere else — tell the user what you found.'
+    return { ok: false, error: 'report-upstream-repo', message }
   }
 
   // Redact every field independently, then compose, then redact the composition (the second pass

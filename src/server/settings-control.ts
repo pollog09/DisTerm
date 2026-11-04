@@ -32,7 +32,7 @@ import type { ServerControlReply } from './headless-node-factory'
 
 export const SETTINGS_SET_UNSUPPORTED_MESSAGE =
   `${CONTROL_UNSUPPORTED_ERROR}: changing settings from the canvas CLI needs a person to confirm ` +
-  'it, and nodeterm Server Edition has no confirmation dialog for canvas control. Ask the user to ' +
+  'it, and DisTerm Server Edition has no confirmation dialog for canvas control. Ask the user to ' +
   'change it in Settings. This is permanent on this host — do not retry.'
 
 export interface ServerSettingsControlDeps {
@@ -61,7 +61,7 @@ export function serverSettingsControl(
     return {
       ok: false,
       error:
-        'project-target-refused: on nodeterm Server Edition, settings can only be read for your own project'
+        'project-target-refused: on DisTerm Server Edition, settings can only be read for your own project'
     }
   }
   let project: SettingsProjectView | undefined

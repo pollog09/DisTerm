@@ -9,7 +9,6 @@ import {
 } from '@shared/update-prep'
 import { useAgentStatus } from '../state/agentStatus'
 import { agentUpdateExitFn } from '../terminal/agent-restart'
-import { RELEASES_URL } from '../state/pendingUpdate'
 import {
   planUpdatePrep,
   prepareEntry,
@@ -69,7 +68,6 @@ function rowLabel(row: PrepRow): string {
 
 export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props): JSX.Element {
   const [phase, setPhase] = useState<Phase>({ k: 'inspecting' })
-  const [openDownload, setOpenDownload] = useState(true)
   /** The user chose to stop sessions even though the host is staged (U3). */
   const [stopAnyway, setStopAnyway] = useState(false)
   const busyRef = useRef(false)
@@ -110,9 +108,8 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
   }, [isTop, onClose, working])
 
   const quit = useCallback(() => {
-    if (openDownload) window.open(RELEASES_URL, '_blank', 'noopener')
     window.nodeTerminal.updates.prepareQuit()
-  }, [openDownload])
+  }, [])
 
   /** Step 2: clean exits, one node at a time (each is a choreography in its own pane). Then the
    *  host is asked again — something may have started working meanwhile — before the confirm. */
@@ -164,13 +161,13 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
         case 'unconfirmed':
           setPhase({
             k: 'failed',
-            message: `The session host did not confirm it shut down (${outcome.error}). Quit nodeterm and check Task Manager before installing.`
+            message: `The session host did not confirm it shut down (${outcome.error}). Quit DisTerm and check Task Manager before installing.`
           })
           return
         case 'host-unsupported':
           setPhase({
             k: 'failed',
-            message: 'This session host was started by an older nodeterm and cannot shut itself down.'
+            message: 'This session host was started by an older DisTerm and cannot shut itself down.'
           })
           return
         default:
@@ -200,11 +197,6 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
         confirmLabel="Stop sessions and quit"
         danger
         enterConfirms={false}
-        option={{
-          label: 'Open the download page after quitting',
-          checked: openDownload,
-          onChange: setOpenDownload
-        }}
         onConfirm={() => void shutdown()}
         onCancel={onClose}
       />
@@ -250,13 +242,13 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
     if (inspection.kind === 'unsupported') {
       content = (
         <p className="confirm__msg">
-          Not needed here: this machine does not run terminals in the nodeterm session host.
+          Not needed here: this machine does not run terminals in the DisTerm session host.
         </p>
       )
     } else if (inspection.kind === 'no-host') {
       content = (
         <p className="confirm__msg">
-          No session host is running, so nothing holds the installation. Quit nodeterm, then run
+          No session host is running, so nothing holds the installation. Quit DisTerm, then run
           the installer.
         </p>
       )
@@ -266,7 +258,7 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
             Cancel
           </button>
           <button className="confirm__btn primary" onClick={quit}>
-            Quit nodeterm
+            Quit DisTerm
           </button>
         </>
       )
@@ -291,14 +283,6 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
               <li key={s}>{s}</li>
             ))}
           </ol>
-          <label className="confirm__option">
-            <input
-              type="checkbox"
-              checked={openDownload}
-              onChange={(e) => setOpenDownload(e.target.checked)}
-            />
-            Open the download page after quitting
-          </label>
         </>
       )
       actions = (
@@ -310,7 +294,7 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
             Stop all sessions instead…
           </button>
           <button className="confirm__btn primary" autoFocus onClick={quit}>
-            Quit nodeterm (sessions keep running)
+            Quit DisTerm (sessions keep running)
           </button>
         </>
       )
@@ -357,7 +341,7 @@ export function PrepareUpdateDialog({ collectNodes, onTravel, onClose }: Props):
       content = (
         <>
           <p className="confirm__msg">
-            The running session host was started by an older nodeterm and cannot shut itself down
+            The running session host was started by an older DisTerm and cannot shut itself down
             from here. To update by hand:
           </p>
           {manualSteps}

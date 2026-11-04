@@ -2,6 +2,7 @@
 // jsdom so `pinNeutralMachineNoun` can pin the machine noun: several sentences name the machine
 // through lib/machineName, and a literal "this computer" must not depend on the OS running the suite.
 import { describe, it, expect } from 'vitest'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 import {
   capUnits,
   CHAT_NOT_SENT_MESSAGE,
@@ -125,17 +126,17 @@ describe('statusLine (H9)', () => {
   it('explains reconnecting and refused, and says nothing for a live link', () => {
     expect(statusLine(link())).toBeNull()
     expect(statusLine(link({ status: 'reconnecting' }))).toBe(
-      "Reconnecting to nodeterm's relay — viewers see no updates until it's back."
+      "Reconnecting to DisTerm's relay — viewers see no updates until it's back."
     )
     expect(statusLine(link({ status: 'refused' }))).toBe(
-      "nodeterm's service won't host this link — the Pro plan may have lapsed, or this build can't relay. Viewers can't join."
+      "DisTerm's service won't host this link — the Pro plan may have lapsed, or this build can't relay. Viewers can't join."
     )
   })
   // R63: a viewer with no session to join is the owner's to fix — never a silent LIVE.
   it('a live link with viewers waiting for the terminal says how to let them watch', () => {
     const waiting = { ...viewer('w'), waiting: true }
     expect(statusLine(link({ viewers: [viewer('a'), waiting] }))).toBe(
-      'Viewers are waiting — open this terminal in nodeterm to let them watch.'
+      'Viewers are waiting — open this terminal in DisTerm to let them watch.'
     )
     expect(statusLine(link({ viewers: [viewer('a')] }))).toBeNull()
     // A worse state still wins: refused or reconnecting say THAT.
@@ -149,7 +150,7 @@ describe('chipView: viewers waiting (R63)', () => {
     expect(chipView([link({ viewers: [viewer('a'), waiting] })])).toEqual({
       label: 'LIVE · 1 waiting',
       tone: 'waiting',
-      title: 'Viewers are waiting — open this terminal in nodeterm to let them watch.'
+      title: 'Viewers are waiting — open this terminal in DisTerm to let them watch.'
     })
     // refused and reconnecting still win (they need the relay or the service, not an open terminal).
     expect(chipView([link({ status: 'reconnecting', viewers: [waiting] })]).tone).toBe('offline')
@@ -198,7 +199,7 @@ describe('createErrorMessage', () => {
   })
 
   it('network never says offline, and says nothing was shared', () => {
-    expect(createErrorMessage('network', 'desktop')).toBe("Couldn't reach nodeterm's service. Nothing was shared.")
+    expect(createErrorMessage('network', 'desktop')).toBe("Couldn't reach DisTerm's service. Nothing was shared.")
     for (const e of ALL_ERRORS) expect(createErrorMessage(e, 'desktop')).not.toMatch(/offline/i)
   })
 
@@ -214,7 +215,7 @@ describe('createErrorMessage', () => {
 
   it('node-missing names what it knows, not one cause (H8)', () => {
     expect(createErrorMessage('node-missing', 'desktop')).toBe(
-      "nodeterm couldn't find that terminal in a saved project. Nothing was shared."
+      "DisTerm couldn't find that terminal in a saved project. Nothing was shared."
     )
   })
 
@@ -227,7 +228,7 @@ describe('createErrorMessage', () => {
   it('the not-entitled and limit sentences', () => {
     expect(createErrorMessage('not-entitled', 'desktop')).toBe('Live links need an active Pro plan.')
     expect(createErrorMessage('limit-machine', 'desktop')).toBe('Stop a live link first — 5 can be active at once.')
-    expect(createErrorMessage('relay-unavailable', 'desktop')).toBe('Live links need the installed app.')
+    expect(createErrorMessage('relay-unavailable', 'desktop')).toBe(RELAY_UNAVAILABLE_REASON)
   })
 
   it('the Unlimited and Control refusals', () => {
@@ -264,7 +265,7 @@ describe('noticeText', () => {
       'The live link to build ended — the terminal is no longer on any canvas.'
     )
     expect(noticeText({ kind: 'ended', linkId: 'L', nodeId: 'n', title: 'build', reason: 'revoked' })).toBe(
-      "nodeterm's service ended the live link to build."
+      "DisTerm's service ended the live link to build."
     )
   })
 
@@ -318,8 +319,8 @@ describe('copy Task 17 reads (R47, R48, R52, H11, H23, H26)', () => {
     expect(stopAllConfirmMessage()).toBe(
       'Stop every live link on your license? This also ends links shared from other computers. Viewers on this computer are disconnected at once; links on other computers stop within a few minutes.'
     )
-    expect(STOP_FAILED_MESSAGE).toBe("The stop didn't reach nodeterm — try again.")
-    expect(KICK_FAILED_MESSAGE).toBe("The kick didn't reach nodeterm — try again.")
+    expect(STOP_FAILED_MESSAGE).toBe("The stop didn't reach DisTerm — try again.")
+    expect(KICK_FAILED_MESSAGE).toBe("The kick didn't reach DisTerm — try again.")
     expect(KICK_NOT_DONE_MESSAGE).toBe('That viewer was not disconnected — they may already have left.')
     expect(CHAT_NOT_SENT_MESSAGE).toBe("Your reply wasn't sent — viewers didn't see it.")
     expect(NOT_IN_OPEN_PROJECT).toBe('not in an open project')
@@ -561,7 +562,7 @@ describe('control notices', () => {
 describe('final review copy', () => {
   it("an owner's narrowing change that could not be saved: applied, undone by a restart, Stop ends it", () => {
     expect(CONTROL_CHANGE_UNSAVED_MESSAGE).toBe(
-      "Applied, but couldn't be saved — it will undo when nodeterm restarts. Stop the link to end it for good."
+      "Applied, but couldn't be saved — it will undo when DisTerm restarts. Stop the link to end it for good."
     )
   })
 

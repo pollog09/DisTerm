@@ -20,7 +20,8 @@ import {
   mayQuitAndInstall,
   releaseNotesText,
   toUpdateAvailablePayload,
-  updateDelivery
+  updateDelivery,
+  validUpdateFeed
 } from '../shared/update-platform'
 import {
   classifyUpdaterError,
@@ -51,14 +52,14 @@ export function lastUpdateCheck(): UpdateCheckRecord | null {
 
 /**
  * One actionable log line for a failed check in a check-only build. A 404 on a `latest*.yml` is
- * the feed itself missing — the nodeterm.dev/updates mirror not serving that platform's file —
+ * the feed itself missing — the feed not serving that platform's file —
  * which is an ops fix, not a network blip, and reads like one in a device report. Pure; exported
  * for tests.
  */
 export function describeCheckFailure(message: string): string {
   const feedMissing = /\b404\b/.test(message) && /latest[\w.-]*\.yml/i.test(message)
   return feedMissing
-    ? `update feed is missing this platform's latest*.yml (${message}); the passive update notice cannot fire until the update mirror serves it`
+    ? `update feed is missing this platform's latest*.yml (${message}); the passive update notice cannot fire until the feed serves it`
     : `update check failed: ${message}`
 }
 
@@ -70,35 +71,27 @@ export function describeCheckFailure(message: string): string {
 export const PREPARE_TIMEOUT_MS = 5 * 60 * 1000
 
 /**
- * The `nodeTermUpdates` marker a LOCAL package carries in its packaged package.json, injected by
- * the `dist*` scripts via electron-builder's `extraMetadata`. `release` does not set it, so a
- * promoted build is untouched and keeps updating itself. The one RELEASE that carries a marker is
- * the unsigned Windows beta (`dist:win:release` → `manual`): it checks the feed but never
- * downloads or installs — see `updateDelivery`.
+ * What a package carries in its packaged package.json, injected through electron-builder's
+ * `extraMetadata`:
+ *  - `distermUpdateFeed`: the https feed this build updates from. ABSENT BY DEFAULT, and that is the
+ *    fail-safe: no flag means `no-channel`, so a forgotten flag can never pull an update from
+ *    anywhere. There is deliberately no `build.publish` in package.json to fall back on.
+ *  - `nodeTermUpdates`: `manual` checks the feed but never downloads or installs (see
+ *    `updateDelivery`), `disabled` turns the feed off again.
  *
- * It exists because a locally packaged app is indistinguishable from a release at runtime —
- * `app.isPackaged` is true for both — so it polled the production feed for a version that was
- * never published there and logged a 404 on `latest*.yml` every six hours.
- *
- * The trade-off, stated plainly: a `dist*` package can no longer smoke-test the updater wiring
- * itself — a manual check there does not go near the network. The old behaviour at least proved
- * the wiring was live, at the cost of a recurring 404 in every local build's log. Verifying the
- * real feed is the job of a `release` package, which carries no marker.
- *
- * The marker is therefore also what `no-channel` means at runtime (see `updateDelivery`): such a
- * build now SAYS it has no channel instead of claiming to be up to date, which is issue #814.
+ * Not packaged, or unreadable: neither value, which reads as `no-channel` on a packaged build.
  */
-function packagedUpdateMode(): unknown {
-  if (!app.isPackaged) return undefined
+function packagedUpdateConfig(): { mode: unknown; feed: unknown } {
+  if (!app.isPackaged) return { mode: undefined, feed: undefined }
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as {
       nodeTermUpdates?: unknown
+      distermUpdateFeed?: unknown
     }
-    return pkg.nodeTermUpdates
+    return { mode: pkg.nodeTermUpdates, feed: pkg.distermUpdateFeed }
   } catch (err) {
-    // A normal release without the marker must preserve the established updater behavior.
-    console.warn('[updater] could not read packaged update mode:', err)
-    return undefined
+    console.warn('[updater] could not read packaged update config:', err)
+    return { mode: undefined, feed: undefined }
   }
 }
 
@@ -168,10 +161,11 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
   })
   if (failedInstall) console.warn('[updater]', describeUpdateInstallFailure(failedInstall))
 
-  const updateMode = packagedUpdateMode()
+  const { mode: updateMode, feed: updateFeed } = packagedUpdateConfig()
   const delivery = updateDelivery({
     isPackaged: app.isPackaged,
     updateMode,
+    feed: updateFeed,
     platform,
     hasAppImage: !!process.env.APPIMAGE
   })
@@ -294,9 +288,9 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
     // Neither can reach a feed, so automatic networking and updater event wiring stay off — but
     // the two answer a MANUAL check differently, because only one of them has a user to mislead.
     //
-    // `no-channel` is a packaged app someone installed from a local `dist*` package. Telling them "up to date" is a statement this build is structurally
-    // unable to make — it was issue #814's actual complaint, read by the reporter as a dead
-    // button. It now says it has no channel and points at the download page.
+    // `no-channel` is a packaged app with no feed. Telling them "up to date" is a statement this
+    // build is structurally unable to make — it was issue #814's actual complaint, read by the
+    // reporter as a dead button. It now says updates are not configured.
     //
     // `dev` keeps the old quiet "up to date": `npm run dev` has no install to be wrong about.
     ipcMain.on(IPC.appCheckForUpdates, () =>
@@ -308,6 +302,9 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
   // From here on the build has a feed: load electron-updater now (the one place it is loaded on
   // these builds), after every IPC handler above is registered.
   const autoUpdater = updater()
+  // No app-update.yml to fall back on (package.json has no build.publish): the stamped feed is the
+  // only place this build can update from. Non-null here: `updateDelivery` validated it.
+  autoUpdater.setFeedURL({ provider: 'generic', url: validUpdateFeed(updateFeed) as string })
 
   // A Linux .deb/.rpm install (no APPIMAGE env) cannot self-install and would re-download the
   // full AppImage every 6h only to throw on install; the unsigned Windows beta must not
@@ -389,7 +386,7 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
     if (d.notify && !getMainWindow()?.isFocused() && Notification.isSupported()) {
       const n = new Notification({
         title: 'Update ready',
-        body: `nodeterm ${info.version} is ready to install.`
+        body: `DisTerm ${info.version} is ready to install.`
       })
       n.on('click', () => {
         // Resolve again on click — the window may have been closed or recreated since.

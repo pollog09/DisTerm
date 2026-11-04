@@ -17,7 +17,6 @@
 import { createHmac } from 'node:crypto'
 import nacl from 'tweetnacl'
 import {
-  PUSH_WEBHOOK_DEFAULT_API_BASE,
   type PushWebhookApi,
   type PushWebhookError,
   type PushWebhookMinted,
@@ -96,7 +95,7 @@ function errorFor(status: number, body: unknown): PushWebhookError {
 export function createPushWebhookClient(deps: PushWebhookClientDeps): PushWebhookApi {
   const env = deps.env ?? process.env
   const fetchImpl = deps.fetch ?? fetch
-  const apiBase = (deps.apiBase ?? env.NODETERM_API_BASE ?? PUSH_WEBHOOK_DEFAULT_API_BASE).replace(/\/+$/, '')
+  const apiBase = (deps.apiBase ?? env.NODETERM_API_BASE ?? '').replace(/\/+$/, '')
 
   async function postJson(path: string, body: unknown): Promise<{ status: number; json: unknown } | null> {
     const ctrl = new AbortController()
@@ -118,7 +117,8 @@ export function createPushWebhookClient(deps: PushWebhookClientDeps): PushWebhoo
   }
 
   async function call(action: PushWebhookAction, path: string): Promise<PushWebhookResult<unknown>> {
-    if (!deps.isPackaged() && !env.NODETERM_API_BASE && !deps.apiBase) return { ok: false, error: 'dev-build' }
+    // No backend configured, packaged or not: nothing here may be asked of a server that is not there.
+    if (!apiBase) return { ok: false, error: 'dev-build' }
     let paired = false
     try {
       paired = await deps.hasPairedPhone()

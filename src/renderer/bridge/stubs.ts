@@ -544,7 +544,9 @@ export function buildStubApi(): Omit<
       approvePhone: U('remoteHost.approvePhone'),
       approve: (_id: string) => {},
       reject: (_id: string) => {},
-      setPhoneAccess: noop
+      setPhoneAccess: noop,
+      // No phone host and no Team Access in a browser, so the surfaces that ask say why they are off.
+      relayConfigured: async () => false
     },
     // New relay tunnel (Stage 4). Hosting/connecting a peer-to-peer relay is a desktop-only
     // (Electron) capability — the Server Edition is itself the remote host, reached over its own WS

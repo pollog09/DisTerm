@@ -82,7 +82,7 @@ export function totalMb(views: readonly SessionMemoryView[], host?: SessionHostO
 /** The host line's label: `nodeterm session host (3 consoles)`. */
 export function hostOverheadLabel(host: SessionHostOverhead): string {
   const n = host.consoleCount
-  return `nodeterm session host (${n} console${n === 1 ? '' : 's'})`
+  return `DisTerm session host (${n} console${n === 1 ? '' : 's'})`
 }
 
 /** "nodeterm itself" sub-line label: `GPU`, `Renderers ×2`, `Main process`, `Helpers ×3`. */

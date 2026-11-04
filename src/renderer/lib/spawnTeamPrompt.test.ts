@@ -4,7 +4,7 @@ import { conductorPrompt, MAX_TEAM_ROLES } from './spawnTeamPrompt'
 describe('conductorPrompt', () => {
   it('leads with the skill trigger phrase — the orchestration doctrine hangs off it', () => {
     const p = conductorPrompt({ task: 'build a REST API', worktrees: true })
-    expect(p.startsWith('Build with Nodeterm orchestration: ')).toBe(true)
+    expect(p.startsWith('Build with DisTerm orchestration: ')).toBe(true)
     expect(p).toContain('build a REST API')
   })
 

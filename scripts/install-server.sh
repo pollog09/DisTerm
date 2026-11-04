@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 #
-# nodeterm headless notification host — one-line installer / updater.
+# DisTerm headless notification host — installer / updater, run from your own clone or checkout.
 #
-#   curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/install-server.sh | bash
+#   NODETERM_REPO_URL=<your clone's git url> bash scripts/install-server.sh
 #
-# Installs (or updates) the nodeterm Server Edition on this Linux host and runs it in HEADLESS
+# DisTerm publishes no server repository to install from, so this refuses to run without a source
+# (NODETERM_REPO_URL, else the origin of an existing checkout) and refuses upstream's: neither the
+# install nor the daily auto-update may pull from there.
+#
+# Installs (or updates) the DisTerm Server Edition on this Linux host and runs it in HEADLESS
 # mode (NODETERM_HEADLESS=1): it boots every core service — the loopback hook server, agent-status
 # mirror, usage poll and the granted push senders — but binds NO public HTTP/WS listener, so there
 # are ZERO open ports. A phone that SSHes into this host and drops a push grant gets full push /
@@ -20,7 +24,6 @@ set -euo pipefail
 HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
 export HOME
 
-REPO_URL="${NODETERM_REPO_URL:-https://github.com/eneskirca/nodeterm}"
 APP_DIR="${NODETERM_APP_DIR:-$HOME/.nodeterm-server-app}"
 # Where the running server keeps its state (auth, sessions, workspace, scrollback). Matches the
 # server's own default (src/server/config.ts) so the install-meta.json we write below lands where
@@ -53,6 +56,31 @@ fail() { printf '%s %s\n' "$(mark "$color_err" 31 ✗)" "$1" >&2; exit 1; }
 [ "$(uname -s)" = "Linux" ] || fail "The headless host targets Linux (systemd). For macOS run the desktop app; for containers use the Dockerfile (see docs/SERVER.md)."
 
 command -v git >/dev/null 2>&1 || fail "git is not installed. Install it first (e.g. 'sudo apt install git' or 'sudo dnf install git')."
+
+# ---- where the code comes from: yours, never upstream's ---------------------------------------
+# Both are checked: the update below fetches from the checkout's origin, whatever NODETERM_REPO_URL
+# says. A checkout still on upstream's origin gets NODETERM_REPO_URL as its new origin; with no
+# NODETERM_REPO_URL to replace it, this refuses.
+is_upstream() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    *eneskirca/nodeterm*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+REPO_URL="${NODETERM_REPO_URL:-}"
+is_upstream "$REPO_URL" && fail "Not installing from upstream ($REPO_URL). Set NODETERM_REPO_URL to your own clone and run this again."
+if [ -d "$APP_DIR/.git" ]; then
+  ORIGIN_URL="$(git -C "$APP_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$REPO_URL" ] && { [ -z "$ORIGIN_URL" ] || is_upstream "$ORIGIN_URL"; }; then
+    if [ -z "$ORIGIN_URL" ]; then git -C "$APP_DIR" remote add origin "$REPO_URL"
+    else git -C "$APP_DIR" remote set-url origin "$REPO_URL"; fi
+    ORIGIN_URL="$(git -C "$APP_DIR" remote get-url origin)"
+  fi
+  [ -n "$ORIGIN_URL" ] || fail "$APP_DIR has no origin to update from. Set NODETERM_REPO_URL to your own clone."
+  is_upstream "$ORIGIN_URL" && fail "Not updating from upstream ($ORIGIN_URL). Set NODETERM_REPO_URL to your own clone and run this again."
+elif [ -z "$REPO_URL" ]; then
+  fail "No source to install from: DisTerm publishes no server repository. Set NODETERM_REPO_URL to your own clone."
+fi
 
 # ---- Node.js: use a good-enough system install, else provision a private one --------------------
 # Sets NODE_BIN (absolute — used by npm ci, the node-pty rebuild, and the systemd ExecStart) and,
@@ -247,9 +275,9 @@ UNIT
 }
 
 # ---- auto-update: a oneshot service + daily timer --------------------------------------------
-# The timer fires the oneshot service ~daily (randomized). The service pulls the latest code and
-# then RE-EXECS the freshly-pulled install-server.sh — so the updater logic updates itself. The
-# installer is idempotent, so a no-op pull (already current) is harmless. Opt out with
+# The timer fires the oneshot service ~daily (randomized). The service runs this script, which
+# checks where the checkout comes from (refusing upstream's, above) before it pulls. The installer
+# is idempotent, so a run with nothing new is harmless. Opt out with
 # NODETERM_NO_AUTOUPDATE=1 (see the branches below), which also removes an existing timer.
 write_update_units() {
   # $1 = target unit directory (system-wide or per-user)
@@ -262,9 +290,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=$APP_DIR
-# git pull to update the checkout (incl. THIS updater script), then re-exec the pulled installer,
-# which rebuilds and restarts the service. Absolute paths are baked in at write time.
-ExecStart=/bin/sh -c 'cd "$APP_DIR" && git pull --ff-only && exec bash "$APP_DIR/scripts/install-server.sh"'
+# The installer refuses an upstream checkout, then pulls, rebuilds and restarts the service.
+# Absolute paths are baked in at write time.
+ExecStart=/bin/sh -c 'cd "$APP_DIR" && exec bash "$APP_DIR/scripts/install-server.sh"'
 UNIT
   cat > "$1/${UPDATE_SERVICE_NAME}.timer" <<UNIT
 [Unit]

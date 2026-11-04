@@ -120,7 +120,7 @@ describe('NSIS safety wiring', () => {
     expect(include.indexOf('nodeterm_preflight_cancel:')).toBeGreaterThan(include.indexOf('nodeterm_preflight_unattended:'))
   })
   it('tells the user to quit from the tray first, and to Prepare only if still blocked', () => {
-    const running = include.split('\n').find((l) => l.includes('MessageBox') && l.includes('nodeterm is still running'))
+    const running = include.split('\n').find((l) => l.includes('MessageBox') && l.includes('DisTerm is still running'))
     expect(running).toBeDefined()
     const tray = running!.indexOf('system tray')
     const prepare = running!.indexOf('Prepare for update')

@@ -29,7 +29,7 @@ export const DEFAULT_TERMINAL_THEME_ID = 'nodeterm-dark'
 export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   {
     id: 'nodeterm-dark',
-    label: 'nodeterm Dark',
+    label: 'DisTerm Dark',
     dark: true,
     theme: {
       background: '#1e1e1e',
@@ -318,7 +318,7 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   },
   {
     id: 'nodeterm-light',
-    label: 'nodeterm Light',
+    label: 'DisTerm Light',
     dark: false,
     theme: {
       // The counterpart to `nodeterm-dark`: this background IS the light app palette's `--bg`, so

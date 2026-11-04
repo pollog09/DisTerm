@@ -1,15 +1,15 @@
 [
   {
     "id": "2026-06-16-welcome",
-    "title": "Welcome to nodeterm",
+    "title": "Welcome to DisTerm",
     "body": "Thanks for trying the spatial terminal manager.",
-    "url": "https://nodeterm.dev",
+    "url": "https://distriib.com",
     "level": "info"
   },
   {
     "id": "2026-06-20-v0_2",
     "title": "v0.2 is out — editor & diff nodes",
-    "body": "Update from the banner, or grab it at nodeterm.dev.",
+    "body": "Pull and rebuild from source to get it.",
     "level": "success"
   }
 ]

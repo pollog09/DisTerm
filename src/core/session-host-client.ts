@@ -310,7 +310,7 @@ export class SessionHostProtocolCompatibilityError extends Error {
 
   constructor(operation: string) {
     super(
-      `The persistent terminal host is from an older nodeterm version and cannot ${operation}. ` +
+      `The persistent terminal host is from an older DisTerm version and cannot ${operation}. ` +
         'Existing terminals remain attachable; close them and let the legacy host exit before ' +
         'starting or restarting a Windows terminal.'
     )
@@ -594,7 +594,7 @@ export class SessionHostClient {
   private async ensureConnected(options: { launch?: boolean } = {}): Promise<void> {
     const launch = options.launch !== false
     if (this.shutDownForUpdate) {
-      throw new Error('session-host was shut down to prepare for an update; restart nodeterm')
+      throw new Error('session-host was shut down to prepare for an update; restart DisTerm')
     }
     // A newly authenticated socket is visible while its reconnect restoration is still running.
     // The barrier wins over the raw socket check so no later request can overtake replay.

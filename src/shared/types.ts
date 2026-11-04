@@ -2571,7 +2571,7 @@ export const DEFAULT_SETTINGS: Settings = {
   trackpadPan: true,
   canvasDragMode: 'select',
   browserMemorySaver: true,
-  accent: '#0a84ff',
+  accent: '#0ea5e9',
   tmuxEnabled: true,
   sessionBackend: 'tmux',
   ptyShadowClients: true,
@@ -4283,10 +4283,12 @@ export type PhoneApprovalResult = {
 }
 
 export interface RemoteHostApi {
+  /** Whether this core has a relay server configured. False = every relay feature is off, and says so. */
+  relayConfigured(): Promise<boolean>
   /**
    * Enter host mode: mint a pairing token, connect to the relay as the host, and return the
    * pairing offer string (`nodeterm://pair?code=…`) to hand to a client. Rejects if the device
-   * is not entitled to Pro (or in a dev build without NODETERM_RELAY_URL).
+   * is not entitled to Pro (or in a build without NODETERM_RELAY_URL).
    */
   start(): Promise<{ offer: string }>
   /** Leave host mode: close the relay connection (ends served PTYs, drops client access). */

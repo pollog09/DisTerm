@@ -160,7 +160,7 @@ describe('AccountsSection — Codex on an SSH host', () => {
   it('only forgets a remote account whose host is not connected — never a local remove', async () => {
     render({ codex: [{ id: 'c1', label: 'Prod codex', host: PROD }], connected: false })
     act(() => byLabel('Remove Codex account')!.click())
-    expect(document.body.textContent).toContain('not connected, so nodeterm only forgets it')
+    expect(document.body.textContent).toContain('not connected, so DisTerm only forgets it')
     await act(async () => buttonIn(document.querySelector('.confirm') as HTMLElement, 'Remove')!.click())
     expect(codexApi.remove).not.toHaveBeenCalled()
     expect(useSettings.getState().settings.codexAccounts).toEqual([])

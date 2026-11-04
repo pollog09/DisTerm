@@ -200,15 +200,12 @@ import {
   ShortcutsPanel,
   OnboardingFlow,
   DictationOverlay,
-  BugReportDialog,
   PhonePairPopover,
-  MobileLaunchCard,
   LogPanel,
   KanbanView
 } from '../components/lazyPanels'
 import { WelcomeScreen } from '../components/WelcomeScreen'
 import { CloneRepoDialog } from '../components/CloneRepoDialog'
-import { markMobileLaunchSeen, shouldShowMobileLaunch } from '../lib/mobileLaunch'
 import type { DictationTarget } from '../components/DictationOverlay'
 import {
   announceChatDictationRefusal,
@@ -217,7 +214,7 @@ import {
   dictationTargetFromRequest,
   shortcutDictationFocus
 } from '../lib/chatComposerDictation'
-import { describeOs, REPO_URL } from '../lib/bugReport'
+import { BUG_REPORT_OFF_REASON, describeOs, DOCS_OFF_REASON, REPO_URL } from '../lib/bugReport'
 import { shouldReleasePaneFocus } from '../lib/paneFocus'
 import {
   autosaveDelay,
@@ -269,7 +266,6 @@ import {
   type FocusDirection
 } from '../lib/directionalFocus'
 import { UpdateCard } from '../components/UpdateCard'
-import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { ResumeCard } from '../components/ResumeCard'
 import { TmuxBanner } from '../components/TmuxBanner'
 import { localSession } from '../session/localSession'
@@ -287,7 +283,6 @@ import { admitPendingPeer } from '../lib/pendingPeerAdmission'
 import { SAS_COMPARE_HINT } from '@shared/remote/sas'
 import { promptDialog } from '../components/promptDialog'
 import { UpgradeDialog } from '../components/UpgradeDialog'
-import { AnnouncementPopup } from '../components/AnnouncementPopup'
 import { ProjectLimitDialog } from '../components/ProjectLimitDialog'
 import {
   checkAgentProjectOpen,
@@ -300,6 +295,9 @@ import { opensProject, type OpenAction } from '../lib/projectOpens'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
+import { DEFAULT_SETTINGS } from '@shared/types'
+import { useRelayAvailability, useRelayConfigured } from '../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 import { liveLinkNoticeEffect } from '../lib/liveLink'
 import {
   liveLinkCommands,
@@ -1610,6 +1608,8 @@ export function Canvas() {
   const [bufferCache, setBufferCache] = useState<Record<string, string>>({})
   const captureTsRef = useRef<Record<string, number>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Loads the answer the live-link facts and "Share with team" read, and re-renders when it lands.
+  useRelayConfigured()
   // Quick phone-pair popover (top-right phone button); non-null = open, anchored to the button.
   const [phonePairAnchor, setPhonePairAnchor] = useState<{ right: number; bottom: number } | null>(null)
   // "+" opens the start screen (WelcomeScreen) on demand over existing projects.
@@ -1640,8 +1640,6 @@ export function Canvas() {
   }, [])
   // First-run setup tour (agents / dictation / kanban / notifications) — see OnboardingFlow.
   const [onboardingOpen, setOnboardingOpen] = useState(false)
-  // One-shot mobile-launch announcement for established installs — see MobileLaunchCard.
-  const [mobileLaunchOpen, setMobileLaunchOpen] = useState(false)
   const [dictationOpen, setDictationOpen] = useState(false)
   // Target = the first selected terminal node AT OPEN TIME (not live-tracked while the
   // overlay is up — the design explicitly freezes it so a stray click elsewhere mid-dictation
@@ -1661,7 +1659,6 @@ export function Canvas() {
   // DictationOverlay.tsx — and its unmount cleanup discards any in-progress capture for the
   // node being retargeted away from.
   const [dictationNonce, setDictationNonce] = useState(0)
-  const [bugReportOpen, setBugReportOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
@@ -3309,22 +3306,15 @@ export function Canvas() {
       .hydrate()
       .then(() => {
         const s = useSettings.getState().settings
-        if (s.seenOnboarding) {
-          // Established install: the one-shot mobile-launch card (fresh installs get the same
-          // pitch from the tour's phone step instead, marked below so it never shows twice).
-          if (shouldShowMobileLaunch()) setMobileLaunchOpen(true)
-          return
-        }
+        if (s.seenOnboarding) return
         if (s.seenShortcuts) {
           // Existing install (pre-tour): the setup tour is for fresh installs — migrate
           // silently so it never pops over an established workspace. Rerunnable via ⌘K.
           useSettings.getState().update({ seenOnboarding: true })
-          if (shouldShowMobileLaunch()) setMobileLaunchOpen(true)
         } else {
           // Fresh install: the tour replaces the auto-opened ShortcutsPanel (⌘/ still
           // opens it manually) and owns the notification-consent question.
           setOnboardingOpen(true)
-          markMobileLaunchSeen()
         }
       })
     api.workspace.load().then((ws) => {
@@ -3981,7 +3971,8 @@ export function Canvas() {
     (projectId: string): LiveLinkAvailabilityFacts => ({
       serverEdition: isBrowserRuntime(),
       source: sessionForProject(projectId).source,
-      activeLinks: useWatchLinks.getState().links.length
+      activeLinks: useWatchLinks.getState().links.length,
+      relayConfigured: useRelayAvailability.getState().configured
     }),
     []
   )
@@ -8574,7 +8565,7 @@ export function Canvas() {
                 // "Prepare for update…" coordinates.
                 text:
                   `${action} skipped: this session runs on a session host started by an older ` +
-                  'nodeterm, which cannot stop the agent safely. It is replaced once its sessions ' +
+                  'DisTerm, which cannot stop the agent safely. It is replaced once its sessions ' +
                   'end (Prepare for update… does this). Nothing was written to the pane.'
               }
             : {
@@ -11175,7 +11166,10 @@ export function Canvas() {
 
   // Apply the accent color as a CSS variable.
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', settings.accent)
+    // The default leaves the stylesheet's own value in charge, which differs per theme: the dark
+    // theme's bright sky would be 2.5:1 on the light canvas. A colour the user picked applies as is.
+    if (settings.accent === DEFAULT_SETTINGS.accent) document.documentElement.style.removeProperty('--accent')
+    else document.documentElement.style.setProperty('--accent', settings.accent)
   }, [settings.accent])
 
   // Mirror the auto-hide preference into the ephemeral-card store, which is deliberately kept
@@ -18118,7 +18112,11 @@ export function Canvas() {
   // status the connection banner shows.
   const shareBlockedReason = useCallback(
     (id: string): string | null =>
-      sshStatus[id] === 'connected' ? null : 'Connect this project first (its SSH connection is down).',
+      useRelayAvailability.getState().configured !== true
+        ? RELAY_UNAVAILABLE_REASON
+        : sshStatus[id] === 'connected'
+          ? null
+          : 'Connect this project first (its SSH connection is down).',
     [sshStatus]
   )
 
@@ -18722,7 +18720,7 @@ export function Canvas() {
       const action = nextSheetAction(cur, Date.now())
       if (action === 'drop') {
         ol.cancel(req.id)
-        setNotice({ kind: 'info', text: 'Another nodeterm link arrived while one is open — it was ignored.' })
+        setNotice({ kind: 'info', text: 'Another DisTerm link arrived while one is open — it was ignored.' })
         return
       }
       if (action === 'replace' && cur) ol.cancel(cur.req.id)
@@ -19462,7 +19460,8 @@ export function Canvas() {
           setSettingsOpen(true)
         },
         openChat: () => setLiveChat((s) => nextLiveChat(s, { kind: 'open' })),
-        confirmStopAll: confirmStopAllLiveLinks
+        confirmStopAll: confirmStopAllLiveLinks,
+        relayConfigured: useRelayAvailability.getState().configured
       }),
       // Hidden when the canvas has no restartable agent node — the row would have nothing to act
       // on. `hint` is searchable, so "new model" / "update" find it too.
@@ -19672,7 +19671,6 @@ export function Canvas() {
       />
 
       <div className="top-banners">
-        <AnnouncementBanner />
         {/* Agent-integration consent (issue #744): the first-run question, the grandfathered
             install's one-time notice, and the active SSH host's own question. */}
         <IntegrationPromptBanner
@@ -20017,11 +20015,8 @@ export function Canvas() {
               y: r.bottom + 6,
               items: [
                 { label: 'Keyboard shortcuts', hint: chipFor('app.shortcutsPanel') || undefined, onClick: () => setShortcutsOpen(true) },
-                { label: 'Report a bug…', onClick: () => setBugReportOpen(true) },
-                {
-                  label: 'Documentation',
-                  onClick: () => window.nodeTerminal.shell.openExternal(`${REPO_URL}#readme`)
-                },
+                { label: 'Report a bug…', disabled: true, hint: BUG_REPORT_OFF_REASON, onClick: () => {} },
+                { label: 'Documentation', disabled: true, hint: DOCS_OFF_REASON, onClick: () => {} },
                 {
                   label: 'GitHub repository',
                   onClick: () => window.nodeTerminal.shell.openExternal(REPO_URL)
@@ -20029,7 +20024,7 @@ export function Canvas() {
                 { type: 'separator' },
                 {
                   type: 'label',
-                  label: `nodeterm${appVersion ? ` v${appVersion}` : ''} · ${describeOs(navigator.userAgent)}`
+                  label: `DisTerm${appVersion ? ` v${appVersion}` : ''} · ${describeOs(navigator.userAgent)}`
                 }
               ]
             })
@@ -20437,14 +20432,6 @@ export function Canvas() {
         />
       )}
       {logPanelOpen && <LogPanel onClose={() => setLogPanelOpen(false)} />}
-      {mobileLaunchOpen && (
-        <MobileLaunchCard
-          onClose={() => {
-            markMobileLaunchSeen()
-            setMobileLaunchOpen(false)
-          }}
-        />
-      )}
       {onboardingOpen && (
         <OnboardingFlow
           onClose={() => {
@@ -20472,14 +20459,6 @@ export function Canvas() {
             setSettingsSection('license')
             setSettingsOpen(true)
           }}
-        />
-      )}
-
-      {bugReportOpen && (
-        <BugReportDialog
-          env={{ appVersion, userAgent: navigator.userAgent }}
-          onOpen={(url) => window.nodeTerminal.shell.openExternal(url)}
-          onClose={() => setBugReportOpen(false)}
         />
       )}
 
@@ -20754,25 +20733,6 @@ export function Canvas() {
       )}
 
       <UpgradeDialog />
-      {/* The surfaces below are not on the dialog stack, so the popup is told about them here: it
-          must not land on the setup tour, Settings, the palette, a dictation in progress, …. The
-          kanban card modal registers on the stack itself; `cardModalOpen` is belt and braces. */}
-      <AnnouncementPopup
-        blocked={
-          onboardingOpen ||
-          mobileLaunchOpen ||
-          settingsOpen ||
-          paletteOpen ||
-          shortcutsOpen ||
-          scOpen ||
-          logPanelOpen ||
-          welcomeOpen ||
-          consentOpen ||
-          cloneDialogOpen ||
-          dictationOpen ||
-          cardModalOpen
-        }
-      />
       {/* The free-tier limit moment (docs/project-limit.md). Close is the ordinary non-destructive close — never
           `endSessions`: the limit only ever blocks a NEW open, it never ends anything. */}
       <ProjectLimitDialog onCloseProject={(id) => performCloseProject(id)} />

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createShareTeamHandlers, SHARE_TIMEOUTS, type ShareTeamDeps } from './share-team'
@@ -238,6 +238,7 @@ describe('share-team handlers', () => {
     expect(await deps({ remote: { status: 'ok', content: '{not json' } }).h.flushMirror('p')).toMatchObject({ ok: false })
   })
   it('install: one run per project at a time, cancellable (answered E_CANCELLED), output streamed', async () => {
+    vi.stubEnv('NODETERM_SERVER_INSTALL_URL', 'https://installer.example/install-server.sh')
     let release: (v: { exitCode: number }) => void = () => {}
     let seenSignal: AbortSignal | null = null
     const { h } = deps({

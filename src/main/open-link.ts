@@ -200,7 +200,7 @@ export function createOpenLinkService(deps: OpenLinkDeps): OpenLinkService {
       if (arrivals.length >= OPEN_LINK_RATE.max) {
         // Said once per burst would be nicer, but a toast per dropped link is still bounded by
         // the renderer's own notice slot (one strip, replaced).
-        if (readyNow) notice('Too many nodeterm links in a minute — this one was ignored.')
+        if (readyNow) notice('Too many DisTerm links in a minute — this one was ignored.')
         return
       }
       arrivals.push(now)

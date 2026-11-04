@@ -86,7 +86,7 @@ export const PROJECT_CAPABILITY_COPY: Record<ProjectCapability, ProjectCapabilit
   agentIssueReporting: {
     label: 'Let agents file GitHub issues for gaps they hit',
     description:
-      'When an agent in this project runs into something nodeterm cannot do, it can open an issue ' +
+      'When an agent in this project runs into something DisTerm cannot do, it can open an issue ' +
       'in THIS project’s GitHub repository by itself — no prompt, and nobody reads the text first. ' +
       'That text is written by a machine out of whatever it was looking at: error output, the ' +
       'command it ran, file paths, branch and project names. Secrets with a recognisable shape are ' +

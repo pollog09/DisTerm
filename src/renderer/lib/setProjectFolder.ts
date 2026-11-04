@@ -29,7 +29,7 @@ export type SetProjectFolderPlan =
 /** Shown when the folder already holds a canvas. Names the file, because the user's next question
  *  is "which folder?" and the answer has to be actionable without opening a terminal. */
 export const folderOccupiedNotice = (folder: string): string =>
-  `${folder} already contains a nodeterm canvas (.nodeterm/project.json). ` +
+  `${folder} already contains a DisTerm canvas (.nodeterm/project.json). ` +
   `Setting it as this project's folder would overwrite it — use “Open folder…” to open that canvas instead.`
 
 /** Shown when the file is there but unreadable (permissions, a stalled mount). A failed read is

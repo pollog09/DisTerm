@@ -1,4 +1,4 @@
-# nodeterm Server Edition — container image (browser canvas backed by the headless server).
+# DisTerm Server Edition — container image (browser canvas backed by the headless server).
 #
 # The one real trap in here is node-pty's ABI: the repo's `postinstall` runs
 # `electron-rebuild -f -w node-pty`, which compiles node-pty against ELECTRON's ABI — but the

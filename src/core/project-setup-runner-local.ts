@@ -24,7 +24,7 @@ function resolveShellBin(shell: string): string {
 
 /** Shown (with exit 127, the same shape as a spawn ENOENT) when a Windows machine has no Git Bash. */
 export const WINDOWS_NO_SH_MESSAGE =
-  'Project setup scripts need a POSIX shell. Install Git for Windows (winget install Git.Git) — nodeterm looks for Git\\bin\\sh.exe.'
+  'Project setup scripts need a POSIX shell. Install Git for Windows (winget install Git.Git) — DisTerm looks for Git\\bin\\sh.exe.'
 
 /** A script whose first line is a `#!` naming pwsh/powershell — "clearly PowerShell". Only consulted
  *  on Windows; a POSIX host keeps running every script through `sh -lc`, shebang or not. */

@@ -11,6 +11,8 @@
  *    session host), so no key is installed and sshd is irrelevant. The QR waits for the RELAY
  *    instead, because without it the pairing would give the phone nothing to connect with.
  */
+import { RELAY_UNAVAILABLE_REASON } from './relay-availability'
+
 
 export type PairingGate = 'qr' | 'ssh-off' | 'relay-off' | 'relay-dev'
 
@@ -46,7 +48,7 @@ export function relayOnlyExplanation(keyFile: WindowsKeyFileHint | undefined): s
 /** Copy for a relay-only host whose QR is withheld. `toggle` names the switch on that surface. */
 export function relayGateMessage(gate: 'relay-off' | 'relay-dev', toggle: string): string {
   return gate === 'relay-dev'
-    ? 'Dev build: the relay is off regardless of the toggle, and on Windows the phone connects only through it — so there is no code to scan. Run a packaged build, or set NODETERM_RELAY_URL.'
+    ? RELAY_UNAVAILABLE_REASON
     : `On Windows your phone connects only through remote access. Turn on “${toggle}” and the code appears here.`
 }
 
@@ -62,7 +64,7 @@ export function pairingEndedMessage(end: {
   if (end.windows && end.reached === false)
     return (
       base +
-      ' Your phone never reached this computer: if it did scan the code, Windows Defender Firewall is probably blocking nodeterm on this network — allow it for Private networks (or set this Wi-Fi to Private) and try again.'
+      ' Your phone never reached this computer: if it did scan the code, Windows Defender Firewall is probably blocking DisTerm on this network — allow it for Private networks (or set this Wi-Fi to Private) and try again.'
     )
   return base
 }

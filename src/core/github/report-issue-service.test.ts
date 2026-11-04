@@ -93,6 +93,14 @@ describe('the consent gate', () => {
 })
 
 describe('the repository comes from the project, or there is none', () => {
+  it('refuses a project whose own repository is upstream\'s, in any case, and writes nothing', async () => {
+    const client = fakeClient()
+    const d = deps({ contextForProject: async () => ({ repository: 'EnesKirca/NodeTerm', client }) }, client)
+    const result = await reportIssue(d, { projectId: 'p', input: INPUT })
+    expect(result).toMatchObject({ ok: false, error: 'report-upstream-repo' })
+    expect(d.saved).toEqual([])
+  })
+
   it('refuses a project with no repo — and never substitutes another', async () => {
     const d = deps({
       contextForProject: async () => { throw new Error('repository-not-found') }
@@ -223,7 +231,7 @@ describe('dry run', () => {
     const d = deps()
     const result = await reportIssue(d, { projectId: 'p', input: INPUT, dryRun: true })
     expect(result).toMatchObject({ ok: true, action: 'dry-run' })
-    expect((result as { preview: string }).preview).toContain('Filed automatically by a nodeterm agent')
+    expect((result as { preview: string }).preview).toContain('Filed automatically by a DisTerm agent')
     expect(d.client.createIssue).not.toHaveBeenCalled()
     expect(d.client.listIssues).not.toHaveBeenCalled()
   })

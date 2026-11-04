@@ -97,7 +97,7 @@ describe('live-link wiring', () => {
     expect(block).toMatch(/entitlement: \(\) => null/)
     expect(block).toMatch(/unsupported: true/)
     expect(block).toMatch(/detach: \(id\) => \{\s*dropUiClient\(id\)\s*platform\.detach\(id\)/)
-    expect(s).toMatch(/if \(otherServerHere\) \{\s*console\.error\('Live links: NOT started — another nodeterm server owns this data directory\.'\)\s*\} else void watchLinks\.init\(\)/)
+    expect(s).toMatch(/if \(otherServerHere\) \{\s*console\.error\('Live links: NOT started — another DisTerm server owns this data directory\.'\)\s*\} else void watchLinks\.init\(\)/)
     // Both close paths stop the hosts after hosting ends and before the pty layer goes — bounded
     // (R46/M6): a hung last write must not hold the server's close.
     expect(s).toMatch(/const WATCH_LINKS_STOP_MS = 2_000/)

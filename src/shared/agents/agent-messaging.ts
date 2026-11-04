@@ -45,7 +45,7 @@ export interface AgentMessageDeliveryInput extends Omit<AgentMessageDeliverReque
 
 /** The `from:` line of a notice's envelope. The station is named in the body; the frame says who
  *  wrote it, which is the app, never the station. */
-export const STATION_NOTICE_FROM = 'nodeterm station notice'
+export const STATION_NOTICE_FROM = 'DisTerm station notice'
 
 /**
  * `notify`'s entire body — fixed, app-owned, and substituted in MAIN whatever the request

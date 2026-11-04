@@ -520,7 +520,7 @@ what prevents a delete from claiming a persistent process is gone when the host 
 
 ## Staged host runtime (issue #829, step 3)
 
-A host launched as a hard link of `nodeterm.exe` inside the install directory maps the installed
+A host launched as a hard link of `DisTerm.exe` inside the install directory maps the installed
 executable, its DLLs and `resources.pak`, so the installer cannot replace them while it runs. On
 macOS/Linux the sessions live in tmux, a separate binary, and survive an update; the staged runtime
 gives Windows the same property.
@@ -529,7 +529,7 @@ gives Windows the same property.
 (`src/core/session-host-runtime.ts`) a private copy of the runtime into
 
     %LOCALAPPDATA%\nodeterm\session-host\<app version>-<fingerprint>\
-        nodeterm-sessionhost-v2.exe          (nodeterm.exe, renamed)
+        nodeterm-sessionhost-v2.exe          (DisTerm.exe, renamed)
         *.dll, icudtl.dat, resources.pak, snapshot_blob.bin, v8_context_snapshot.bin, locales\
         resources\session-host\host.cjs + node_modules\node-pty\…
         nodeterm-runtime.json                (marker: file list, sizes, SHA-256)
@@ -559,7 +559,7 @@ same version at once both succeed: the second rename loses and adopts the first 
 **Fail-safe.** Every staging failure (no `%LOCALAPPDATA%`, a missing required file, disk full, a
 failed hash, a smoke run that does not answer 42 within 60 s — STATUS_DLL_NOT_FOUND, an AppLocker or
 WDAC policy blocking executables under the profile) falls back to the legacy launch: the hard link
-in the install directory, then `nodeterm.exe` itself. A staged host that dies within 10 s with an
+in the install directory, then `DisTerm.exe` itself. A staged host that dies within 10 s with an
 exit code other than the host's own `0`/`1` also falls back, and staging is not offered again for
 the rest of the app run. The legacy host still blocks the installer, so the preflight below still
 protects the install. The first launch of a new version waits at most 45 s for staging (copy,
@@ -591,7 +591,7 @@ launch. Server Edition and macOS/Linux are unaffected (tmux).
 
 ## Windows updates and uninstalls
 
-A host launched the legacy way (a hard link inside the install directory, or `nodeterm.exe` itself)
+A host launched the legacy way (a hard link inside the install directory, or `DisTerm.exe` itself)
 maps the installed Electron executable and its DLLs. Its separate hard-link name makes it
 identifiable; it does **not** make the install directory safe to replace. Closing the app alone
 deliberately leaves the host and its sessions running (#829). A host running from its staged
@@ -657,7 +657,7 @@ To update by hand (older host, or the in-app flow did not finish), while keeping
    After saving work and accepting that **every terminal/agent process owned by that host will
    stop**, end only that verified host. This is a manual process shutdown, not a graceful agent
    exit, so complete step 1 first. Do not use a machine-wide name-based kill. If the host uses
-   the fallback name `nodeterm.exe`, verify its identity/path rather than guessing which process
+   the fallback name `DisTerm.exe` (`nodeterm.exe` on an older install), verify its identity/path rather than guessing which process
    to end. Another Windows user's host requires that user's decision.
 4. Run the installer from Downloads, outside the installation directory, or Retry its preflight.
    Other nodeterm installations/users must prepare their own sessions too if they block the check.

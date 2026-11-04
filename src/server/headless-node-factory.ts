@@ -168,7 +168,7 @@ export interface HeadlessNodeFactoryDeps {
 }
 
 /** The author of a run-history line this factory writes: the app acting on an agent's request. */
-const RUN_LOG_AUTHOR = { name: 'nodeterm', color: '#8b8b8b' } as const
+const RUN_LOG_AUTHOR = { name: 'DisTerm', color: '#8b8b8b' } as const
 
 export interface HeadlessNodeOwner {
   sourceNodeId: string

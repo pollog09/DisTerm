@@ -171,7 +171,7 @@ describe('the THREE unverified refusals — Correction C1 + Finding F2', () => {
     const remote = decideDelivery(
       ready({ target: unverified({ clientRevision: 2 }), tokenFilePresent: true, targetIsRemote: true })
     )
-    expect((local as { note: string }).note).toMatch(/restart the nodeterm app/i)
+    expect((local as { note: string }).note).toMatch(/restart the DisTerm app/i)
     expect((remote as { note: string }).note).toMatch(/reconnect the SSH project/i)
   })
 

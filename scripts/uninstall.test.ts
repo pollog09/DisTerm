@@ -63,6 +63,16 @@ describe.skipIf(process.platform === 'win32').each([
 ])('uninstall.sh on $os finds what the desktop app writes', ({ os, userData, updaterCache }) => {
   beforeEach(() => shim('uname', `echo ${os}`))
 
+  it.runIf(os === 'Darwin')('finds the state of this app and of an install from before the rename', () => {
+    const disterm = join(home, 'Library', 'Caches', 'com.distriib.disterm')
+    const older = join(home, 'Library', 'Caches', 'com.nodeterm.app')
+    mkdirSync(disterm, { recursive: true })
+    mkdirSync(older, { recursive: true })
+    const plan = dryRun()
+    expect(plan).toContain(`Delete ${disterm}`)
+    expect(plan).toContain(`Delete ${older}`)
+  })
+
   it('plans to delete the Electron user-data dir named after package.json `name`', () => {
     mkdirSync(userData(), { recursive: true })
     writeFileSync(join(userData(), 'settings.json'), '{}')

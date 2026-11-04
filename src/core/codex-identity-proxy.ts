@@ -77,7 +77,7 @@ export const SAFE_ACCOUNT_ID = ACCOUNT_ID_RE
 export function accountScope(accountId?: string): string {
   if (!accountId) return SYSTEM_ACCOUNT_SCOPE
   if (accountId === SYSTEM_ACCOUNT_SCOPE || !isSafeAccountId(accountId)) {
-    throw new Error('Invalid NodeTerm Codex account scope')
+    throw new Error('Invalid DisTerm Codex account scope')
   }
   return accountId
 }
@@ -167,7 +167,7 @@ let identityAuthSecret: Buffer | null = null
 
 /** Injected by the shell once, from the same keychain-backed secret the hook server signs with. */
 export function setCodexThreadIdentityAuthSecret(secret: Uint8Array): void {
-  if (secret.byteLength < 32) throw new Error('Invalid NodeTerm Codex identity-auth secret')
+  if (secret.byteLength < 32) throw new Error('Invalid DisTerm Codex identity-auth secret')
   identityAuthSecret = Buffer.from(secret)
 }
 
@@ -205,7 +205,7 @@ function identitySignature(
   hookEndpoint: string,
   agent: CodexThreadAgent
 ): string {
-  if (!identityAuthSecret) throw new Error('NodeTerm Codex identity authentication is unavailable')
+  if (!identityAuthSecret) throw new Error('DisTerm Codex identity authentication is unavailable')
   return createHmac('sha256', identityAuthSecret)
     .update(
       `${threadId}\0${scope}\0${nodeId}\0${hookEndpoint}\0${agent.agentId}\0${agent.canvasControl ? '1' : '0'}`
@@ -224,7 +224,7 @@ function accountScopedIdentitySignature(
   nodeId: string,
   hookEndpoint: string
 ): string {
-  if (!identityAuthSecret) throw new Error('NodeTerm Codex identity authentication is unavailable')
+  if (!identityAuthSecret) throw new Error('DisTerm Codex identity authentication is unavailable')
   return createHmac('sha256', identityAuthSecret)
     .update(`${threadId}\0${scope}\0${nodeId}\0${hookEndpoint}`)
     .digest('base64url')
@@ -237,7 +237,7 @@ function accountScopedIdentitySignature(
  * closes itself the first time a machine rewrites the record.
  */
 function legacyIdentitySignature(threadId: string, nodeId: string, hookEndpoint: string): string {
-  if (!identityAuthSecret) throw new Error('NodeTerm Codex identity authentication is unavailable')
+  if (!identityAuthSecret) throw new Error('DisTerm Codex identity authentication is unavailable')
   return createHmac('sha256', identityAuthSecret)
     .update(`${threadId}\0${nodeId}\0${hookEndpoint}`)
     .digest('base64url')
@@ -340,7 +340,7 @@ function recordFilePath(root: string, scope: string, threadId: string): string {
 }
 
 function identityFile(threadId: string, scope: string, root = codexThreadIdentityRoot()): string {
-  if (!isSafeThreadId(threadId)) throw new Error('Invalid NodeTerm Codex thread identity')
+  if (!isSafeThreadId(threadId)) throw new Error('Invalid DisTerm Codex thread identity')
   return recordFilePath(root, scope, threadId)
 }
 
@@ -514,10 +514,10 @@ export function writeCodexThreadIdentity(
   agent?: CodexThreadAgent
 ): void {
   if (!isSafeThreadId(threadId) || !validCodexIdentity(nodeId, hookEndpoint)) {
-    throw new Error('Invalid NodeTerm Codex thread identity')
+    throw new Error('Invalid DisTerm Codex thread identity')
   }
   if (agent && !isSafeCodexAgentId(agent.agentId)) {
-    throw new Error('Invalid NodeTerm Codex thread identity')
+    throw new Error('Invalid DisTerm Codex thread identity')
   }
   const scope = accountScope(accountId) // throws on an id that could escape the mapping directory
   const signature = agent
@@ -569,7 +569,7 @@ export function bindCodexThreadIdentity(
   agent?: CodexThreadAgent
 ): void {
   if (!isSafeThreadId(threadId) || !validCodexIdentity(nodeId, hookEndpoint)) {
-    throw new Error('Invalid NodeTerm Codex thread identity')
+    throw new Error('Invalid DisTerm Codex thread identity')
   }
   accountScope(accountId) // reject an escaping account id before any read or write
   const existing = readCodexThreadIdentity(threadId, root, accountId)
@@ -859,19 +859,19 @@ nt_run_shared() {
     fi
     nt_rapid_resets=$((nt_rapid_resets + 1))
     if [ "$nt_rapid_resets" -gt 3 ]; then
-      printf '\\nNodeTerm: Codex daemon kept resetting; automatic resume stopped. Run: codex%s resume %s\\n' \
+      printf '\\nDisTerm: Codex daemon kept resetting; automatic resume stopped. Run: codex%s resume %s\\n' \
         "$nt_hint_nd" "$nt_shared_thread" >&2
       return "$nt_status"
     fi
 
-    printf '\\nNodeTerm: shared Codex connection reset; restoring this session...\\n' >&2
+    printf '\\nDisTerm: shared Codex connection reset; restoring this session...\\n' >&2
     nt_start_try=0
     while ! nt_app_server_ready; do
       nt_start_app_server || :
       nt_app_server_ready && break
       nt_start_try=$((nt_start_try + 1))
       if [ "$nt_start_try" -ge 3 ]; then
-        printf 'NodeTerm: shared Codex daemon did not recover. Run: codex%s resume %s\\n' \
+        printf 'DisTerm: shared Codex daemon did not recover. Run: codex%s resume %s\\n' \
           "$nt_hint_nd" "$nt_shared_thread" >&2
         return "$nt_status"
       fi

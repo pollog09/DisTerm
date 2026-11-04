@@ -5,8 +5,8 @@ import { normalizeUnread, trayIconPath, trayMenuModel, trayStateKey, trayTooltip
 describe('trayMenuModel', () => {
   it('has Open first and Quit last, both enabled with their actions', () => {
     const m = trayMenuModel({ unread: 0, phoneAccess: true })
-    expect(m[0]).toEqual({ type: 'normal', label: 'Open nodeterm', enabled: true, action: 'open' })
-    expect(m[m.length - 1]).toEqual({ type: 'normal', label: 'Quit nodeterm', enabled: true, action: 'quit' })
+    expect(m[0]).toEqual({ type: 'normal', label: 'Open DisTerm', enabled: true, action: 'open' })
+    expect(m[m.length - 1]).toEqual({ type: 'normal', label: 'Quit DisTerm', enabled: true, action: 'quit' })
   })
   it('shows the phone-access status as a disabled row', () => {
     const labels = (s: boolean) =>
@@ -33,8 +33,8 @@ describe('trayMenuModel', () => {
 
 describe('trayTooltip / trayStateKey / normalizeUnread', () => {
   it('tooltips the unread count', () => {
-    expect(trayTooltip({ unread: 0, phoneAccess: true })).toBe('nodeterm')
-    expect(trayTooltip({ unread: 2, phoneAccess: true })).toBe('nodeterm — 2 unread sessions')
+    expect(trayTooltip({ unread: 0, phoneAccess: true })).toBe('DisTerm')
+    expect(trayTooltip({ unread: 2, phoneAccess: true })).toBe('DisTerm — 2 unread sessions')
   })
   it('keys identical states identically so a resend rebuilds nothing', () => {
     expect(trayStateKey({ unread: 2, phoneAccess: true })).toBe(trayStateKey({ unread: 2, phoneAccess: true }))

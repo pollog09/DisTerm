@@ -37,11 +37,11 @@ export interface InviteShare {
   mailtoUrl: string
 }
 
-const SHARE_INSTRUCTION = 'In nodeterm, choose "New Remote Connection" and paste this pairing code:'
+const SHARE_INSTRUCTION = 'In DisTerm, choose "New Remote Connection" and paste this pairing code:'
 
 export function inviteShare({ offer, email }: { offer: string; email?: string }): InviteShare {
-  const copyText = `You're invited to my nodeterm session.\n\n${SHARE_INSTRUCTION}\n\n${offer}`
-  const subject = "You're invited to a nodeterm Team Access seat"
+  const copyText = `You're invited to my DisTerm session.\n\n${SHARE_INSTRUCTION}\n\n${offer}`
+  const subject = "You're invited to a DisTerm Team Access seat"
   const body = `${SHARE_INSTRUCTION}\n\n${offer}`
   const recipient = (email ?? '').trim()
   const query = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`

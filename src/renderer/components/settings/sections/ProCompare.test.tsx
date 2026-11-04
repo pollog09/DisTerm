@@ -22,6 +22,8 @@ vi.hoisted(() => {
 
 import { ProCompare } from './ProCompare'
 import { useProjectLimit } from '../../../state/projectLimit'
+import { useRelayAvailability } from '../../../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -42,6 +44,7 @@ let root: Root
 let host: HTMLElement
 
 beforeEach(() => {
+  useRelayAvailability.setState({ configured: true })
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -118,5 +121,21 @@ describe('ProCompare — limit active', () => {
       LIVE_LINKS,
       DICTATION
     ])
+  })
+})
+
+describe('ProCompare — no relay in this build', () => {
+  beforeEach(() => useRelayAvailability.setState({ configured: false }))
+
+  it('ticks nothing that needs a relay, in either column, and says why beside them', () => {
+    const html = render(INACTIVE_PROJECT_LIMIT)
+    const ticked = [...column(html, 'Core — free forever'), ...column(html, 'Pro<')]
+    for (const row of ['QR phone pairing', 'Remote access from your phone', 'nodeterm mobile Pro', '3 team seats', 'Live links']) {
+      expect(ticked.some((f) => f.includes(row)), row).toBe(false)
+      expect(host.textContent).toContain(row)
+    }
+    expect(host.textContent?.split(RELAY_UNAVAILABLE_REASON)).toHaveLength(3)
+    expect(ticked).toContain(DICTATION)
+    expect(ticked).toContain(AGENT_NODES)
   })
 })

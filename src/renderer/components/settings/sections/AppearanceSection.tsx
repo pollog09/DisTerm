@@ -615,9 +615,8 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
           <span className="text-[13px] text-text">Accent</span>
           <div className="flex flex-wrap gap-2">
             {/* The SYSTEM subset only, never the whole palette: `--accent` is painted as an
-                opaque background under hardcoded #fff (.dock-add, the dictation button, the
-                badge), where white on gemini blue is ~3.6:1 and on grok grey ~4.0:1 - under the
-                4.5:1 floor for the 10.5px badge. See isSystemNodeColor. */}
+                opaque background under --on-accent (.dock-add, the dictation button, the badge),
+                and only this subset is checked to clear 4.5:1 there. See isSystemNodeColor. */}
             {SYSTEM_NODE_COLOR_SWATCHES.map(({ value: c, label }) => (
               <button
                 key={c}
@@ -644,7 +643,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
           label="Show active session in window title"
           description={
             'Sets the native window title (and the browser tab, on the Server Edition) to the ' +
-            'focused node and project — "api server — myrepo — node-terminal" — so ' +
+            'focused node and project — "api server — myrepo — DisTerm" — so ' +
             'window-title-based time trackers like ActivityWatch can tell sessions apart. ' +
             'Off keeps the static title.'
           }

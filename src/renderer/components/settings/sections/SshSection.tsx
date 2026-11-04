@@ -316,7 +316,7 @@ export function SshSection({ isActive }: { isActive: boolean }): React.JSX.Eleme
         <SearchableRow {...ROWS.windowsAgent}>
           <FieldRow
             label="Keep unlocked keys in the Windows ssh-agent"
-            description="Off by default. On, a key you unlock with its passphrase for an SSH project is also added to the Windows OpenSSH Authentication Agent service (when it is running), so later connections — and your own ssh — stop asking. Windows stores the key, encrypted for your account, until you remove it (ssh-add -d, or ssh-add -D for all); it stays after nodeterm quits and after a restart. Hosts whose ~/.ssh/config says AddKeysToAgent yes get this without the switch."
+            description="Off by default. On, a key you unlock with its passphrase for an SSH project is also added to the Windows OpenSSH Authentication Agent service (when it is running), so later connections — and your own ssh — stop asking. Windows stores the key, encrypted for your account, until you remove it (ssh-add -d, or ssh-add -D for all); it stays after DisTerm quits and after a restart. Hosts whose ~/.ssh/config says AddKeysToAgent yes get this without the switch."
             control={
               <Switch
                 checked={agentAddKeys === true}
@@ -331,7 +331,7 @@ export function SshSection({ isActive }: { isActive: boolean }): React.JSX.Eleme
         <SearchableRow {...ROWS.wslKeepalive}>
           <FieldRow
             label="Keep WSL distributions running after quit"
-            description="On by default. WSL can stop a distribution once no Windows program is attached to it, and that ends its terminals and agents. On, each distribution you opened as a WSL project stays running after nodeterm quits, so they are still there when you come back, and the WSL VM keeps using memory until you run wsl --shutdown or turn this off. Off, nothing outlives the app. Deleting a distribution's last WSL project also stops this for that distribution."
+            description="On by default. WSL can stop a distribution once no Windows program is attached to it, and that ends its terminals and agents. On, each distribution you opened as a WSL project stays running after DisTerm quits, so they are still there when you come back, and the WSL VM keeps using memory until you run wsl --shutdown or turn this off. Off, nothing outlives the app. Deleting a distribution's last WSL project also stops this for that distribution."
             control={
               <Switch
                 checked={keepDistroRunning === true}

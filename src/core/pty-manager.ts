@@ -5331,7 +5331,7 @@ export class PtyManager {
         this.queueData(
           sessionId,
           session,
-          `\r\n[nodeterm] Persistent terminal reattach failed: ${safeReason}\r\n`
+          `\r\n[DisTerm] Persistent terminal reattach failed: ${safeReason}\r\n`
         )
         this.handleSessionExit(sessionId, session, 1)
       })

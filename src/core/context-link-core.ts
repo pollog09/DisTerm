@@ -19,7 +19,7 @@ import { shimCommand, shimFence, windowsShimNoteLines, type ShimDialect } from '
 
 /** The shim's generic transport-failure sentence — exported so the agent-facing docs below can
  *  quote it verbatim and the parity test holds the two ends together. */
-export const CONTEXT_UNREACHABLE_MSG = 'Could not read linked context (nodeterm unreachable).'
+export const CONTEXT_UNREACHABLE_MSG = 'Could not read linked context (DisTerm unreachable).'
 
 // nodeId -> latest known transcript path, fed from the raw hook listener (see index.ts).
 const nodeTranscript = new Map<string, string>()

@@ -198,9 +198,11 @@ export function PushWebhookPanel(): React.JSX.Element {
           <p className="text-sm" style={{ color: 'var(--warn)' }}>
             {pushWebhookErrorText(error)}
           </p>
-          <Button disabled={busy} onClick={() => void refresh()}>
-            Retry
-          </Button>
+          {error !== 'dev-build' ? (
+            <Button disabled={busy} onClick={() => void refresh()}>
+              Retry
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

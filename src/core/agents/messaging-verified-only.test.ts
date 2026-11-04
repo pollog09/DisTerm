@@ -148,7 +148,7 @@ describe('issue #1088: a refusal caused by the INSTANCE says so', () => {
         expect(res.status, verb).toBe(403)
         const text = (await res.text()).trim()
         expect(text.startsWith(verifiedRefusalFor(verb)), verb).toBe(true)
-        expect(text, verb).toContain('Node identity is unavailable in this NodeTerm instance')
+        expect(text, verb).toContain('Node identity is unavailable in this DisTerm instance')
         expect(text, verb).toContain('Encryption is not available.')
         const json = (await (await post(verb, 'n-src')).json()) as { error: string }
         expect(json.error, verb).toContain('Node identity is unavailable')

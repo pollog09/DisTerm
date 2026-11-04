@@ -38,7 +38,7 @@ export function NotifyConsentDialog({ onEnable, onDismiss }: Props) {
         </div>
         <h2 className="consent-title">Get notified when Claude finishes</h2>
         <p className="consent-desc">
-          nodeterm can ping you when a Claude Code turn finishes while the app is in the
+          DisTerm can ping you when a Claude Code turn finishes while the app is in the
           background — so you don't have to babysit a running session. You can change this
           any time in Settings.
         </p>

@@ -18,6 +18,8 @@ import {
 import { thisMachine } from '../../../lib/machineName'
 import { isBrowserRuntime } from '@renderer/bridge/runtime'
 import { PushWebhookPanel } from './PushWebhookPanel'
+import { useRelayConfigured } from '@renderer/state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 const ROWS = {
   remote: {
@@ -66,6 +68,9 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
   const [revokeNote, setRevokeNote] = useState<{ text: string; warn: boolean } | null>(null)
 
   const showWebhook = !isBrowserRuntime()
+  // No relay server in this build: the section stays, its controls do not act, and it says why.
+  const relay = useRelayConfigured()
+  const relayOff = relay !== true
   const phoneAccessEnabled = useSettings((s) => s.settings.phoneAccessEnabled)
   const updateSettings = useSettings((s) => s.update)
 
@@ -186,6 +191,11 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
     >
       <SearchableRow {...ROWS.remote}>
         <div className="space-y-3">
+          {relay === false ? (
+            <p className="text-sm" style={{ color: 'var(--warn)' }}>
+              {RELAY_UNAVAILABLE_REASON}
+            </p>
+          ) : null}
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h4 className="text-[13px] font-medium text-text">Remote access from your phone</h4>
@@ -197,8 +207,9 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
               </p>
             </div>
             <Switch
-              checked={phoneAccessEnabled}
+              checked={phoneAccessEnabled && !relayOff}
               onChange={togglePhoneAccess}
+              disabled={relayOff}
               ariaLabel="Remote access from your phone"
             />
           </div>
@@ -212,20 +223,22 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
             Pair the nodeterm mobile app: scan this QR with your phone. Your phone generates its own
             key on-device — nothing secret leaves this machine except a single-use pairing token.
           </p>
-          <p className="text-sm text-muted">
-            Don&apos;t have the app yet?{' '}
-            {mobileStoreLinks().map((store, i) => (
-              <span key={store.id}>
-                {i > 0 ? ' · ' : null}
-                <button
-                  className="cursor-pointer underline hover:text-text"
-                  onClick={() => window.nodeTerminal.shell.openExternal(store.url)}
-                >
-                  {store.label}
-                </button>
-              </span>
-            ))}
-          </p>
+          {mobileStoreLinks().length > 0 ? (
+            <p className="text-sm text-muted">
+              Don&apos;t have the app yet?{' '}
+              {mobileStoreLinks().map((store, i) => (
+                <span key={store.id}>
+                  {i > 0 ? ' · ' : null}
+                  <button
+                    className="cursor-pointer underline hover:text-text"
+                    onClick={() => window.nodeTerminal.shell.openExternal(store.url)}
+                  >
+                    {store.label}
+                  </button>
+                </span>
+              ))}
+            </p>
+          ) : null}
 
           {phase === 'idle' || phase === 'timeout' ? (
             <div className="space-y-3">
@@ -237,7 +250,7 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
                   {pairingEndedMessage({ ...ended, windows: !sshKey })}
                 </p>
               ) : null}
-              <Button variant="primary" disabled={busy} onClick={() => void start()}>
+              <Button variant="primary" disabled={busy || relayOff} onClick={() => void start()}>
                 {busy ? 'Starting…' : 'Start pairing'}
               </Button>
             </div>
@@ -280,10 +293,10 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
                     className="rounded-lg bg-white p-2"
                   />
                   <p className="text-sm text-muted">Waiting for your phone… (10 min)</p>
-                  {/* eneskirca/nodeterm#745: the default QR encodes the payload as raw JSON,
+                  {/* The default QR encodes the payload as raw JSON,
                       which the iPhone's Camera app can only show as text — there is nothing in
                       it to open. This switches the SAME live token to the app's URL scheme so
-                      Camera can hand it to nodeterm. Opt-in, because a phone on an app version
+                      Camera can hand it to the app. Opt-in, because a phone on an app version
                       without URL support reads only the JSON form. */}
                   <div className="space-y-1">
                     <button
@@ -297,9 +310,9 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
                     </button>
                     {qrForm === 'url' ? (
                       <p className="text-xs text-muted">
-                        Point the iPhone&apos;s own Camera at this and tap the nodeterm banner.
+                        Point the iPhone&apos;s own Camera at this and tap the DisTerm banner.
                         Needs a recent version of the iOS app — if your phone doesn&apos;t
-                        recognise it, switch back and scan from inside nodeterm. Same code
+                        recognise it, switch back and scan from inside the app. Same code
                         either way; switching doesn&apos;t restart pairing.
                       </p>
                     ) : null}
@@ -308,9 +321,7 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
                     <p className="text-xs text-muted">{relayOnlyExplanation(windowsKeyFile)}</p>
                   ) : relayPlan === 'dev' ? (
                     <p className="text-sm" style={{ color: 'var(--warn)' }}>
-                      Dev build: the relay is off regardless of the toggle, so this code pairs
-                      LAN-only. Run a packaged build — or set NODETERM_RELAY_URL — for remote
-                      access.
+                      {RELAY_UNAVAILABLE_REASON}
                     </p>
                   ) : !phoneAccessEnabled ? (
                     <p className="text-sm" style={{ color: 'var(--warn)' }}>
@@ -353,9 +364,7 @@ export function PhoneSection({ isActive }: { isActive: boolean }): React.JSX.Ele
                 </p>
               ) : relayResult === 'dev' ? (
                 <p className="text-sm text-muted">
-                  LAN-only pairing — this is an unpackaged (dev) build, where the relay is
-                  disabled regardless of the toggle. Set NODETERM_RELAY_URL to test remote
-                  access, or use a packaged build.
+                  LAN-only pairing. {RELAY_UNAVAILABLE_REASON}
                 </p>
               ) : null}
               <Button onClick={reset}>Pair another phone</Button>

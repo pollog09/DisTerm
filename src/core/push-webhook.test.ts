@@ -105,6 +105,13 @@ describe('push webhook client', () => {
     expect(await locked.mint()).toEqual({ ok: false, error: 'no-host-key' })
   })
 
+  it('a packaged build with no configured API base calls nothing either: there is no default server', async () => {
+    const s = fakeServer()
+    const c = createPushWebhookClient({ fetch: s.fetch, loadHost: async () => host, hasPairedPhone: async () => true, isPackaged: () => true, env: {} })
+    expect(await c.status()).toEqual({ ok: false, error: 'dev-build' })
+    expect(s.calls).toHaveLength(0)
+  })
+
   it('an unpackaged build without an API override calls nothing', async () => {
     const s = fakeServer()
     const c = createPushWebhookClient({ fetch: s.fetch, loadHost: async () => host, hasPairedPhone: async () => true, isPackaged: () => false, env: {} })

@@ -206,7 +206,7 @@ function AgentCard({
           Values expand <code className="text-text">${'{env:VAR}'}</code> and
           <code className="text-text"> ${'{env:VAR:fallback}'}</code> against your shell environment.
           <br />
-          These win over values nodeterm sets, so they can override an account login — e.g. set
+          These win over values DisTerm sets, so they can override an account login — e.g. set
           <code className="text-text"> ANTHROPIC_AUTH_TOKEN</code> /<code className="text-text"> ANTHROPIC_BASE_URL</code>
           to point a Claude-wrapping agent at your own proxy.
           <br />

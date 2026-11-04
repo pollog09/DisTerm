@@ -838,7 +838,7 @@ describe('TabBar caret menu — "Agents may, without asking" (per-project confir
     const row = menuButton('Close nodes')!
     expect(row.querySelector('.tab-menu__check')!.textContent).toBe('✓')
     expect(row.disabled).toBe(true)
-    expect(row.title).toContain('until nodeterm quits')
+    expect(row.title).toContain('until DisTerm quits')
     expect(row.title).not.toContain('ask you first')
   })
 

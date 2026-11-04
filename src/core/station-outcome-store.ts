@@ -129,7 +129,7 @@ export interface StationOutcomeStoreOptions {
 export const STATION_OUTCOME_MAX_RECORDS = 1000
 
 /** The author of the board-log line — the app, like every other trace it writes. */
-const OUTCOME_AUTHOR = { name: 'nodeterm', color: '#8b8b8b' } as const
+const OUTCOME_AUTHOR = { name: 'DisTerm', color: '#8b8b8b' } as const
 
 export class StationOutcomeStore {
   // Insertion order IS recency: a record is deleted and re-set on every write, so the first key is
