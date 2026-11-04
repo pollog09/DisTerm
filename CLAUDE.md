@@ -8113,6 +8113,42 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   one function called on its last line, so a cut-off script runs nothing, and success is its done marker:
   exit 0 can be a shell that read nothing.
 
+- **Skills and MCP are a log fact, not a mirror event.** `claudeToolAccess` (`shared/agents/tool-access.ts`) reads
+  a hook payload, and `HookServer` hands the result to `agentGraphLog.recordAccess` AFTER the claude pane-origin
+  gate and in no other path. It is not a `NormalizedAgentEvent`, so state, Eco, messaging and the renderer never
+  hear of it, and `normalizeClaude` still returns null for a child's tool events. A throw there never fails the
+  hook POST. Claude only: other agents' tool events are not measured, and a custom agent built on claude posts as
+  `claude` already. MEASURED on 2.1.318 (`__fixtures__/claude/tool-access-hook-payloads.json`): `Skill` with
+  `tool_input.skill`; `mcp__<server>__<tool>`; a child's events carry `agent_id`; a typed `/name` fires only
+  `UserPromptSubmit`; `ToolSearch` is not an access.
+- **Only names ever leave.** A name passes a closed alphabet (skills `[A-Za-z0-9._:-]`, MCP `[A-Za-z0-9_-]`, 64) or the
+  event is dropped whole, never repaired. Tool arguments and the rest of a prompt are never carried, and `subId`
+  must pass `isClaudeAgentId`. One row per key with a running count (`MAX_ACCESS_KEYS` 1024, oldest key and its
+  row forgotten and counted as dropped), pushed on every call, because each push is one flow dot. A typed
+  `/name` is its own row (`:typed`), and the model draws it only when the machine's skills or commands hold that
+  name, so `/clear` and a stray token draw nothing.
+- **MCP config: `name` and `transport` are the only fields that leave the parser** (`parseMcpServers`). `command`,
+  `args`, `env`, `url` and `headers` carry tokens and appear in no `ShipConfig`, warning or log, and a parse error
+  never quotes the file because it quotes the text it choked on. Sources are `$CLAUDE_CONFIG_DIR/.claude.json`
+  else `~/.claude.json` (top level plus `projects[<cwd>]`) and the project's `.mcp.json`, regular files only,
+  16 MB. An SSH host answers `mcpRead: false`: that file holds credentials and is not fetched, and "not read"
+  is never rendered as "none". Claude names a tool's server with characters outside `[A-Za-z0-9_-]` rewritten
+  to `_`, so the panel matches by `mcpNameKey`.
+- **Dots are finite and per event.** `FlowDots` adds one `<circle>` per new line timestamp (`pulseOf` already refuses
+  anything older than the view), at most `MAX_FLOW_DOTS` at once, removed on `animationend`. The CSS is
+  `1` iteration and must not read `--nt-anim-state`. The Harness line points harness to session so the
+  layout ranks the harness left, and carries `flow: 'reverse'` so its dot runs the way hooks flow. An idle graph
+  runs no animation. `agent-graph.css.test.ts` pins it.
+- **The Harness box is per machine and only for session boxes**, never a note, ghost or template. A figure the
+  config cannot state for that machine (`shipDescribes`) is left off, not zero. Which box a subagent's call
+  leaves (`subBox`) is certain or it is the session: a guessed, uncertain, twice-drawn or unknown run falls back.
+- **Surfaces.** Desktop full. Server Edition runs the same core path (the hook route, the log and the local ship
+  handler are shared); an SSH project there answers `unsupported` as before. A relay Viewer or Commenter gets the
+  observed boxes for shared nodes (an access event is narrowed by `nodeId` like every other graph event) and no
+  inventory, because the ship channels are Editor-only. SSH nodes report through the hook tunnel, so their boxes
+  work and their inventory is partial (skills yes, MCP not read). Kanban N/A. Mobile N/A, a follow-up for the
+  phone would need the log over the relay.
+
 ## Canvas interaction & panels (`Canvas.tsx` is the hub)
 
 - **Context menus** (`components/ContextMenu.tsx`, portal, icons from `components/icons.tsx`):

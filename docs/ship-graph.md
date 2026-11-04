@@ -123,9 +123,67 @@ dropped. Limits: 256 KiB, 16 pipelines, 32 stages and 64 edges each. Whatever is
 that could be read is named in a warning, including a bad trigger or a repeated edge. Unknown fields are
 ignored without one.
 
+## Harness, skills and MCP
+
+The graph is also the place to check the harness your sessions run in: which skills and MCP servers
+they actually reached for, drawn with the sessions and subagents that used them.
+
+**What is drawn.**
+
+- **One Harness box per machine**, to the left of the sessions on it, with a quiet line to each
+  session. It says how many sessions run there, how many are working, how many skills are installed
+  and how many MCP servers are configured. A figure the machine's config could not state is left off
+  rather than shown as zero.
+- **A box per skill and per MCP server that was used**, shared by every session of the project, so a
+  skill three sessions use is one box with three lines into it. Installed but unused skills and servers
+  are not boxes. They are in the Harness panel.
+- **A line from whoever called it.** A subagent's calls leave the box its run is drawn in (its stage, or
+  its agent type), and the session's own calls leave the session. When a run is only a guess, was drawn
+  twice or is no longer in the history, its calls leave the session instead, because naming a stage
+  would claim more than the hooks say.
+- **A dot per call.** Each time a call happens, one dot travels along its line, once, and stops. Dots
+  on the Harness line run from the session to the Harness box, because that is the way hooks flow. A
+  burst shows at most three dots at once. An idle graph has no animation running, and with reduced
+  motion on the dots are not drawn at all. Opening the view does not replay what already happened.
+
+**The Harness panel** (the Harness button, or a click on a Harness, skill or MCP box) is the inventory:
+
+- The machine, and how many of its agent sessions are running, need you, are idle, or have said
+  nothing yet. An agent with no signal is "no signal yet", never idle.
+- Which agents nodeterm may hook on that machine: enabled, declined or not asked. For an SSH host the
+  host and the agent must both be enabled. For a team tab the host decides, and this panel says it
+  cannot read that choice.
+- Skills: those installed on the machine with how often each was used, plus used ones the machine has
+  no folder for, which come from a plugin or are built in.
+- MCP servers: those the machine's Claude config declares, with transport (stdio, http or sse) and
+  where they are declared, plus used ones that are not in those files, which are connectors or plugins.
+- Why something is missing, when the config could not be read.
+
+**Where it comes from.** Skill and MCP use comes from Claude's own hooks: a `Skill` tool call and a
+`mcp__<server>__<tool>` call, from a session or from one of its subagents. A skill typed as `/name`
+fires no tool call, only the prompt, so it is drawn only when the name is a skill or command on the
+machine. `/clear` and a stray `/word` are not. MCP configuration is read from `~/.claude.json` (or
+`$CLAUDE_CONFIG_DIR/.claude.json`), including the entry for the project's folder, and from the
+project's `.mcp.json`. Only each server's name and transport are kept. Its command, arguments,
+environment, URL and headers can hold tokens and are never read past the parser, shown or logged.
+
+**Limits.**
+
+- Claude only. Other CLIs do not report skill or MCP use.
+- Counts cover this app run. They are not saved, so a restart starts them again.
+- The newest 40 skills and servers used are drawn. Any more are named in a notice and still listed in
+  the panel.
+- An SSH host's MCP config is not read, because `~/.claude.json` holds credentials. Its servers appear
+  once used, and the panel says so. Its skills are listed.
+- Claude.ai connectors and plugin skills are not in any file, so they appear only once used.
+- Claude rewrites characters outside letters, digits, `_` and `-` in a server's name when it names a
+  tool, so a server called `my.server` shows as `my_server` once used. The panel matches the two.
+- A team member with a Viewer or Commenter role sees the boxes and lines for the nodes shared with
+  them, and not the machine's inventory. Project-scoped guests likewise.
+
 ## Known limits
 
-- Subagent mapping is Claude-only. Other CLIs appear as sessions and message lines.
+- Subagent, skill and MCP mapping is Claude-only. Other CLIs appear as sessions and message lines.
 - `/shipit` delegates share one agent type (`shipit-agent`), so they cannot be told apart by stage.
 - Workflow `agent()` runs and `SubagentStop` gate results are not shown: neither is confirmed visible
   to hooks.
