@@ -635,7 +635,7 @@ import { OpenLinkSheet } from '../components/OpenLinkSheet'
 import { NEW_PROJECT_KEY, nextSheetAction, type LinkPermissionView } from '../lib/openLinkSheet'
 import { withPermissionMode } from '@shared/agents/approval-mode'
 import { promptFilePathError } from '@shared/agents/launch'
-import { encodeUtf8Base64, launchPromptFor } from '../lib/promptSpill'
+import { encodeUtf8Base64, launchPromptFor, writePromptFile } from '../lib/promptSpill'
 import { parseTeamSpec } from '../lib/teamSpec'
 import { relativeTime } from '../lib/relativeTime'
 import { AgentIcon } from '../lib/agentIcons'
@@ -846,7 +846,8 @@ import type {
   TranscriptHit
 } from '@shared/types'
 import type { KanbanCreateChoice, KanbanSession } from '../components/kanban/KanbanView'
-import { assignNode, defaultKanban, labelsForCard, migrateProjectTags, resolveColumnRef } from '../lib/kanban'
+import { assignNode, columnForNode, defaultKanban, labelsForCard, migrateProjectTags, resolveColumnRef } from '../lib/kanban'
+import { disInvoiceBrief, normalizeDisInvoiceRef } from '@shared/dis-invoice'
 import { registerWorkspaceDirty } from '../state/workspaceDirty'
 import { snapNodeToGrid } from '../lib/nodeSizing'
 import { snapResizeChanges } from '../lib/resizeSnap'
@@ -11370,6 +11371,9 @@ export function Canvas() {
       duplicateNodes,
       snapNodeToZone,
       toggleCollapseNodes,
+  // Assigned beside `startDisInvoiceWork`, which needs callbacks declared after the contexts below.
+  const disInvoiceStartItemsRef = useRef<(projectId: string, nodeId: string) => MenuItem[]>(() => [])
+
       toggleMarkdown,
       reloadTerminals,
       liveLinkMenuItems: (nodeId) => liveLinkMenuItems(nodeId),
@@ -11396,6 +11400,7 @@ export function Canvas() {
       pickNodeIcon,
       duplicateNodes,
       snapNodeToZone,
+      disInvoiceStartItems: (nodeId) => disInvoiceStartItemsRef.current(useProjects.getState().activeProjectId, nodeId),
       toggleCollapseNodes,
       toggleMarkdown,
       reloadTerminals,
@@ -11436,7 +11441,8 @@ export function Canvas() {
           ...liveNodeActionCtx(),
           setNodesColor: writes.setColor,
           pickNodeIcon: writes.pickIcon,
-          liveLinkMenuItems: liveLink
+          liveLinkMenuItems: liveLink,
+          disInvoiceStartItems: disInvoiceStart
         }
       }
       const project = useProjects.getState().getProject(projectId)
@@ -11454,6 +11460,7 @@ export function Canvas() {
         refuse: () =>
           window.dispatchEvent(
             new CustomEvent('nodeterm:toast', { detail: { kind: 'error', message: OFF_CANVAS_REFUSAL } })
+      const disInvoiceStart = (nodeId: string): MenuItem[] => disInvoiceStartItemsRef.current(projectId, nodeId)
           )
       })
     },
@@ -11473,6 +11480,7 @@ export function Canvas() {
   )
   const setActiveCardColor = useCallback(
     (nodeId: string, color: string) => setCardColor(activeProjectId, nodeId, color),
+        disInvoiceStartItems: disInvoiceStart,
     [setCardColor, activeProjectId]
   )
   // The per-project board's card-modal icon, through the same router as its card menu's icon row
@@ -12397,7 +12405,9 @@ export function Canvas() {
                 undefined,
                 wslShell
               )
-      const node = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
+      const shelled = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
+      const node =
+        choice.kind === 'terminal' && choice.title ? { ...shelled, data: { ...shelled.data, title: choice.title } } : shelled
       setNodes((ns) => [...ns, node])
       const board = project?.kanban ?? defaultKanban(targetProjectId)
       if (columnId) {
@@ -12444,7 +12454,9 @@ export function Canvas() {
   const fileIssueSession = useCallback(
     (
       columnId: string | null,
-      ref: IssueRef,
+      // Null: a session filed under a card that is not an issue (a dis-invoice task), so no issue
+      // history gets a `run-started`.
+      ref: IssueRef | null,
       created: { node: CanvasNode; placed: CanvasNode; projectId: string },
       agentId: AgentId
     ) => {
@@ -12493,6 +12505,7 @@ export function Canvas() {
       if (!ref || !prompt) {
         setNotice({
           kind: 'error',
+      if (!ref) return
           text: `Could not start an agent on #${issue.number}: its GitHub address could not be read. Nothing was started.`
         })
         return undefined
@@ -12556,6 +12569,61 @@ export function Canvas() {
           pending: selfStarting(n.data.pendingLaunch)
         }))
       }
+  /**
+   * Start an agent or a plain terminal on a dis-invoice task, in the project's folder, filed under
+   * the sticky's current column. An agent's brief goes in a prompt file. Only its path is typed, and
+   * a pane cannot read a file on this machine over SSH, so there is no inline fallback to fall to.
+   */
+  const startDisInvoiceWork = useCallback(
+    (projectId: string, nodeId: string, how: { agentId: AgentId; accountId?: string | null } | null): void => {
+      const refuse = (text: string): void => setNotice({ kind: 'error', text })
+      const start = async (): Promise<void> => {
+        if (!disInvoiceCanvasIsLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        const node = nodesRef.current.find((n) => n.id === nodeId)
+        const ref = normalizeDisInvoiceRef(node?.data.disInvoiceRef)
+        const project = useProjects.getState().getProject(projectId)
+        if (!node || !ref || !project) return refuse('That task’s note is no longer on this canvas.')
+        const columnId = columnForNode(project.kanban, nodeId)?.id ?? null
+        const title = toKanbanSession(node)?.title
+        if (!how) return createNodeInColumn({ kind: 'terminal', title }, columnId)
+        if (project.ssh) return refuse('An agent on an SSH project cannot read the brief, because it stays on this machine.')
+        const promptFile = await writePromptFile(disInvoiceBrief((node.data.text as string) ?? '', ref.taskId), {
+          saveUpload: (name, data) => api.files.saveUpload(name, data),
+          encodeBase64: encodeUtf8Base64
+        })
+        if (!promptFile) return refuse('Could not write the task brief, so no agent was started.')
+        if (!disInvoiceCanvasIsLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile, title })
+        if (created) fileIssueSession(columnId, null, created, how.agentId)
+      }
+      if (projectId === useProjects.getState().activeProjectId) {
+        void start()
+        return
+      }
+      // The Omni lane's path (`nodeterm:create-node`): the switch's React Flow load lands on a later tick.
+      switchProject(projectId)
+      setTimeout(() => void start(), 50)
+    },
+    [disInvoiceCanvasIsLive, nodesRef, createNodeInColumn, addAgentNode, fileIssueSession, switchProject]
+  )
+
+  disInvoiceStartItemsRef.current = (projectId, nodeId) =>
+    sessionForProject(projectId).source === 'relay'
+      ? []
+      : [
+          {
+            type: 'submenu',
+            label: 'Start with agent',
+            icon: <IconPlay />,
+            children: agentCreationEntries(undefined, undefined, {
+              onPick: (agentId, accountId) => startDisInvoiceWork(projectId, nodeId, { agentId, accountId }),
+              label: (agentLabel) => agentLabel
+            }).map((entry) => entry.item)
+          },
+          { label: 'Open terminal', icon: <IconTerminal />, onClick: () => startDisInvoiceWork(projectId, nodeId, null) },
+          { type: 'separator' }
+        ]
+
       return (st.getProject(projectId)?.nodes ?? []).map((n) => ({
         id: n.id,
         issueRef: n.issueRef,

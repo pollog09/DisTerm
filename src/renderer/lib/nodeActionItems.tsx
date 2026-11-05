@@ -36,6 +36,7 @@ import {
   type AgentId
 } from '@shared/agents/config'
 import { modelsForAgent, type GatewayModel } from '@shared/agents/model-gateway'
+import { normalizeDisInvoiceRef } from '@shared/dis-invoice'
 import { sshHostKey, type SshServer } from '@shared/ssh'
 import { isRemoteSessionNode } from '@shared/worktree'
 import { claudeSwitchHostKey, claudeSwitchTargets } from '../canvas/claude-account-switch'
@@ -77,6 +78,7 @@ export const restartAgentIdOf = (n: Node | undefined): AgentId | undefined =>
 /** Every section of the node menu, in menu order. A section is the unit a consumer filters on. */
 export type NodeActionId =
   | 'label'
+  | 'dis-invoice-start'
   | 'stop-agent-control'
   | 'grouping'
   | 'colors'
@@ -137,8 +139,12 @@ export const BOARD_SPATIAL_ROW_IDS = [
  * canvas holds, the live context's closures act on the same node. For any other project (an Omni
  * lane) `ctx.attached` is false, so they render disabled with "This terminal is not attached
  * right now." — they are never hidden and never reach the canvas.
+ *
+ * `dis-invoice-start` is here although it creates a node: it files under the card's own column, and
+ * an Omni lane switches to the project first, as that board's "+ New" does.
  */
 export const BOARD_NODE_ACTION_IDS = [
+  'dis-invoice-start',
   'stop-agent-control',
   'colors',
   'icon',
@@ -157,6 +163,7 @@ export const BOARD_NODE_ACTION_IDS = [
  * session-management sections are offered here.
  */
 export const BOARD_MODAL_ACTION_IDS = [
+  'dis-invoice-start',
   'restart',
   'switch-model',
   'switch-account',
@@ -211,6 +218,8 @@ export interface NodeActionCtx {
   toggleMarkdown: (ids: string[]) => void
   reloadTerminals: (ids: string[]) => void
   liveLinkMenuItems: (nodeId: string) => MenuItem[]
+  /** "Start with agent" and "Open terminal" on a sticky mirroring a dis-invoice task. */
+  disInvoiceStartItems: (nodeId: string) => MenuItem[]
   branchClaude: (nodeId: string, opts?: { at?: { x: number; y: number } }) => Promise<unknown>
   transferConversation: TransferConversationHandler
   restartAgentNode: (
@@ -273,6 +282,15 @@ export function buildNodeActionSections(
   const session = ids.length === 1 ? sessionRows(ids[0], ctx, hidden) : NO_SESSION_ROWS
   return [
     { id: 'label', items: [{ type: 'label', label: ids.length > 1 ? `${ids.length} nodes` : '1 node' }] },
+    {
+      id: 'dis-invoice-start',
+      items: (() => {
+        const n = ids.length === 1 ? ctx.nodes.find((nd) => nd.id === ids[0]) : undefined
+        return n?.type === 'sticky' && normalizeDisInvoiceRef(n.data.disInvoiceRef)
+          ? ctx.disInvoiceStartItems(ids[0])
+          : []
+      })()
+    },
     {
       id: 'stop-agent-control',
       items: drivenHere
@@ -945,6 +963,7 @@ export interface OffCanvasCtxInput {
   /** The project's write router (Canvas `nodeWritesFor(projectId)`). */
   writes: Pick<NodeWrites, 'setColor' | 'pickIcon'>
   liveLinkMenuItems: (nodeId: string) => MenuItem[]
+  disInvoiceStartItems: (nodeId: string) => MenuItem[]
   connectedProjectIdForHost: (host?: string) => string | undefined
   /** Raised by every row that needs the live canvas. None of them is on a board today
    *  (`BOARD_NODE_ACTION_IDS`); this keeps the day one is added from failing in silence. */
@@ -994,6 +1013,7 @@ export function offCanvasNodeActionCtx(o: OffCanvasCtxInput): NodeActionCtx {
     toggleMarkdown: refuse,
     reloadTerminals: refuse,
     liveLinkMenuItems: o.liveLinkMenuItems,
+    disInvoiceStartItems: o.disInvoiceStartItems,
     branchClaude: refuseLater,
     transferConversation: refuse,
     restartAgentNode: refuseLater,

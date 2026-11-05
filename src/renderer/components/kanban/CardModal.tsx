@@ -11,6 +11,7 @@ import {
   IconMaximize,
   IconMic,
   IconMore,
+  IconPlay,
   IconRestoreSize,
   IconSearch,
   IconSmiley,
@@ -218,7 +219,8 @@ export function CardModal({ session, projectId, projectName, projectColor, colum
   const isTerminal = session.kind === 'terminal'
   // Built every render so the rows are always current. A card with no session rows (a plain shell,
   // an agent we cannot quit and resume) gets NO button: an empty menu would be a dead click.
-  const sessionRows = isTerminal && sessionActions ? sessionActions() : []
+  const mirrorsTask = session.kind === 'sticky' && !!session.disInvoiceRef
+  const sessionRows = (isTerminal || mirrorsTask) && sessionActions ? sessionActions() : []
   const hasSessionRows = sessionRows.some((r) => r.type !== 'separator')
   const isBrowser = session.kind === 'browser'
 
@@ -690,6 +692,20 @@ export function CardModal({ session, projectId, projectName, projectColor, colum
                 </button>
               )}
             </>
+          )}
+          {mirrorsTask && hasSessionRows && (
+            <button
+              className="kanban-modal__action"
+              data-action="session-actions"
+              title="Start work on this task"
+              aria-label="Start work on this task"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                setActionsMenu({ x: r.left, y: r.bottom, id: session.id })
+              }}
+            >
+              <IconPlay />
+            </button>
           )}
           {onSetColor && (
             <button

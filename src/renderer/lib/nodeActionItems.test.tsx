@@ -42,6 +42,7 @@ function fakeCtx(nodes: CanvasNode[], over: Partial<NodeActionCtx> = {}): NodeAc
     toggleMarkdown: noop,
     reloadTerminals: noop,
     liveLinkMenuItems: () => [],
+    disInvoiceStartItems: () => [],
     branchClaude: async () => ({ ok: true }),
     transferConversation: noop,
     restartAgentNode: async () => {},
@@ -472,7 +473,28 @@ describe('board allowlist carries the session sections', () => {
 
   it('the modal allowlist is a subset without refresh', async () => {
     const mod = await import('./nodeActionItems')
-    expect(mod.BOARD_MODAL_ACTION_IDS).toEqual(['restart', 'switch-model', 'switch-account', 'pause'])
+    expect(mod.BOARD_MODAL_ACTION_IDS).toEqual(['dis-invoice-start', 'restart', 'switch-model', 'switch-account', 'pause'])
     for (const id of mod.BOARD_MODAL_ACTION_IDS) expect(BOARD_NODE_ACTION_IDS).toContain(id)
+  })
+
+  describe('dis-invoice start rows', () => {
+    const REF = { taskId: 1, columnaId: 1, textHash: 'abc' }
+    const start: MenuItem[] = [{ label: 'Open terminal', onClick: () => {} }]
+    const note = (data: Record<string, unknown>, type = 'sticky') =>
+      ({ id: 's', type, position: { x: 0, y: 0 }, data: { title: 'Note', color: '#fff', group: null, ...data } }) as never
+    const rows = (nodes: never[], ids = ['s'], filter: { allow: readonly never[] } = { allow: BOARD_NODE_ACTION_IDS as never }) =>
+      labels(buildNodeActionItems(ids, undefined, fakeCtx(nodes, { disInvoiceStartItems: () => start }), filter as never))
+
+    it('offers them on a mirroring sticky, on the canvas menu and the board card alike', () => {
+      expect(rows([note({ disInvoiceRef: REF })])).toContain('Open terminal')
+      expect(labels(buildNodeActionItems(['s'], undefined, fakeCtx([note({ disInvoiceRef: REF })], { disInvoiceStartItems: () => start })))).toContain('Open terminal')
+    })
+
+    it('not on an ordinary note, a malformed reference, another kind or a multi-selection', () => {
+      expect(rows([note({})])).not.toContain('Open terminal')
+      expect(rows([note({ disInvoiceRef: { taskId: 'x' } })])).not.toContain('Open terminal')
+      expect(rows([note({ disInvoiceRef: REF }, 'terminal')])).not.toContain('Open terminal')
+      expect(rows([note({ disInvoiceRef: REF })], ['s', 'other'])).not.toContain('Open terminal')
+    })
   })
 })

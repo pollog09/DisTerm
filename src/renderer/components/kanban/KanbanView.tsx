@@ -109,7 +109,7 @@ export interface KanbanSession {
 
 /** What the per-column "+ New" menu can create. */
 export type KanbanCreateChoice =
-  | { kind: 'terminal'; shell?: string }
+  | { kind: 'terminal'; shell?: string; title?: string }
   | { kind: 'sticky' }
   | { kind: 'browser' }
   | { kind: 'agent'; agentId: AgentId; shell?: string }

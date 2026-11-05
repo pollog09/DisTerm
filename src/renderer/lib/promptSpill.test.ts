@@ -6,7 +6,8 @@ import {
   launchPromptFor,
   promptExceedsLineBudget,
   shouldSpillPrompt,
-  spillPromptToFile
+  spillPromptToFile,
+  writePromptFile
 } from './promptSpill'
 import { MAX_LAUNCH_LINE_BYTES, fitsLaunchLine, lineBytes } from '@shared/canonical-line'
 import { DEFAULT_LENSES, verifyLensPrompt, verifySynthesisPrompt } from './verifyPanel'
@@ -211,6 +212,28 @@ describe("verify's own prompts (the case that fires with no user input)", () => 
       {}
     ).command
     expect(fitsLaunchLine(spilled)).toBe(true)
+  })
+})
+
+describe('writePromptFile', () => {
+  it('keeps the brief’s structure, unlike a spill, under the launch-prompt name', async () => {
+    const saved: Array<[string, string]> = []
+    const path = await writePromptFile('line one\n\n  line two', {
+      saveUpload: async (name, data) => {
+        saved.push([name, data])
+        return `/data/launch-prompts/${name}`
+      },
+      encodeBase64: (text) => text
+    })
+    expect(saved[0][1]).toBe('line one\n\n  line two')
+    expect(saved[0][0].startsWith('nodeterm-prompt-')).toBe(true)
+    expect(path).toBe(`/data/launch-prompts/${saved[0][0]}`)
+  })
+
+  it('answers null rather than throwing when nothing could be written', async () => {
+    const encodeBase64 = (text: string): string => text
+    expect(await writePromptFile('x', { saveUpload: async () => null, encodeBase64 })).toBeNull()
+    expect(await writePromptFile('x', { saveUpload: () => Promise.reject(new Error('stub')), encodeBase64 })).toBeNull()
   })
 })
 
