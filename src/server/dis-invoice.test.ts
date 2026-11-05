@@ -214,6 +214,14 @@ describe('folders and clones', () => {
     expect(existsSync(kept)).toBe(true)
   })
 
+  it('puts back the empty folder it removed when the clone fails, because a linked project still points there', async () => {
+    await call(IPC.disInvoiceFetch)
+    await call(IPC.disInvoiceEnsureFolder, 7)
+    cloneAnswer = { ok: false, message: 'fatal: Could not read from remote repository.' }
+    expect(await call(IPC.disInvoiceClone, 7)).toEqual({ ok: false, message: 'fatal: Could not read from remote repository.' })
+    expect(existsSync(path.join(base(), 'Web'))).toBe(true)
+  })
+
   describe('a saved link outside the base folder', () => {
     const outside = (): string => path.join(testTmpDir('dis-elsewhere-'), 'project')
 

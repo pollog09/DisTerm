@@ -70,7 +70,7 @@ describe('GitService.clone, unattended', () => {
     const parent = testTmpDir('dis-clone-')
     const result = await new GitService().clone(parent, 'owner/missing', { dirName: 'Web' })
     expect(result.ok).toBe(false)
-    await vi.waitFor(() => expect(existsSync(path.join(parent, 'Web'))).toBe(false))
+    expect(existsSync(path.join(parent, 'Web'))).toBe(false)
   })
 
   it('gives up at the watchdog and frees the single-flight slot', async () => {

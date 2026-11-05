@@ -197,9 +197,15 @@ export function registerDisInvoice({
     const folder = await reserveFolder(proyecto.id, proyecto.nombre)
     if (!insideBase(folder)) return { ok: false, message: `${folder} is outside ${baseDir}, so nothing was cloned.` }
     // ensure-folder may have made it. rmdir only succeeds on an empty one, and clone claims it again.
-    await fs.rmdir(folder).catch(() => undefined)
+    const removed = await fs.rmdir(folder).then(
+      () => true,
+      () => false
+    )
     const result = await git.clone(path.dirname(folder), proyecto.githubRepo, { dirName: path.basename(folder) })
-    return result.ok ? { ok: true } : { ok: false, message: result.message }
+    if (result.ok) return { ok: true }
+    // A linked project still points at this path, and its terminals need it until a retry succeeds.
+    if (removed) await fs.mkdir(folder, { recursive: true }).catch(() => undefined)
+    return { ok: false, message: result.message }
   })
 
   platform.handle(IPC.disInvoiceInspectFolder, async (cwd: unknown): Promise<DisInvoiceFolderFacts> => {

@@ -744,8 +744,11 @@ export class GitService {
       // Failure/abort: remove the dir we claimed (never anything pre-existing).
       const finishFail = (message: string): void => {
         activeClone = null
-        void fs.promises.rm(clonePath, { recursive: true, force: true })
-        resolve({ ok: false, message })
+        // Settled before the caller hears, so a caller that restores the folder cannot lose this race.
+        void fs.promises
+          .rm(clonePath, { recursive: true, force: true })
+          .catch(() => undefined)
+          .finally(() => resolve({ ok: false, message }))
       }
       child.on('error', (e) => finishFail(`git could not start: ${e.message}`))
       child.on('close', (code) => {
