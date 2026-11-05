@@ -31,6 +31,7 @@ const run = promisify(execFile)
 // on a prompt with no TTY. Both halves — and the reason the prepend must not happen on Windows
 // (issue #583) — live in git-env.ts, which github/credentials.ts imports as well.
 const GIT_ENV: NodeJS.ProcessEnv = gitEnv()
+const UNATTENDED_CLONE_TIMEOUT_MS = 10 * 60_000
 
 function ghInvocation(args: string[]): ReturnType<typeof directExecutableInvocation> {
   const gh = ghPath()
@@ -672,14 +673,24 @@ export class GitService {
    * support. Resolves at the END of the clone; success message = the cloned path.
    * The target dir is claimed with a non-recursive mkdir: EEXIST is a friendly error,
    * and on failure/abort we only ever delete the directory WE created this run.
+   *
+   * `unattended` is a clone nobody is watching (dis-invoice sync). It names its folder, creates the
+   * parent, never asks for credentials, stays off the clone dialog's progress channel and gives up
+   * after `timeoutMs`. Deliberately not reachable from IPC.gitClone.
    */
-  async clone(parentDir: string, rawUrl: string): Promise<GitResult> {
+  async clone(
+    parentDir: string,
+    rawUrl: string,
+    unattended?: { dirName: string; timeoutMs?: number }
+  ): Promise<GitResult> {
     if (activeClone) return { ok: false, message: 'A clone is already running.' }
     const url = expandCloneUrl(rawUrl ?? '')
     if (!parentDir || !url) return { ok: false, message: 'Folder and URL are required.' }
     if (!isValidCloneUrl(url)) return { ok: false, message: 'Invalid repository URL.' }
-    const dirName = deriveRepoDirName(url)
-    if (!dirName) return { ok: false, message: 'Could not derive a folder name from that URL.' }
+    const dirName = unattended ? unattended.dirName : deriveRepoDirName(url)
+    if (!dirName || dirName === '.' || dirName === '..' || /[/\\]/.test(dirName)) {
+      return { ok: false, message: 'Could not derive a folder name from that URL.' }
+    }
     const clonePath = path.join(parentDir, dirName)
     // Reserve the single-flight slot synchronously, BEFORE the mkdir await, so a
     // concurrent clone() can't slip past the guard during the await. child is filled
@@ -687,6 +698,7 @@ export class GitService {
     const rec: ActiveClone = { child: null, clonePath, aborted: false }
     activeClone = rec
     try {
+      if (unattended) await fs.promises.mkdir(parentDir, { recursive: true })
       await fs.promises.mkdir(clonePath) // non-recursive claim; also validates parent exists
     } catch (e) {
       activeClone = null
@@ -702,16 +714,24 @@ export class GitService {
     return await new Promise<GitResult>((resolve) => {
       const child = spawn('git', ['clone', '--progress', '--', url, clonePath], {
         cwd: parentDir,
-        env: GIT_ENV,
+        env: unattended ? { ...GIT_ENV, GCM_INTERACTIVE: 'never' } : GIT_ENV,
         stdio: ['ignore', 'ignore', 'pipe']
       })
       rec.child = child
+      const watchdog = unattended
+        ? setTimeout(() => {
+            rec.aborted = true
+            child.kill('SIGTERM')
+          }, unattended.timeoutMs ?? UNATTENDED_CLONE_TIMEOUT_MS)
+        : undefined
+      child.once('close', () => clearTimeout(watchdog))
+      child.once('error', () => clearTimeout(watchdog))
       let tail = '' // last 4 KB of stderr for the error message
       child.stderr?.on('data', (d: Buffer) => {
         const text = d.toString('utf-8')
         tail = (tail + text).slice(-4096)
         const p = parseCloneProgress(text)
-        if (p) platform().broadcast(IPC.gitCloneProgress, p)
+        if (p && !unattended) platform().broadcast(IPC.gitCloneProgress, p)
       })
       // Failure/abort: remove the dir we claimed (never anything pre-existing).
       const finishFail = (message: string): void => {
