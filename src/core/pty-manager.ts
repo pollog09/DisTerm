@@ -5118,7 +5118,10 @@ export class PtyManager {
       proc = (watchHost
         ? watchExistingSessionHostPty(sessionName(options.persistKey as string))
         : attachExistingHost
-        ? attachExistingSessionHostPty(sessionName(options.persistKey as string))
+        ? attachExistingSessionHostPty(sessionName(options.persistKey as string), {
+            cols: options.cols,
+            rows: options.rows
+          })
         : createSessionHostPty(
             sessionName(options.persistKey as string),
             {

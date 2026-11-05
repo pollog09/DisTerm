@@ -41,6 +41,22 @@ export function reportedSize(proposed: Partial<TermSize> | undefined | null): Te
 }
 
 /**
+ * What one fit owes the pty, given `sent`: what the pty was last told (for a spawn in flight, what
+ * its `create()` carries).
+ *  - `local`: no session yet, so only the emulator follows the fit. `sent` must NOT move, because the
+ *    catch-up fit once the session exists compares against it: moving it here made a fit that changed
+ *    during the spawn read as already reported, leaving the pty at the size `create()` carried.
+ *  - `none`: an unchanged fit resizes nothing, which is what keeps a letterbox in place.
+ *  - `report`: a changed fit is applied locally and reported.
+ */
+export type FitAction = 'local' | 'none' | 'report'
+
+export function planFit(size: TermSize, sent: TermSize, sessionLive: boolean): FitAction {
+  if (!sessionLive) return 'local'
+  return size.cols === sent.cols && size.rows === sent.rows ? 'none' : 'report'
+}
+
+/**
  * Are we rendering someone else's (smaller) grid? True when the authoritative size the pty
  * broadcast is smaller than what this node could fit — then the leftover space is letterboxed.
  * A solo user is always the min of a one-element set, so this is ALWAYS false for them and the

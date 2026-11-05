@@ -92,6 +92,7 @@ import {
   forgetNodeTermState,
   letterboxFor,
   markRecycled,
+  planFit,
   recycleAction,
   repaintResync,
   reportedSize,
@@ -2884,14 +2885,17 @@ export function TerminalNode({
         boardParked = false
         const size = reportedSize(fit.proposeDimensions())
         if (!size) return
-        if (size.cols === sentCols && size.rows === sentRows) return
+        const action = planFit(size, { cols: sentCols, rows: sentRows }, sessionId !== null)
+        if (action === 'none') return
         setFittedSize(id, size)
-        sentCols = size.cols
-        sentRows = size.rows
         resizeTerm(term, size.cols, size.rows)
         setCo(termKey, { letterbox: false })
-        // Before the session exists we are the only voice: the size rides the initial `create()`.
-        if (sessionId) transport.resize(sessionId, size.cols, size.rows)
+        // Before the session exists we are the only voice: the size rides the initial `create()`,
+        // and `sentCols/sentRows` stay what that create carries (see `planFit`).
+        if (action !== 'report' || !sessionId) return
+        sentCols = size.cols
+        sentRows = size.rows
+        transport.resize(sessionId, size.cols, size.rows)
       } catch {
         // proposeDimensions can throw when the element is 0-sized (collapsed); ignore.
       }

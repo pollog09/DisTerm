@@ -149,6 +149,15 @@ describe('PtyManager WSL routing', () => {
     expect(backend.create).not.toHaveBeenCalled()
   })
 
+  it('reattaches a live session at the size the viewer asked for', async () => {
+    backend.hasSession.mockResolvedValue(true)
+    await create('win32', { shell: 'wsl:Ubuntu', cols: 78, rows: 25 })
+    expect(backend.attachExisting).toHaveBeenCalledWith(expect.stringMatching(/^nt-/), {
+      cols: 78,
+      rows: 25
+    })
+  })
+
   it.each(['wsl:My Distro', 'wsl:%2Dfoo', 'wsl:bad%ZZ', 'wsl:-foo', `wsl:${'a'.repeat(200)}`])(
     'refuses the malformed value %s by name instead of starting another shell',
     async (shell) => {

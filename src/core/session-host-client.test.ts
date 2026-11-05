@@ -556,7 +556,7 @@ describe('SessionHostClient legacy host continuity', () => {
     const warmSub = subscriber(onData)
     await expect(within(client.hasSession('nt-legacy-warm'))).resolves.toBe(true)
     await expect(
-      within(client.attachExisting('nt-legacy-warm', warmSub))
+      within(client.attachExisting('nt-legacy-warm', warmSub, { cols: 80, rows: 24 }))
     ).resolves.toEqual({ fresh: false, screen: 'legacy screen' })
     await expect(within(client.capture('nt-legacy-warm', true))).resolves.toBe('legacy capture')
     client.write('nt-legacy-warm', warmSub, 'dir\r')
@@ -609,7 +609,7 @@ describe('SessionHostClient legacy host continuity', () => {
     const client = new SessionHostClient({ userDataDir })
     await expect(within(client.hasSession('nt-legacy-race'))).resolves.toBe(true)
     await expect(
-      within(client.attachExisting('nt-legacy-race', subscriber(onData)))
+      within(client.attachExisting('nt-legacy-race', subscriber(onData), { cols: 80, rows: 24 }))
     ).rejects.toThrow(
       "legacy session-host lost 'nt-legacy-race' before warm attach; no requested shell was spawned"
     )
@@ -1044,21 +1044,20 @@ describe('SessionHostClient atomic warm attach and reconnect replay', () => {
 
     const client = new SessionHostClient({ userDataDir })
     await expect(within(client.hasSession('nt-raced'))).resolves.toBe(true)
-    await expect(within(client.attachExisting('nt-raced', subscriber()))).rejects.toThrow(
+    await expect(within(client.attachExisting('nt-raced', subscriber(), { cols: 100, rows: 30 }))).rejects.toThrow(
       "no existing session 'nt-raced'"
     )
     // `attachExisting`'s optional aggregate-reconnect fields (cols/rows/paused) are always sent
-    // by this client (`attachSubscriber`'s `{kind:'existing'}` request), defaulted to the size
-    // `attachExisting()`'s public signature hardcodes (80x24) since this call attaches no prior
-    // local geometry. `expectedGeneration` is the one field production no longer supplies here —
+    // by this client (`attachSubscriber`'s `{kind:'existing'}` request), with cols/rows being the
+    // viewer's own grid. `expectedGeneration` is the one field production no longer supplies here —
     // see the block comment above.
     expect(attachExistingRequest).toEqual({
       id: expect.any(Number),
       cmd: 'attachExisting',
       name: 'nt-raced',
       expectedGeneration: 'generation-raced',
-      cols: 80,
-      rows: 24,
+      cols: 100,
+      rows: 30,
       paused: false
     })
     expect(attachExistingRequest && 'spawn' in attachExistingRequest).toBe(false)
@@ -1085,7 +1084,7 @@ describe('SessionHostClient atomic warm attach and reconnect replay', () => {
     })
 
     const client = new SessionHostClient({ userDataDir })
-    await expect(within(client.attachExisting('nt-warm', subscriber()))).resolves.toEqual({
+    await expect(within(client.attachExisting('nt-warm', subscriber(), { cols: 80, rows: 24 }))).resolves.toEqual({
       fresh: false,
       screen: '\u001b[32mexisting screen',
       generation: 'generation-warm'
@@ -1294,7 +1293,7 @@ describe('SessionHostClient persistent launch requests', () => {
     })
     const client = new SessionHostClient({ userDataDir })
     await within(client.hasSession('nt-legacy-launch'))
-    await within(client.attachExisting('nt-legacy-launch', subscriber()))
+    await within(client.attachExisting('nt-legacy-launch', subscriber(), { cols: 80, rows: 24 }))
     await expect(
       within(
         client.executeLaunch('nt-legacy-launch', '123e4567-e89b-42d3-a456-426614174000', {
