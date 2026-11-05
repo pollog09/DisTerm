@@ -385,7 +385,9 @@ Reference split out of `CLAUDE.md`, which holds the rules every change needs. Wo
   `renderer/lib/kanban.ts`; view choice is personal (`state/viewMode.ts`, localStorage
   `nodeterm.projectView`). The board opens with a **title strip** (`.kanban-header`: project
   dot + name) whose height clears the floating controls-cluster icons — columns never sit under
-  them. **Cards collapse/expand on single click** (transient state); the expanded detail row
+  them. At 640px and below the cluster spans most of the strip, so the strip moves below it
+  instead of padding beside it; otherwise Sync and the scope switch sat under the cluster's
+  buttons at phone width (measured with `elementFromPoint`, 2026-11). **Cards collapse/expand on single click** (transient state); the expanded detail row
   reuses `ContextMeter` (model + % pill, per the node header) + session chip + an ↗
   open-on-canvas button; double-click opens the node directly. Z-order contract: overlay 25 <
   `.controls-cluster` 26 (Explorer/SC/Settings stay clickable ON the board) < `.top-banners` 27

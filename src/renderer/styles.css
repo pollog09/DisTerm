@@ -14915,6 +14915,14 @@ button.pull-checks__name {
     padding: 2px 6px;
   }
 }
+/* Here the controls cluster (top 62px, 34px tall) spans most of the strip, so clearing it sideways
+   leaves no room: the strip moves below it instead. */
+@media (max-width: 640px) {
+  .kanban-header {
+    margin-top: 58px;
+    padding-right: 18px;
+  }
+}
 
 /* ── Board label filter (header) ── */
 .kanban-header__filter {
