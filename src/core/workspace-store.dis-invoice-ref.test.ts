@@ -52,6 +52,13 @@ describe('the core store keeps a sticky’s disInvoiceRef verbatim', () => {
     await expect(fs.access(path.join(folder, '.nodeterm', 'project.json'))).rejects.toThrow()
   })
 
+  it('in a closed project, which stays closed', async () => {
+    await new WorkspaceStore().save(ws(project({ cwd: folder, storeInAppData: true, closed: true, closedAt: 1 })))
+    const loaded = await reload()
+    expect(loaded.closed).toBe(true)
+    expect(loaded.nodes[0].disInvoiceRef).toEqual(REF)
+  })
+
   it('in a folder-backed project', async () => {
     await new WorkspaceStore().save(ws(project({ cwd: folder })))
     expect((await reload()).nodes[0].disInvoiceRef).toEqual(REF)

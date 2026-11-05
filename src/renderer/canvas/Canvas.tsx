@@ -292,6 +292,7 @@ import {
 } from '../lib/projectLimitGate'
 import { countOpenProjects, decideOpen } from '@shared/project-limit'
 import { opensProject, type OpenAction } from '../lib/projectOpens'
+import { mergeUpsertsIntoFlow } from '../lib/disInvoiceSync'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
@@ -6453,6 +6454,41 @@ export function Canvas() {
       void writeDisk()
     },
     [commitActiveToStore, writeDisk]
+  )
+
+  /**
+   * React Flow holds this project and it is the active one, so `persist()` will commit `nodesRef`
+   * over the store: a store-only write here would be erased. That includes the settle window after a
+   * load (`loadingRef` set, epoch already installed). In the gap before a switch's load runs, the
+   * refs are still the outgoing project's, whose commit already happened, so the store is the truth.
+   */
+  const disInvoiceCanvasIsLive = useCallback(
+    (projectId: string): boolean =>
+      nodesProjectIdRef.current === projectId && useProjects.getState().activeProjectId === projectId,
+    [nodesProjectIdRef]
+  )
+
+  const applyDisInvoiceNodes = useCallback(
+    (projectId: string, upserts: CanvasNodeState[]): void => {
+      if (!disInvoiceCanvasIsLive(projectId)) {
+        useProjects.getState().applyOwnNodeMutations(projectId, upserts.map((node) => ({ op: 'upsert', node })))
+        return
+      }
+      const { next, added } = mergeUpsertsIntoFlow(nodesRef.current, upserts)
+      nodesRef.current = next
+      setNodes(next)
+      for (const node of added) castNewNodeNow(projectId, node)
+      markDirty()
+    },
+    [disInvoiceCanvasIsLive, nodesRef, setNodes, castNewNodeNow, markDirty]
+  )
+
+  const applyDisInvoiceBoard = useCallback(
+    (projectId: string, board: ProjectKanban): void => {
+      useProjects.getState().setProjectKanban(projectId, board)
+      markDirty()
+    },
+    [markDirty]
   )
 
   /**
