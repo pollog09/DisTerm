@@ -11574,6 +11574,9 @@ export function Canvas() {
       pick?: {
         onPick: (agentId: AgentId, accountId?: string | null) => void
         label?: (agentLabel: string) => string
+        // The project the rows start in, when that is not the active one (an Omni lane's card).
+        // Its accounts are the ones to offer: another machine's would be dropped at the launch.
+        projectId?: string
       }
     ): AgentAddEntry[] => {
       const create = (aid: AgentId, acct?: string | null): void => {
@@ -11587,7 +11590,7 @@ export function Canvas() {
       // after a `switchProject` — e.g. the sessions-sidebar "+" opening this menu on a non-active
       // project — resolves accounts against the project the user clicked, not the one that was
       // active when this callback was created. `switchProject` sets the store synchronously.
-      const project = useProjects.getState().getProject(useProjects.getState().activeProjectId)
+      const project = useProjects.getState().getProject(pick?.projectId ?? useProjects.getState().activeProjectId)
       const accounts = accountsForProject(useSettings.getState().settings.claudeAccounts, project)
       // The system entry shows the user's custom label / detected email so it stays
       // distinguishable from managed accounts (falls back to "System account").
@@ -12621,7 +12624,8 @@ export function Canvas() {
             icon: <IconPlay />,
             children: agentCreationEntries(undefined, undefined, {
               onPick: (agentId, accountId) => startDisInvoiceWork(projectId, nodeId, { agentId, accountId }),
-              label: (agentLabel) => agentLabel
+              label: (agentLabel) => agentLabel,
+              projectId
             }).map((entry) => entry.item)
           },
           { label: 'Open terminal', icon: <IconTerminal />, onClick: () => startDisInvoiceWork(projectId, nodeId, null) },
@@ -20238,7 +20242,7 @@ export function Canvas() {
           onAiName={aiNameFromKanban}
           onSetColor={setCardColor}
           onRunQueued={runQueuedFromOmni}
-          disInvoiceSync={disInvoiceSyncControl}
+          disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}
         />
       ) : perProjectKanbanOpen && (
         <KanbanView

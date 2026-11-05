@@ -19,19 +19,14 @@ import { wslProfileExec } from '../remote-ssh/native/wsl-endpoint'
 import type { SecretStore } from '../secret-store'
 import type { ProfileExec } from '../terminal-profiles'
 import { launchPromptsRoot } from '../uploads'
-import { DIS_INVOICE_CONNECTOR_URL, DisInvoiceClient, connectorBaseUrl } from './client'
+import { DisInvoiceClient, connectorBaseUrl } from './client'
 import { disInvoiceBaseDir, disInvoiceFolderName, readDisInvoiceFolder } from './folders'
+import { disInvoiceDevOverrides, type DisInvoiceOverrides } from './overrides'
 import { briefPathInWsl } from './wsl-brief'
 
 export const DIS_INVOICE_SECRET_FILE = 'dis-invoice-connector-key.json'
 const LINKS_FILE = 'dis-invoice-links.json'
 const MAX_KEY_LENGTH = 512
-
-/** Keeps a run against the fake connector out of the real Documents folder. Honoured only with the
- *  loopback connector, so the base folder stays fixed for real use. */
-export function disInvoiceTestDocumentsDir(env: NodeJS.ProcessEnv): string | undefined {
-  return connectorBaseUrl(env) === DIS_INVOICE_CONNECTOR_URL ? undefined : env.DISTERM_DIS_INVOICE_DOCUMENTS
-}
 
 const isProyectoId = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) > 0
@@ -84,19 +79,28 @@ export class DisInvoiceLinkStore {
 }
 
 type Dependencies = {
-  platform: Pick<CorePlatform, 'handle' | 'userDataDir' | 'documentsDir'>
+  platform: Pick<CorePlatform, 'handle' | 'userDataDir' | 'documentsDir' | 'isPackaged'>
   secret: SecretStore
   git: Pick<GitService, 'clone' | 'originUrl' | 'canvasExposedToGit'>
   client?: DisInvoiceClient
   wslExec?: ProfileExec
+  /** The proof entry point's own. Everything else reads a development build's environment. */
+  overrides?: DisInvoiceOverrides
 }
 
 /** Host-only (shared/host-control.ts): the key can read and write every client's cards. It enters
  *  through save-config, leaves only as a request header, and no channel returns it. */
-export function registerDisInvoice({ platform, secret, git, client: injected, wslExec = wslProfileExec }: Dependencies): void {
-  const client = injected ?? new DisInvoiceClient()
+export function registerDisInvoice({
+  platform,
+  secret,
+  git,
+  client: injected,
+  wslExec = wslProfileExec,
+  overrides = disInvoiceDevOverrides(process.env, platform.isPackaged)
+}: Dependencies): void {
+  const client = injected ?? new DisInvoiceClient({ baseUrl: connectorBaseUrl(overrides.url) })
   const links = new DisInvoiceLinkStore(platform.userDataDir)
-  const baseDir = disInvoiceBaseDir(disInvoiceTestDocumentsDir(process.env) ?? platform.documentsDir)
+  const baseDir = disInvoiceBaseDir(overrides.documentsDir ?? platform.documentsDir)
   /** Sync names these folders. A saved link can hold any folder a reused project already lives in,
    *  and saveLink takes it from the renderer, so nothing outside the base is created or removed. */
   const insideBase = (folder: string): boolean => path.dirname(path.resolve(folder)) === path.resolve(baseDir)

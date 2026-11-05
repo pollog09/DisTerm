@@ -446,7 +446,8 @@ export async function startServer(
   registerDisInvoice({
     platform,
     secret: new ServerSecretStore(config.dataDir, DIS_INVOICE_SECRET_FILE),
-    git: gitService
+    git: gitService,
+    overrides: config.disInvoice
   })
   // A browser tab's board dispatch reports its queue here, for the `issues` control verb (display only).
   const boardDispatchReports = registerBoardDispatchReportIpc(platform)

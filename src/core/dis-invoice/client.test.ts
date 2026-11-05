@@ -188,7 +188,7 @@ describe('connectorBaseUrl', () => {
     ['http://user:pass@127.0.0.1:8799/', DIS_INVOICE_CONNECTOR_URL],
     ['not a url', DIS_INVOICE_CONNECTOR_URL]
   ])('%s -> %s', (override, expected) => {
-    expect(connectorBaseUrl({ DISTERM_DIS_INVOICE_URL: override } as NodeJS.ProcessEnv)).toBe(expected)
+    expect(connectorBaseUrl(override)).toBe(expected)
   })
 })
 

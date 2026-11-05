@@ -9,14 +9,19 @@ const read = (rel: string): string => readFileSync(path.join(RENDERER, rel), 'ut
 describe('the dis-invoice Sync button', () => {
   const canvas = read('canvas/Canvas.tsx')
 
-  it('is hidden on a relay tab, whose board belongs to another machine', () => {
-    expect(canvas).toContain(
-      "disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}"
-    )
+  it('is hidden on a relay tab on both boards, whose board belongs to another machine', () => {
+    const guarded = "disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}"
+    expect(canvas.split(guarded)).toHaveLength(3)
+    expect(canvas).not.toContain('disInvoiceSync={disInvoiceSyncControl}')
+  })
+
+  it('offers the accounts of the project a task’s rows start in, which an Omni lane need not be the active one', () => {
+    const rows = canvas.slice(canvas.indexOf('disInvoiceStartItemsRef.current = '), canvas.indexOf('// ---- Board dispatch'))
+    expect(rows).toContain('label: (agentLabel) => agentLabel,\n              projectId\n')
+    expect(canvas).toContain('getProject(pick?.projectId ?? useProjects.getState().activeProjectId)')
   })
 
   it('is on the Omni board, in its empty state too, because the first sync is what fills it', () => {
-    expect(canvas).toContain('disInvoiceSync={disInvoiceSyncControl}')
     const button = '{disInvoiceSync && <DisInvoiceSyncButton control={disInvoiceSync} />}'
     expect(read('components/kanban/GlobalKanbanView.tsx').split(button)).toHaveLength(3)
   })

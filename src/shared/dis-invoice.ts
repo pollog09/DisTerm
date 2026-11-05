@@ -99,14 +99,16 @@ export function normalizeDisInvoiceRef(value: unknown): DisInvoiceRef | undefine
 }
 
 const BRIEF_END = '</client-task>'
+const CLOSING_MARKER = /<\s*\/\s*client-task\b[^>]*>/gi
 
 /**
  * What an agent started on a task is told, in a prompt file. The task is a client's text, so it is
- * framed as data, and the closing marker cannot be forged from inside it. dis-invoice is off limits
- * because the board card is a read-only mirror and a person decides when work is billable.
+ * framed as data, and anything in it that reads as the closing marker is neutralized. That keeps the
+ * frame intact against the plain attempt. It does not make hostile text harmless to a model. dis-invoice
+ * is off limits because the board card is a read-only mirror and a person decides when work is billable.
  */
 export function disInvoiceBrief(stickyText: string, taskId: number): string {
-  const safe = stickyText.replaceAll(BRIEF_END, '[/client-task]')
+  const safe = stickyText.replace(CLOSING_MARKER, '[/client-task]')
   return [
     `You are starting work on task #${taskId} from dis-invoice, a client work board.`,
     '',

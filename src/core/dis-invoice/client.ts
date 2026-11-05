@@ -7,7 +7,6 @@ import type {
 import { normalizeOwnerRepo } from '../../shared/dis-invoice'
 
 export const DIS_INVOICE_CONNECTOR_URL = 'https://dis-invoice.distriib.com/api/connector'
-export const DIS_INVOICE_URL_ENV = 'DISTERM_DIS_INVOICE_URL'
 
 const PAGE_SIZE = 200
 /** A hundred thousand open tasks is not a board. A connector that keeps paging is broken. */
@@ -15,8 +14,7 @@ const MAX_PAGES = 500
 const REQUEST_TIMEOUT_MS = 30_000
 
 /** The key goes wherever this URL points, so only a loopback address may replace the constant. */
-export function connectorBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env[DIS_INVOICE_URL_ENV]
+export function connectorBaseUrl(override: string | undefined): string {
   if (!override) return DIS_INVOICE_CONNECTOR_URL
   try {
     const url = new URL(override)
@@ -135,7 +133,7 @@ export class DisInvoiceClient {
 
   constructor(options: { baseUrl?: string; fetch?: typeof fetch } = {}) {
     this.fetchImpl = options.fetch ?? fetch
-    this.baseUrl = options.baseUrl ?? connectorBaseUrl()
+    this.baseUrl = options.baseUrl ?? DIS_INVOICE_CONNECTOR_URL
   }
 
   async readColumns(key: string): Promise<{ ok: true; columns: DisInvoiceColumn[] } | Failure> {

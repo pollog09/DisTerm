@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, promises as fs, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { IPC } from '../shared/ipc'
 import { isHostOnlyChannel } from '../shared/host-control'
 import { ServerPlatform } from './platform-server'
 import { ServerSecretStore } from './github-control'
-import { DIS_INVOICE_SECRET_FILE, disInvoiceTestDocumentsDir, registerDisInvoice } from '../core/dis-invoice/service'
+import { DIS_INVOICE_SECRET_FILE, registerDisInvoice } from '../core/dis-invoice/service'
+import type { DisInvoiceOverrides } from '../core/dis-invoice/overrides'
+import { resolveConfig } from './config'
 import { DisInvoiceClient } from '../core/dis-invoice/client'
 import { FAKE_CONNECTOR_KEY, fakeCard, startFakeConnector, type FakeConnector } from '../core/dis-invoice/fake-connector'
 import { EDITOR_ONLY, VIEW, COMMENT } from '../core/relay/access-policy'
@@ -300,16 +302,61 @@ describe('a brief in a distribution', () => {
   })
 })
 
-describe('disInvoiceTestDocumentsDir', () => {
-  const env = (url?: string): NodeJS.ProcessEnv => ({
-    DISTERM_DIS_INVOICE_DOCUMENTS: '/sandbox',
-    ...(url ? { DISTERM_DIS_INVOICE_URL: url } : {})
+describe('the connector and folder a build talks to', () => {
+  const PRODUCTION = 'https://dis-invoice.distriib.com/api/connector/columns'
+  const LOOPBACK = 'http://127.0.0.1:8799/api/connector'
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
-  it('moves the base folder only for the loopback connector', () => {
-    expect(disInvoiceTestDocumentsDir(env('http://127.0.0.1:8799/api/connector'))).toBe('/sandbox')
-    expect(disInvoiceTestDocumentsDir(env())).toBeUndefined()
-    expect(disInvoiceTestDocumentsDir(env('https://evil.example/api/connector'))).toBeUndefined()
+  /** Registers on a bare platform and reports where its key would go and where its folders land. */
+  async function probe(isPackaged: boolean, overrides?: DisInvoiceOverrides): Promise<{ url: string; folder: unknown }> {
+    vi.stubEnv('DISTERM_DIS_INVOICE_URL', LOOPBACK)
+    vi.stubEnv('DISTERM_DIS_INVOICE_DOCUMENTS', '/from-env')
+    const asked: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      asked.push(url)
+      return new Response(JSON.stringify({ columnas: [], tareas: [{ ...fakeCard(1), proyecto: { id: 7, nombre: 'Web' } }], next_cursor: null }))
+    })
+    const handlers = new Map<string, (...args: unknown[]) => unknown>()
+    registerDisInvoice({
+      platform: { isPackaged, userDataDir, documentsDir, handle: (channel, fn) => void handlers.set(channel, fn) },
+      secret: new ServerSecretStore(userDataDir, DIS_INVOICE_SECRET_FILE),
+      git: { clone: async () => ({ ok: true, message: '' }), originUrl: async () => null, canvasExposedToGit: async () => false },
+      ...(overrides ? { overrides } : {})
+    })
+    await handlers.get(IPC.disInvoiceSaveConfig)?.(FAKE_CONNECTOR_KEY)
+    await handlers.get(IPC.disInvoiceFetch)?.()
+    return { url: asked[0], folder: await handlers.get(IPC.disInvoicePlannedFolder)?.(7) }
+  }
+
+  it('a packaged build ignores the environment, so the key goes only to production', async () => {
+    expect(await probe(true)).toEqual({ url: PRODUCTION, folder: path.join(documentsDir, 'Distriib', 'Web') })
+  })
+
+  it('a development build honours it', async () => {
+    expect(await probe(false)).toEqual({ url: `${LOOPBACK}/columns`, folder: path.join('/from-env', 'Distriib', 'Web') })
+  })
+
+  it('the proof server, which reports itself packaged, gets there only through its explicit overrides', async () => {
+    expect(await probe(true, { url: 'http://localhost:9000/api/connector', documentsDir: '/proof' })).toEqual({
+      url: 'http://localhost:9000/api/connector/columns',
+      folder: path.join('/proof', 'Distriib', 'Web')
+    })
+  })
+
+  it('an explicit override that is not loopback still cannot redirect the key', async () => {
+    expect((await probe(true, { url: 'https://evil.example/api/connector' })).url).toBe(PRODUCTION)
+  })
+
+  it('a real server’s configuration never carries overrides', () => {
+    const config = resolveConfig(
+      { DISTERM_DIS_INVOICE_URL: LOOPBACK, DISTERM_DIS_INVOICE_DOCUMENTS: '/from-env', NODETERM_SERVER_PASSWORD: 'x' },
+      ['--data-dir', userDataDir]
+    )
+    expect(config.disInvoice).toBeUndefined()
   })
 })
 
