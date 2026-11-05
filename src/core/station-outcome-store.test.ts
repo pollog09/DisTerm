@@ -46,7 +46,7 @@ describe('handleReportOutcome', () => {
       {
         id: 'log-1',
         ts: 1_000,
-        author: { name: 'nodeterm', color: '#8b8b8b' },
+        author: { name: 'DisTerm', color: '#8b8b8b' },
         nodeId: 'st1',
         kind: 'event',
         event: { type: 'station-reported', from: 'st1', to: 'succeeded', title: 'tests pass' }

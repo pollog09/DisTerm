@@ -6,12 +6,17 @@
  */
 
 export const PUSH_WEBHOOK_PATH = '/v1/push/webhook'
-export const PUSH_WEBHOOK_DEFAULT_API_BASE = 'https://api.nodeterm.dev'
+/** What the examples show when no backend is configured. Never contacted: with no
+ *  NODETERM_API_BASE the client refuses before calling anything (`dev-build`). */
+export const PUSH_WEBHOOK_EXAMPLE_API_BASE = 'https://push.example.com'
 /** The environment variable every example reads the token from — a CI secret, never a literal. */
 export const PUSH_WEBHOOK_TOKEN_ENV = 'NODETERM_WEBHOOK_TOKEN'
 /** Display caps the backend applies after stripping control characters (code points). */
 export const PUSH_WEBHOOK_TITLE_MAX = 120
 export const PUSH_WEBHOOK_BODY_MAX = 500
+
+export const PUSH_WEBHOOK_OFF_REASON =
+  'Not available in this build: DisTerm has no push server configured. See the README, “Off by default: anything that needs a relay”.'
 
 /** What is live for this machine, as the backend reports it. Never the token itself. */
 export interface PushWebhookTokenInfo {
@@ -24,7 +29,7 @@ export interface PushWebhookTokenInfo {
 
 /** Why a webhook call did not happen. Each has its own sentence in the UI (`pushWebhookErrorText`). */
 export type PushWebhookError =
-  /** Unpackaged build with no NODETERM_API_BASE: the backend is not reachable from here on purpose. */
+  /** No NODETERM_API_BASE, packaged or not: this build has no push server. */
   | 'dev-build'
   /** The relay host key could not be read (keyring locked) — nothing to prove ownership with. */
   | 'no-host-key'
@@ -55,7 +60,7 @@ export interface PushWebhookApi {
 export function pushWebhookErrorText(error: PushWebhookError): string {
   switch (error) {
     case 'dev-build':
-      return 'Unavailable in a development build — set NODETERM_API_BASE to test against a backend.'
+      return PUSH_WEBHOOK_OFF_REASON
     case 'no-host-key':
       return 'Couldn’t read this machine’s remote-access key (is the keychain locked?). Try again.'
     case 'no-paired-phone':
@@ -63,11 +68,11 @@ export function pushWebhookErrorText(error: PushWebhookError): string {
     case 'refused':
       return 'The server did not accept this machine’s proof of its remote-access key. Try again; if it keeps failing, report it.'
     case 'bad-request':
-      return 'The server could not read the request — this version of nodeterm and the server disagree. Update nodeterm and try again.'
+      return 'The server could not read the request — this version of DisTerm and the server disagree. Update DisTerm and try again.'
     case 'rate-limited':
       return 'Too many requests — wait a minute and try again.'
     case 'unreachable':
-      return 'Couldn’t reach the nodeterm server. Check the connection and try again.'
+      return 'Couldn’t reach the push server. Check the connection and try again.'
   }
 }
 
@@ -81,7 +86,7 @@ function webhookUrl(apiBase: string): string {
   return apiBase.replace(/\/+$/, '') + PUSH_WEBHOOK_PATH
 }
 
-export function pushWebhookCurlExample(apiBase: string = PUSH_WEBHOOK_DEFAULT_API_BASE): string {
+export function pushWebhookCurlExample(apiBase: string = PUSH_WEBHOOK_EXAMPLE_API_BASE): string {
   const url = webhookUrl(apiBase)
   return [
     `printf 'header = "Authorization: Bearer %s"\\n' "$${PUSH_WEBHOOK_TOKEN_ENV}" |`,
@@ -97,7 +102,7 @@ export function pushWebhookCurlExample(apiBase: string = PUSH_WEBHOOK_DEFAULT_AP
  * show. (`curl.exe` from PowerShell would need the header on stdin too, and Windows PowerShell 5.1
  * mangles the double quotes of a JSON argument to native programs.)
  */
-export function pushWebhookPowerShellExample(apiBase: string = PUSH_WEBHOOK_DEFAULT_API_BASE): string {
+export function pushWebhookPowerShellExample(apiBase: string = PUSH_WEBHOOK_EXAMPLE_API_BASE): string {
   return [
     `Invoke-RestMethod -Method Post -Uri '${webhookUrl(apiBase)}' \``,
     `  -Headers @{ Authorization = "Bearer $env:${PUSH_WEBHOOK_TOKEN_ENV}" } \``,

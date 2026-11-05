@@ -22,9 +22,15 @@ import type {
   RemoteAccountUsage
 } from '@shared/types'
 import { sshHostKey } from '@shared/ssh'
+import { isWslShellValue, parseWslShell, wslShellOfPath } from '@shared/terminal-profiles'
 
-/** Local = this machine. SSH = the host of the active project, by `user@host`. */
-export type UsageScope = { kind: 'local' } | { kind: 'ssh'; hostKey: string }
+/** Local = this machine. SSH = the host of the active project, by `user@host`. WSL = a distribution
+ *  on this machine the project runs in, by its `wsl:<distro>` value: Claude's limits are read in
+ *  there, and everything else is still this machine's. */
+export type UsageScope =
+  | { kind: 'local' }
+  | { kind: 'ssh'; hostKey: string }
+  | { kind: 'wsl'; hostKey: string }
 
 /**
  * The scope of the project you are looking at. No project, an unavailable tab, or a local folder
@@ -49,9 +55,46 @@ export function usageScopeKey(project: Project | undefined): string {
   return scope.kind === 'ssh' ? scope.hostKey : ''
 }
 
-/** Inverse of `usageScopeKey`. */
+/** Inverse of `usageScopeKey` and {@link usagePillScopeKey}. */
 export function scopeFromKey(hostKey: string): UsageScope {
+  if (isWslShellValue(hostKey)) return { kind: 'wsl', hostKey }
   return hostKey ? { kind: 'ssh', hostKey } : { kind: 'local' }
+}
+
+/**
+ * The distribution whose Claude this project spends, as a `wsl:` value, or null for this machine.
+ *
+ * The project's own shell says first, either way. A new session then lands where the spawn puts it,
+ * so a managed default account only keeps the project here when the default shell is not WSL: its
+ * logins live in Windows-side dirs, and a WSL pane would not use them. Past that, the folder, then a
+ * Claude node stamped to run in one, then the default shell. An SSH project is its host's and a relay
+ * tab keeps YOUR numbers, as in `usageScopeFor`.
+ */
+export function projectWslShell(
+  project: Pick<Project, 'ssh' | 'remote' | 'cwd' | 'defaultAccountId' | 'nodes'> | undefined,
+  defaultShell: string | undefined,
+  projectShell?: string
+): string | null {
+  if (!project || project.ssh || project.remote) return null
+  if (parseWslShell(projectShell)) return projectShell!
+  const defaultWsl = parseWslShell(defaultShell) ? defaultShell! : null
+  const node = project.nodes?.find((n) => n.agentId && parseWslShell(n.shell))?.shell
+  if (projectShell) return node ?? null
+  if (project.defaultAccountId && !defaultWsl) return null
+  return wslShellOfPath(project.cwd) ?? node ?? defaultWsl
+}
+
+/**
+ * {@link usageScopeKey} for the usage pill alone, which also reads a distribution. Separate on
+ * purpose: that key also scopes session memory, whose sweep measures this machine's session host and
+ * would read a `wsl:` key as an SSH host. A primitive, for the same reason.
+ */
+export function usagePillScopeKey(
+  project: Project | undefined,
+  defaultShell: string | undefined,
+  projectShell?: string
+): string {
+  return usageScopeKey(project) || projectWslShell(project, defaultShell, projectShell) || ''
 }
 
 export interface ScopeInput {
@@ -140,6 +183,8 @@ export function scopeUsage(input: ScopeInput): ScopedUsage {
       pillAccountId: useDefault ? defaultAccountId! : null
     }
   }
+  // A distribution's rows replace this machine's Claude, and only that: the other providers' logins
+  // are this machine's whichever folder a project is in.
   const rows = remote.filter((r) => r.hostKey === scope.hostKey)
   const claudeRows = rows.filter(r => r.provider !== 'codex')
   const system = claudeRows.find((r) => r.accountId === null)
@@ -156,7 +201,7 @@ export function scopeUsage(input: ScopeInput): ScopedUsage {
     // credentials you are NOT spending while you work on the host.
     claude: null,
     accounts: [],
-    providers: [],
+    providers: scope.kind === 'wsl' ? [...providers] : [],
     remote: rows,
     pillLimits: leading?.usage.limits ?? [],
     pillAccountId: leading?.accountId ?? null

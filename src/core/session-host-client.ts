@@ -310,7 +310,7 @@ export class SessionHostProtocolCompatibilityError extends Error {
 
   constructor(operation: string) {
     super(
-      `The persistent terminal host is from an older nodeterm version and cannot ${operation}. ` +
+      `The persistent terminal host is from an older DisTerm version and cannot ${operation}. ` +
         'Existing terminals remain attachable; close them and let the legacy host exit before ' +
         'starting or restarting a Windows terminal.'
     )
@@ -594,7 +594,7 @@ export class SessionHostClient {
   private async ensureConnected(options: { launch?: boolean } = {}): Promise<void> {
     const launch = options.launch !== false
     if (this.shutDownForUpdate) {
-      throw new Error('session-host was shut down to prepare for an update; restart nodeterm')
+      throw new Error('session-host was shut down to prepare for an update; restart DisTerm')
     }
     // A newly authenticated socket is visible while its reconnect restoration is still running.
     // The barrier wins over the raw socket check so no later request can overtake replay.
@@ -1452,13 +1452,23 @@ export class SessionHostClient {
   }
 
   /** Warm-only attach. The request carries the generation confirmed by hasSession/attach and no
-   * spawn plan, so an exit racing the attach cannot recreate a shell with stale options. */
-  async attachExisting(name: string, sub: SessionSubscriber): Promise<AttachResult> {
+   * spawn plan, so an exit racing the attach cannot recreate a shell with stale options.
+   *
+   * `size` is the viewer's own grid, and it is a real claim: the host applies it to the running pty
+   * before this returns. For a renderer view PtyManager already records it as applied (a relay sink
+   * is left unseeded, so its first report still votes). A placeholder here left a renderer view's live
+   * `wsl:` pane at the placeholder's size under an xterm rendering another one, with no later report
+   * to correct it (the fit had not changed). */
+  async attachExisting(
+    name: string,
+    sub: SessionSubscriber,
+    size: TerminalSize
+  ): Promise<AttachResult> {
     return this.attachSubscriber(
       name,
       sub,
       { kind: 'existing', scrollback: 1 },
-      { cols: 80, rows: 24 }
+      { cols: normalizeDimension(size.cols, 80), rows: normalizeDimension(size.rows, 24) }
     )
   }
 

@@ -1174,3 +1174,22 @@ describe('hosted service — roleOf', () => {
     expect(w.svc.roleOf(k)).toBe('owner')
   })
 })
+
+describe('a server with no relay configured', () => {
+  it('stays off, says so, and issues no join code', async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-hosted-norelay-'))
+    const mint = vi.fn()
+    const svc = createHostedService({
+      dataDir, apiBase: '', relayUrl: '', deviceId: 'd', hostLabel: 'x',
+      attach: { attach: () => 1, detach: () => {}, dispatch: async () => null, cast: () => {} },
+      fetch: mint as unknown as typeof fetch
+    } as unknown as HostedServiceDeps)
+    await svc.init()
+    expect(await svc.start()).toBe('no-relay')
+    expect(svc.status()).toMatchObject({ enabled: false, noRelay: true })
+    expect(svc.joinCode()).toBeNull()
+    expect(mint).not.toHaveBeenCalled()
+    svc.stop()
+    fs.rmSync(dataDir, { recursive: true, force: true })
+  })
+})

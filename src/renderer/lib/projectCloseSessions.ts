@@ -120,7 +120,7 @@ export function deleteConfirmCopy(project: ProjectLike): DeleteConfirmCopy {
     ? `The folder ${where} is not deleted, but the canvas, project settings, board log and whiteboards it kept in app data are.`
     : `The folder ${where} (including .nodeterm/project.json) is not deleted.`
   return {
-    message: `Delete “${name}”? This ${sessions}removes the project from nodeterm. ${tail}`,
+    message: `Delete “${name}”? This ${sessions}removes the project from DisTerm. ${tail}`,
     confirmLabel: 'Delete',
     danger: true
   }

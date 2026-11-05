@@ -488,15 +488,15 @@ describe('codex-sandbox self-diagnosis (issue #367)', () => {
   it('under the sandbox, a dead transport names the sandbox + escalated retry, not "unreachable"', async () => {
     const err = await deadRun({ CODEX_SANDBOX_NETWORK_DISABLED: '1' })
     expect(err.code).toBe(1)
-    expect(err.stderr).toContain("Codex's sandbox blocked this connection to nodeterm")
+    expect(err.stderr).toContain("Codex's sandbox blocked this connection to DisTerm")
     expect(err.stderr).toContain('escalated permissions')
-    expect(err.stderr).not.toContain('Could not read linked context (nodeterm unreachable).')
+    expect(err.stderr).not.toContain('Could not read linked context (DisTerm unreachable).')
   })
 
   // The mutation guard: drop the env-var branch and the case above reddens; invert it and this does.
   it('without the env var the original genuine-unreachable sentence stands', async () => {
     const err = await deadRun({})
-    expect(err.stderr).toContain('Could not read linked context (nodeterm unreachable).')
+    expect(err.stderr).toContain('Could not read linked context (DisTerm unreachable).')
     expect(err.stderr).not.toContain("Codex's sandbox")
   })
 

@@ -35,7 +35,8 @@ beforeAll(async () => {
   ;(window as unknown as { nodeTerminal: unknown }).nodeTerminal = {
     license: { onChange: () => () => {}, upgrade },
     watchLink: api,
-    clipboard: { writeText }
+    clipboard: { writeText },
+    remoteHost: { relayConfigured: async () => true }
   }
   ;({ LiveLinksSection } = await import('./LiveLinksSection'))
   ;({ useEntitlement } = await import('../../../state/entitlement'))
@@ -196,7 +197,7 @@ describe('LiveLinksSection', () => {
     click(buttons('Stop')[0])
     await flush()
     expect(api.revoke).toHaveBeenCalledWith('L1')
-    expect(host.textContent).toContain("The stop didn't reach nodeterm — try again.")
+    expect(host.textContent).toContain("The stop didn't reach DisTerm — try again.")
   })
 
   it('R48: Stop all asks first, names other machines, and stops nothing on Cancel', async () => {
@@ -255,7 +256,7 @@ describe('LiveLinksSection', () => {
     click([...document.querySelectorAll<HTMLButtonElement>('.confirm button')].find((b) => b.textContent === 'Stop all')!)
     await flush()
     expect(host.querySelector('[role="alert"]')?.textContent).toBe(
-      "The stop didn't reach nodeterm — try again. Links on this computer are stopped; links shared from other computers may still be running."
+      "The stop didn't reach DisTerm — try again. Links on this computer are stopped; links shared from other computers may still be running."
     )
     api.revokeAll.mockResolvedValueOnce('no-entitlement')
     click(buttons('Stop all')[0])
@@ -271,6 +272,6 @@ describe('LiveLinksSection', () => {
     click(buttons('Stop all')[0])
     click([...document.querySelectorAll<HTMLButtonElement>('.confirm button')].find((b) => b.textContent === 'Stop all')!)
     await flush()
-    expect(host.textContent).toContain("The stop didn't reach nodeterm — try again.")
+    expect(host.textContent).toContain("The stop didn't reach DisTerm — try again.")
   })
 })

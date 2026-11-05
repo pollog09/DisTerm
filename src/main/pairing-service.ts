@@ -787,7 +787,7 @@ export function createPairingService(
             send(
               res,
               409,
-              'remote access is off on the computer. On Windows the phone connects only through remote access — turn it on in nodeterm and scan the new code.'
+              'remote access is off on the computer. On Windows the phone connects only through remote access — turn it on in DisTerm and scan the new code.'
             )
             return
           }

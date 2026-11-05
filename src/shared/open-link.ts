@@ -177,7 +177,7 @@ export function parseNodetermLink(input: unknown): ParseLinkResult {
     // Rebuilt from the decoded code so the existing decoders see the canonical prefix form.
     return { ok: true, link: { kind: host, url: `nodeterm://${host}?code=${code}` } }
   }
-  if (host !== 'open') return refuse(host ? `nodeterm://${host} is not a link nodeterm opens` : 'it names no action')
+  if (host !== 'open') return refuse(host ? `nodeterm://${host} is not a link DisTerm opens` : 'it names no action')
 
   const params = readQuery(query)
   if (typeof params === 'string') return refuse(params)
@@ -188,7 +188,7 @@ export function parseNodetermLink(input: unknown): ParseLinkResult {
 
   const agent = get('agent')
   if (!agent) return refuse('it does not say which agent to open (agent=)')
-  if (!isOpenLinkAgent(agent)) return refuse(`"${clip(agent)}" is not an agent nodeterm can open`)
+  if (!isOpenLinkAgent(agent)) return refuse(`"${clip(agent)}" is not an agent DisTerm can open`)
 
   const request: OpenLinkRequest = { agent }
 

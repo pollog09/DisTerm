@@ -16,6 +16,9 @@ const h: {
   sent: Array<{ channel: string; args: any[] }>
 } = { handlers: {}, sent: [] }
 
+vi.hoisted(() => {
+  process.env.NODETERM_RELAY_URL = 'wss://relay.example'
+})
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/ud', getVersion: () => '9.9.9', isPackaged: false },
   ipcMain: {

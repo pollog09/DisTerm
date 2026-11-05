@@ -439,6 +439,7 @@ export function buildStubApi(): Omit<
       // Overridden by the real WS-backed namespace in ws-bridge; the stub still answers with the
       // fail-open caps (never rejects) because the permission-mode gate reads it on the boot path.
       cliCaps: () => Promise.resolve(UNKNOWN_CLAUDE_CLI_CAPS),
+      wslCliCaps: () => Promise.resolve(UNKNOWN_CLAUDE_CLI_CAPS),
       readTranscript: U('claude.readTranscript')
     },
     grok: {
@@ -544,7 +545,9 @@ export function buildStubApi(): Omit<
       approvePhone: U('remoteHost.approvePhone'),
       approve: (_id: string) => {},
       reject: (_id: string) => {},
-      setPhoneAccess: noop
+      setPhoneAccess: noop,
+      // No phone host and no Team Access in a browser, so the surfaces that ask say why they are off.
+      relayConfigured: async () => false
     },
     // New relay tunnel (Stage 4). Hosting/connecting a peer-to-peer relay is a desktop-only
     // (Electron) capability — the Server Edition is itself the remote host, reached over its own WS

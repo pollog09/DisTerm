@@ -59,14 +59,14 @@ async function renderSection(): Promise<string> {
 
 const CONSENT_LABEL = 'Allow license checks while DO_NOT_TRACK is set'
 const CONSENT_DESCRIPTION =
-  'Lets nodeterm contact api.nodeterm.dev for license checks only. Telemetry and the announcement feed stay off.'
+  'Lets DisTerm contact api.nodeterm.dev for license checks only. The open-project count stays off.'
 const CONSENT_DESCRIPTION_ACTIVE =
-  'Lets nodeterm contact api.nodeterm.dev for Pro and your free-project allowance only. Telemetry and the announcement feed stay off.'
+  'Lets DisTerm contact api.nodeterm.dev for Pro and your free-project allowance only. The open-project count stays off.'
 /** The telemetry description as Release A shipped it — all of it while the limit is off. */
 const TELEMETRY_DESCRIPTION =
-  'No personal data; client IP is never stored. Used to see which versions are in use and how many projects people keep open (a number only — never names, paths or hosts). A lighter anonymous install count runs regardless; fully disable with the DO_NOT_TRACK environment variable.'
+  'Controls only the open-project count sent with the license check (a number — never names, paths or hosts). The check itself goes to api.nodeterm.dev with an anonymous install id, the version, OS and plan, and runs whichever way this is set; the DO_NOT_TRACK environment variable stops it.'
 const MACHINE_HASH_SENTENCE =
-  " If you reach the free-project limit, nodeterm checks your allowance with a one-way hash of this computer's hardware id (sent whether or not this switch is on), so the allowance stays with this machine."
+  " If you reach the free-project limit, DisTerm checks your allowance with a one-way hash of this computer's hardware id (sent whether or not this switch is on), so the allowance stays with this machine."
 const ACTIVE: ProjectLimitState = { ...INACTIVE_PROJECT_LIMIT, active: true }
 
 /** The text the settings search sees for `query`: the section renders only rows that match. */
@@ -93,7 +93,7 @@ function consentSwitch(): HTMLButtonElement | null {
 
 describe('Privacy → telemetry row', () => {
   it('names the open-project count in its label', async () => {
-    expect(await renderSection()).toContain('Send anonymous usage data (version/OS, open-project count)')
+    expect(await renderSection()).toContain('Send the open-project count with the license check')
   })
 
   it('says the count is a number only, and how to fully disable', async () => {

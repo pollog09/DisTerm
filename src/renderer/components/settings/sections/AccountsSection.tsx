@@ -853,10 +853,10 @@ export function AccountsSection({ isActive }: { isActive: boolean }): React.JSX.
     // NOTHING (core refuses to `rm -rf` anything outside its own managed dirs). Saying "will be
     // deleted" here would be a lie that stops people unlinking.
     if (a.configDir) {
-      return `Unlink account "${a.label}"? nodeterm forgets it — the folder ${a.configDir} keeps its login and transcripts exactly as they are. ${fallout}`
+      return `Unlink account "${a.label}"? DisTerm forgets it — the folder ${a.configDir} keeps its login and transcripts exactly as they are. ${fallout}`
     }
     if (a.host && !connectedProjectIdForHost(a.host)) {
-      return `Remove account "${a.label}"? ${a.host} is not connected, so nodeterm only forgets it — its login and transcripts stay on that host. ${fallout}`
+      return `Remove account "${a.label}"? ${a.host} is not connected, so DisTerm only forgets it — its login and transcripts stay on that host. ${fallout}`
     }
     return `Remove account "${a.label}"? Its logged-in credentials and Claude transcripts${
       a.host ? ` on ${a.host}` : ''
@@ -964,7 +964,7 @@ export function AccountsSection({ isActive }: { isActive: boolean }): React.JSX.
 
   const removeCodexMessage = (a: CodexAccount): string => {
     if (a.host && !connectedProjectIdForHost(a.host)) {
-      return `Remove Codex account "${a.label}"? ${a.host} is not connected, so nodeterm only forgets it — its login and Codex home stay on that host.`
+      return `Remove Codex account "${a.label}"? ${a.host} is not connected, so DisTerm only forgets it — its login and Codex home stay on that host.`
     }
     return `Remove Codex account "${a.label}"? Its logged-in credentials and its Codex home${
       a.host ? ` on ${a.host}` : ''
@@ -1156,7 +1156,7 @@ export function AccountsSection({ isActive }: { isActive: boolean }): React.JSX.
       <div className="space-y-2 pt-2">
         <p className="text-[12px] leading-relaxed text-muted">
           Already have a second login in its own folder (say <code>~/.claude-2</code>)? Link it and
-          nodeterm will label its terminals, read its transcripts, and offer it in the add menus.
+          DisTerm will label its terminals, read its transcripts, and offer it in the add menus.
           Nothing is copied or moved, and unlinking later leaves the folder alone.
         </p>
         <div className="flex flex-wrap items-center gap-2">

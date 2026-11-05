@@ -48,7 +48,6 @@ const BANNED_COPY: Record<string, string[]> = {
     'nodeterm iOS app',
     'nodeterm for iOS'
   ],
-  'src/renderer/components/MobileLaunchCard.tsx': ['Get the iOS app', 'on the App Store'],
   'src/renderer/components/onboarding/OnboardingFlow.tsx': [
     'Get the iOS app',
     'Grab it from the App Store'

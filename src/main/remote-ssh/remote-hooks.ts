@@ -653,7 +653,7 @@ export class RemoteHooks {
         }
       }
       if (retained.length) {
-        console.warn(`[remote-hooks] kept ${retained.length} file(s) on ${conn.user}@${conn.host} that were changed since nodeterm wrote them: ${retained.join(', ')}`)
+        console.warn(`[remote-hooks] kept ${retained.length} file(s) on ${conn.user}@${conn.host} that were changed since DisTerm wrote them: ${retained.join(', ')}`)
       }
     } catch (e) {
       warnNotInstalled('the integration clean-up', e)

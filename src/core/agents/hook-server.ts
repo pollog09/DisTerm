@@ -357,9 +357,9 @@ export const GITHUB_READ_CONTROL_REFUSAL = 'GitHub lane read refused.'
 export function identityUnavailableNote(reason: string | null): string {
   const why = reason ? ` (${reason.replace(/\s+/g, ' ').trim().slice(0, 200)})` : ''
   return (
-    `Node identity is unavailable in this NodeTerm instance: it could not load its node-identity key at startup${why}, ` +
+    `Node identity is unavailable in this DisTerm instance: it could not load its node-identity key at startup${why}, ` +
     'so no session on this machine can be verified and restarting a node will not help. ' +
-    'Fix the cause and restart NodeTerm; details are in its log under [node-identity].'
+    'Fix the cause and restart DisTerm; details are in its log under [node-identity].'
   )
 }
 
@@ -710,7 +710,7 @@ export class HookServer {
    * bytes so a truncated/garbage load can never arm a weak identity.
    */
   setNodeAuthSecret(secret: Uint8Array): void {
-    if (secret.byteLength < 32) throw new Error('Invalid NodeTerm node-auth secret')
+    if (secret.byteLength < 32) throw new Error('Invalid DisTerm node-auth secret')
     this.nodeAuthSecret = Buffer.from(secret)
     this.nodeIdentityUnavailableReason = null
   }
@@ -769,9 +769,9 @@ export class HookServer {
       // Do not include raw errors: an invalid HTTP header may contain the bearer.
       return `Agent hooks are disabled because their endpoint is occupied, malformed, or unavailable. ` +
         `The application can still run, but agent status and canvas commands may be unavailable. ` +
-        `Close any other nodeterm instance using this data directory. If none is running, inspect ` +
+        `Close any other DisTerm instance using this data directory. If none is running, inspect ` +
         `${this.endpointFilePath()} and its advertised listener; back up and remove a stale file, ` +
-        `then restart nodeterm. No other owner's endpoint was replaced.`
+        `then restart DisTerm. No other owner's endpoint was replaced.`
     }
   }
 

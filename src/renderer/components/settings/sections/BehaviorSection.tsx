@@ -280,7 +280,7 @@ export function BehaviorSection({ isActive }: { isActive: boolean }): React.JSX.
         <SearchableRow {...ROWS.openLinks}>
           <FieldRow
             label="Allow nodeterm:// links"
-            description="Lets other apps, scripts and web pages ask nodeterm to open one agent or terminal node, or pre-fill a pairing code. Every link shows a confirm sheet first and opens nothing until you click Open. Off: links are ignored."
+            description="Lets other apps, scripts and web pages ask DisTerm to open one agent or terminal node, or pre-fill a pairing code. Every link shows a confirm sheet first and opens nothing until you click Open. Off: links are ignored."
             control={
               <Switch
                 checked={settings.allowOpenLinks}

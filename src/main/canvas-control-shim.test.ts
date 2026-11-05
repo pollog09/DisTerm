@@ -269,7 +269,7 @@ describe('canvas-control shim over a unix socket', () => {
         NODETERM_HOOK_PORT: '',
         NODETERM_HOOK_SOCK: path.join(dir, 'no-such.sock')
       })
-    ).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Could not reach nodeterm') })
+    ).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Could not reach DisTerm') })
   })
 })
 
@@ -597,14 +597,14 @@ describe('codex-sandbox self-diagnosis (issue #367)', () => {
   it('under the sandbox, a dead socket names the sandbox and the escalated retry — not "unreachable"', async () => {
     await expect(callShim(['list'], sandboxEnv('Linux'))).rejects.toMatchObject({
       code: 1,
-      stderr: expect.stringContaining("Codex's sandbox blocked this connection to nodeterm")
+      stderr: expect.stringContaining("Codex's sandbox blocked this connection to DisTerm")
     })
     await expect(callShim(['list'], sandboxEnv('Linux'))).rejects.toMatchObject({
       stderr: expect.stringContaining('escalated permissions')
     })
     const err = await callShim(['list'], sandboxEnv('Linux')).catch((e) => e as { stderr: string })
     expect(err.stderr).toContain('do not relink or restart it')
-    expect(err.stderr).not.toContain('Could not reach nodeterm')
+    expect(err.stderr).not.toContain('Could not reach DisTerm')
   })
 
   it('on Darwin with a socket advertised, it also prints the config.toml allowlist remedy with the path', async () => {
@@ -630,7 +630,7 @@ describe('codex-sandbox self-diagnosis (issue #367)', () => {
       NODETERM_HOOK_PORT: String(freePort),
       CODEX_SANDBOX_NETWORK_DISABLED: '1'
     }).catch((e) => e as { stderr: string })
-    expect(err.stderr).toContain("Codex's sandbox blocked this connection to nodeterm")
+    expect(err.stderr).toContain("Codex's sandbox blocked this connection to DisTerm")
   })
 
   // THE MUTATION GUARD for the env-var branch: without the variable, the same dead transport must
@@ -642,7 +642,7 @@ describe('codex-sandbox self-diagnosis (issue #367)', () => {
       NODETERM_HOOK_PORT: '',
       NODETERM_HOOK_SOCK: deadSock
     }).catch((e) => e as { stderr: string })
-    expect(err.stderr).toContain('Could not reach nodeterm (control endpoint unreachable).')
+    expect(err.stderr).toContain('Could not reach DisTerm (control endpoint unreachable).')
     expect(err.stderr).not.toContain("Codex's sandbox")
   })
 

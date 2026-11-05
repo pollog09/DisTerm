@@ -129,7 +129,7 @@ export class SpeechService {
     const info = whisperModel(opts.model)
     if (!info) throw new Error(`Unknown whisper model: ${opts.model}`)
     if (info.pro && !this.isPremium()) {
-      throw new Error(`The ${info.id} model requires nodeterm Pro — the tiny model is free.`)
+      throw new Error(`The ${info.id} model requires DisTerm Pro — the tiny model is free.`)
     }
     if (!(await this.models.has(info.id))) {
       throw new Error(`Download the ${info.id} model in Settings → Speech first.`)

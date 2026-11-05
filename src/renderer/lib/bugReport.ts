@@ -4,7 +4,12 @@
  * submits under their own account (see docs/superpowers/specs/2026-07-14-help-menu-bug-report-design.md).
  */
 
-export const REPO_URL = 'https://github.com/eneskirca/nodeterm'
+export const REPO_URL = 'https://github.com/pollog09/GrafoTerm'
+
+/** Why the Help menu's rows are disabled: this fork takes no bug reports and hosts no docs, so
+ *  neither may open a page that looks like it does. */
+export const BUG_REPORT_OFF_REASON = 'Not available in this build: DisTerm has no bug tracker.'
+export const DOCS_OFF_REASON = 'Not available in this build: DisTerm has no hosted documentation.'
 
 /** GitHub rejects URLs past ~8 KB; keep the pre-encoding body well under that. */
 export const BODY_BUDGET = 6000
@@ -28,7 +33,7 @@ export function describeOs(userAgent: string): string {
 
 export function envBlock(env: BugReportEnv): string {
   const lines = [
-    `nodeterm: ${env.appVersion ? `v${env.appVersion}` : 'unknown'}`,
+    `DisTerm: ${env.appVersion ? `v${env.appVersion}` : 'unknown'}`,
     `surface: ${describeSurface(env.userAgent)}`,
     `os: ${describeOs(env.userAgent)}`
   ]

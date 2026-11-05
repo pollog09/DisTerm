@@ -166,7 +166,7 @@ describe('SessionMemoryPanel', () => {
 
     it('renders a non-killable line, adds to the total, and is not a session', () => {
       mount({ host: HOST })
-      expect(line()?.textContent).toContain('nodeterm session host (4 consoles)')
+      expect(line()?.textContent).toContain('DisTerm session host (4 consoles)')
       expect(line()?.querySelector('button')).toBeNull()
       // 1560 + 340 = 1900 MB.
       expect(host.querySelector('.sessmem-panel__total')?.textContent).toBe('1.9 GB')
@@ -382,7 +382,7 @@ describe('SessionMemoryPanel', () => {
   it('says whose memory it is showing', () => {
     mount()
     const attrib = host.querySelector('.sessmem-panel__attrib')?.textContent ?? ''
-    expect(attrib).toMatch(/not nodeterm/i)
+    expect(attrib).toMatch(/not DisTerm/i)
   })
 
   it('says it in EVERY state, including a failed sweep', () => {
@@ -390,7 +390,7 @@ describe('SessionMemoryPanel', () => {
     // so the line must not hang off the rows.
     mount({ ok: false, rows: [] })
     expect(host.querySelector('.sessmem-panel__note')?.textContent).toContain('Could not measure')
-    expect(host.querySelector('.sessmem-panel__attrib')?.textContent ?? '').toMatch(/not nodeterm/i)
+    expect(host.querySelector('.sessmem-panel__attrib')?.textContent ?? '').toMatch(/not DisTerm/i)
   })
 
   it('never touches the host poll — the pill owns that timer', () => {
@@ -483,7 +483,7 @@ describe('SessionMemoryPanel', () => {
     })
   })
 
-  describe('"nodeterm itself"', () => {
+  describe('"DisTerm itself"', () => {
     const APP = {
       ok: true,
       groups: [
@@ -497,7 +497,7 @@ describe('SessionMemoryPanel', () => {
     it('lists the app groups below the rows, OUT of the session total', () => {
       mount({ app: { ...APP, totalMb: 2000 } })
       const t = appBlock()?.textContent ?? ''
-      expect(t).toContain('nodeterm itself')
+      expect(t).toContain('DisTerm itself')
       expect(t).toContain('GPU')
       expect(t).toContain('1.6 GB')
       expect(t).toContain('CPU 1h 02m')
@@ -516,7 +516,7 @@ describe('SessionMemoryPanel', () => {
 
     it('ok:false says it could not measure — never a zero', () => {
       mount({ app: { ok: false, groups: [] } })
-      expect(appBlock()?.textContent).toMatch(/could not measure nodeterm/i)
+      expect(appBlock()?.textContent).toMatch(/could not measure DisTerm/i)
       expect(appBlock()?.textContent).not.toMatch(/\d/)
     })
 

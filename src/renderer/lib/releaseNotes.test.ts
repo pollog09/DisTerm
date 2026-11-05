@@ -40,8 +40,8 @@ describe('releaseHighlights', () => {
 
 describe('releaseNotesUrl', () => {
   it('anchors at the version when known', () => {
-    expect(releaseNotesUrl('0.5.0')).toBe('https://nodeterm.dev/releases#v0.5.0')
-    expect(releaseNotesUrl(null)).toBe('https://nodeterm.dev/releases')
+    expect(releaseNotesUrl('0.5.0')).toBe('https://distriib.com#v0.5.0')
+    expect(releaseNotesUrl(null)).toBe('https://distriib.com')
   })
 })
 

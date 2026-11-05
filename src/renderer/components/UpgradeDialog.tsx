@@ -1,3 +1,5 @@
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
+import { useRelayConfigured } from '../state/relayAvailability'
 import { createPortal } from 'react-dom'
 import { useEntitlement } from '../state/entitlement'
 import { useUpgradeGate } from '../state/upgradeGate'
@@ -16,6 +18,8 @@ export function UpgradeDialog() {
   // (docs/project-limit.md); while it is off there is no limit to lift, so the sentence does not
   // mention one.
   const limitActive = useProjectLimit((s) => s.state.active)
+  // Copy only: what this offer includes that this build cannot deliver, said before anyone pays.
+  const relay = useRelayConfigured()
   if (!open || isPremium) return null
   return createPortal(
     <div className="confirm-overlay" onClick={hide}>
@@ -27,6 +31,11 @@ export function UpgradeDialog() {
           dictation models, and nodeterm mobile Pro. Complete your purchase in the browser — Pro
           unlocks here automatically.
         </p>
+        {relay !== true ? (
+          <p className="confirm__msg">
+            Live links, team seats and nodeterm mobile Pro cannot be used here. {RELAY_UNAVAILABLE_REASON}
+          </p>
+        ) : null}
         <div className="confirm__actions">
           <button className="confirm__btn" onClick={hide}>
             Maybe later

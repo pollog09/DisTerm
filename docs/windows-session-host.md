@@ -417,6 +417,49 @@ whoever answered last). Three rules come with it:
   which is exact while it is the host's only connection. Across connections (two apps on one host)
   the HOST still takes the componentwise minimum.
 
+**A warm attach claims what its `create()` carries.** `attachExisting` takes a required `size`, and
+`SessionHostPty`'s constructor overloads make a join with no spawn plan state a grid or `'watch'`, so a
+caller cannot omit the size. The compiler stops only that: a hard-coded size still compiles, and
+`session-host-client-geometry.test.ts` and `pty-wsl-launch.test.ts` are what pin the size on the wire and
+the one `PtyManager` passes. The claim is real: the host resizes the running pty to it before the attach
+returns. Only a live `wsl:` session takes this path (`warmWindowsBackend`), on any warm attach: an app
+restart, an offscreen revive, a phone or a card modal joining it.
+
+For a renderer view `PtyManager` also records the claim as `appliedSize`, so the same fit reported again
+casts no vote. A relay-served phone's `appliedSize` stays unset (`clientId` is null), so its first report
+reaches the pty, and that report is what can mark its claim as bounding.
+
+For a measured viewer that size is its fit. Some viewers have no fit to send, so they still resize the
+running pane (read from the code, not run):
+- **A canvas node that cannot measure carries xterm's default 80x24:** the board or graph view is up, or
+  focus mode covers the node (`applyFit` returns before fitting), or the node is collapsed. `applyFit`
+  reports the real fit on reveal, or a card modal joining takes over the size, so no overflow sticks.
+- **A headless `run` on a live `wsl:` node claims 120x36** (`HEADLESS_COLS`/`HEADLESS_ROWS`). Its client
+  is released afterwards, and the node's next mount claims its own fit.
+
+Every one of these attaches also takes recency from a phone that is actively looking, because any attach
+bumps it (`attachSubscriber`).
+
+It used to claim a hard-coded 80x24, and every full-width line then overflowed by 80 minus the node's
+columns until a manual resize. Nothing else corrected it (read from the code, not measured end to
+end): a re-report of the same fit casts no vote, the `pty:size` answer goes out before the renderer
+subscribes, and `applyFit` sees an unchanged fit and sends nothing. Only a changed fit sends a vote.
+
+Measured on Windows with the real client, host bundle, bundled ConPTY and `wsl.exe -d Ubuntu`, reading
+`stty size` in the pane, for a node fitting 78x25. Before: the attach moved the pane to 24 rows x 80
+cols and it stayed there for the 2.5 s watched, until a later `resize(90, 30)`. After: the pane stayed
+at 25x78 and the host reported 25x78. Lost resizes across ConPTY and `wsl.exe` were ruled out on the
+same setup: 26 resizes during startup and 35 burst sequences, 0 lost. Inbox ConPTY was not tested, and
+neither the packaged app nor the full `PtyManager` + renderer path was run on Windows.
+
+Two gaps remain. A `pty:size` sent before the renderer subscribes is still lost, which now matters when
+the pty ends up smaller than the fit the node claimed. That happens with two app connections on one host,
+where the host takes the smaller size, and with a phone's ceiling on the same connection: a bounding phone
+at 40x60 and a canvas node reviving at 78x25 give 40x25 (`latestClaimSize`). Either way the xterm stays
+wider than the pane, with no letterbox until the next fit change, and nothing overflows. And a non-voting
+viewer (`sizeVote: false`) reaching this path would claim its own grid; it has no route here on Windows
+today.
+
 The same name is also a generation boundary. Data and exit events contain a session name but no
 generation id, so an exiting `HostSession` remains registered until its queued output, final exit
 broadcast and disposal complete. A same-name attach waits on that retirement promise before it can
@@ -520,7 +563,7 @@ what prevents a delete from claiming a persistent process is gone when the host 
 
 ## Staged host runtime (issue #829, step 3)
 
-A host launched as a hard link of `nodeterm.exe` inside the install directory maps the installed
+A host launched as a hard link of `DisTerm.exe` inside the install directory maps the installed
 executable, its DLLs and `resources.pak`, so the installer cannot replace them while it runs. On
 macOS/Linux the sessions live in tmux, a separate binary, and survive an update; the staged runtime
 gives Windows the same property.
@@ -529,7 +572,7 @@ gives Windows the same property.
 (`src/core/session-host-runtime.ts`) a private copy of the runtime into
 
     %LOCALAPPDATA%\nodeterm\session-host\<app version>-<fingerprint>\
-        nodeterm-sessionhost-v2.exe          (nodeterm.exe, renamed)
+        nodeterm-sessionhost-v2.exe          (DisTerm.exe, renamed)
         *.dll, icudtl.dat, resources.pak, snapshot_blob.bin, v8_context_snapshot.bin, locales\
         resources\session-host\host.cjs + node_modules\node-pty\…
         nodeterm-runtime.json                (marker: file list, sizes, SHA-256)
@@ -559,7 +602,7 @@ same version at once both succeed: the second rename loses and adopts the first 
 **Fail-safe.** Every staging failure (no `%LOCALAPPDATA%`, a missing required file, disk full, a
 failed hash, a smoke run that does not answer 42 within 60 s — STATUS_DLL_NOT_FOUND, an AppLocker or
 WDAC policy blocking executables under the profile) falls back to the legacy launch: the hard link
-in the install directory, then `nodeterm.exe` itself. A staged host that dies within 10 s with an
+in the install directory, then `DisTerm.exe` itself. A staged host that dies within 10 s with an
 exit code other than the host's own `0`/`1` also falls back, and staging is not offered again for
 the rest of the app run. The legacy host still blocks the installer, so the preflight below still
 protects the install. The first launch of a new version waits at most 45 s for staging (copy,
@@ -591,7 +634,7 @@ launch. Server Edition and macOS/Linux are unaffected (tmux).
 
 ## Windows updates and uninstalls
 
-A host launched the legacy way (a hard link inside the install directory, or `nodeterm.exe` itself)
+A host launched the legacy way (a hard link inside the install directory, or `DisTerm.exe` itself)
 maps the installed Electron executable and its DLLs. Its separate hard-link name makes it
 identifiable; it does **not** make the install directory safe to replace. Closing the app alone
 deliberately leaves the host and its sessions running (#829). A host running from its staged
@@ -657,7 +700,7 @@ To update by hand (older host, or the in-app flow did not finish), while keeping
    After saving work and accepting that **every terminal/agent process owned by that host will
    stop**, end only that verified host. This is a manual process shutdown, not a graceful agent
    exit, so complete step 1 first. Do not use a machine-wide name-based kill. If the host uses
-   the fallback name `nodeterm.exe`, verify its identity/path rather than guessing which process
+   the fallback name `DisTerm.exe` (`nodeterm.exe` on an older install), verify its identity/path rather than guessing which process
    to end. Another Windows user's host requires that user's decision.
 4. Run the installer from Downloads, outside the installation directory, or Retry its preflight.
    Other nodeterm installations/users must prepare their own sessions too if they block the check.

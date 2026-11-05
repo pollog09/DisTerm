@@ -235,7 +235,7 @@ describe('REAL sh: remote tmux PATH resolution + graceful degrade (issue #449)',
     const cmd = remoteTmuxPtyArgs(conn, '/s.sock', 'nt-n1', '/home/u').slice(-1)[0]
     const out = runRaw(cmd, { PATH: emptyPath(), HOME: home, SHELL: shell })
     // The message names the fact and the fix — never the raw `command not found: tmux` line.
-    expect(out).toContain('nodeterm: tmux was not found on this host.')
+    expect(out).toContain('DisTerm: tmux was not found on this host.')
     expect(out).toContain('Install tmux on the host')
     expect(out).toContain('will NOT persist')
     // …and the pane still gets a usable login shell instead of closing.

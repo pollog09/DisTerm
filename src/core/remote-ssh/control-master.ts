@@ -1053,8 +1053,8 @@ export function remoteTmuxPtyArgs(
 /** What a tmux-less remote loses, told to the user IN the pane. English + apostrophe-free: each
  *  line is embedded as one single-quoted printf argument in the remote shell line. */
 const REMOTE_TMUX_MISSING_LINES = [
-  'nodeterm: tmux was not found on this host.',
-  'nodeterm runs remote terminals inside tmux so they survive disconnects, app restarts and project switches.',
+  'DisTerm: tmux was not found on this host.',
+  'DisTerm runs remote terminals inside tmux so they survive disconnects, app restarts and project switches.',
   'Install tmux on the host (brew install tmux / apt install tmux / dnf install tmux) and reopen this terminal.',
   'Starting a plain shell instead - it will NOT persist when this terminal closes.'
 ]

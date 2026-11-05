@@ -35,7 +35,7 @@ function stubBridge(start: Record<string, unknown>): void {
       webhookStatus: vi.fn(async () => ({ ok: true, value: null })),
       webhookEndpoint: vi.fn(async () => 'https://api.test')
     },
-    remoteHost: { setPhoneAccess: vi.fn() },
+    remoteHost: { setPhoneAccess: vi.fn(), relayConfigured: vi.fn(async () => true) },
     shell: { openExternal: vi.fn() }
   }
 }

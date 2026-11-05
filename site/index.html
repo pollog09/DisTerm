@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>nodeterm — your terminals on an infinite canvas</title>
+    <title>DisTerm — your terminals and agents on an infinite canvas</title>
     <meta
       name="description"
-      content="A node-based terminal manager for macOS. Multiple real terminals as draggable nodes on a single pan/zoom canvas — built for scattered, ADHD-friendly workflows."
+      content="Your terminals and agents on an infinite canvas. Multiple real terminals as draggable nodes on a single pan/zoom canvas — built for scattered, ADHD-friendly workflows."
     />
-    <meta property="og:title" content="nodeterm" />
-    <meta property="og:description" content="Your terminals on an infinite canvas." />
-    <meta property="og:image" content="https://nodeterm.dev/assets/hero.png" />
+    <meta property="og:title" content="DisTerm" />
+    <meta property="og:description" content="Your terminals and agents on an infinite canvas." />
+    <meta property="og:image" content="assets/disterm.png" />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#0a0a0a" />
-    <link rel="icon" href="assets/nodeterm.png" />
+    <link rel="icon" href="assets/disterm.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -21,53 +21,24 @@
 
     <header class="nav">
       <a class="brand" href="/">
-        <img src="assets/mark.svg" alt="" width="26" height="26" />
-        <span>nodeterm</span>
+        <img src="assets/disterm.png" alt="" width="26" height="26" />
+        <span>DisTerm</span>
       </a>
       <nav class="nav-links">
         <a href="#features">Features</a>
-        <a href="https://github.com/eneskirca/nodeterm/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
-        <a class="star" href="https://github.com/eneskirca/nodeterm" target="_blank" rel="noopener" aria-label="Star on GitHub">
-          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
-          <span>Star</span>
-        </a>
-        <a class="btn btn-primary btn-sm" href="#download">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.94l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 13a.75.75 0 0 0 0 1.5h10.5a.75.75 0 0 0 0-1.5H2.75Z"/></svg>
-          Download
-        </a>
+        <a href="https://distriib.com" target="_blank" rel="noopener">Distriib</a>
       </nav>
     </header>
 
     <main>
       <section class="hero">
-        <span class="badge">macOS · Apple Silicon &amp; Intel · Windows soon · Free</span>
-        <h1>Your terminals on an<br /><span class="grad">infinite canvas.</span></h1>
+        <span class="badge">macOS · Linux · Windows (beta) · Build from source</span>
+        <h1>Your terminals and agents on an<br /><span class="grad">infinite canvas.</span></h1>
         <p class="lede">
           Multiple real terminals as draggable nodes on a single pan/zoom canvas — a spatial
           map instead of a stack of hidden tabs. Built for scattered, ADHD-friendly workflows.
         </p>
-
-        <div id="download" class="cta">
-          <a id="dl-arm" class="btn btn-primary btn-lg" href="https://github.com/eneskirca/nodeterm/releases">
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.94l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 13a.75.75 0 0 0 0 1.5h10.5a.75.75 0 0 0 0-1.5H2.75Z"/></svg>
-            Download for Mac
-          </a>
-          <a class="btn btn-secondary btn-lg" href="https://github.com/eneskirca/nodeterm" target="_blank" rel="noopener">
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-            View on GitHub
-          </a>
-        </div>
-        <p class="cta-meta">
-          <a id="dl-arm2" href="https://github.com/eneskirca/nodeterm/releases">Apple Silicon</a>
-          ·
-          <a id="dl-intel" href="https://github.com/eneskirca/nodeterm/releases">Intel</a>
-          <span id="ver-meta">— free for personal use · macOS 12+</span>
-        </p>
-        <p class="cta-meta">Windows support is on the way — the same terminals, canvas, and agents, coming soon.</p>
-
-        <div class="window">
-          <img src="assets/hero.svg" alt="nodeterm canvas with terminal, Claude Code, sticky note, and editor nodes" />
-        </div>
+        <p class="cta-meta">A personal fork, branded under Distriib. Personal use, not a commercial product. There are no downloads: build it from source.</p>
       </section>
 
       <section id="features" class="features">
@@ -102,8 +73,8 @@
             <p>Jump to any node, project, or action. Explorer, undo/redo, markdown view.</p>
           </article>
           <article class="card">
-            <h3>⬆️ Auto-updates</h3>
-            <p>The app updates itself and surfaces product news, right in the window.</p>
+            <h3>🌍 Server Edition</h3>
+            <p>The same canvas, self-hosted on a Linux host and used from any browser.</p>
           </article>
         </div>
       </section>
@@ -111,56 +82,25 @@
       <section class="closer">
         <h2>Stop hunting through tabs.</h2>
         <p>Lay your work out in space.</p>
-        <a class="btn btn-primary btn-lg" href="#download">
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.94l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 13a.75.75 0 0 0 0 1.5h10.5a.75.75 0 0 0 0-1.5H2.75Z"/></svg>
-          Download nodeterm
-        </a>
       </section>
     </main>
 
     <footer class="foot">
       <div class="foot-brand">
-        <img src="assets/mark.svg" alt="" width="22" height="22" />
-        <span>nodeterm</span>
+        <img src="assets/disterm.png" alt="" width="22" height="22" />
+        <span>DisTerm</span>
       </div>
       <div class="foot-links">
-        <a href="https://github.com/eneskirca/nodeterm" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/eneskirca/nodeterm/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
-        <a href="https://github.com/eneskirca/nodeterm/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+        <a href="https://distriib.com" target="_blank" rel="noopener">distriib.com</a>
+        <a href="mailto:support@distriib.com">support@distriib.com</a>
       </div>
       <p class="legal">
-        <a href="https://mariadb.com/bsl11/" target="_blank" rel="noopener">BUSL-1.1</a> licensed. © <span id="year">2026</span> Enes Kirca.
-        “Claude” and “Claude Code” are trademarks of Anthropic; nodeterm is not affiliated
+        DisTerm is a fork of nodeterm by Enes Kirca,
+        <a href="https://mariadb.com/bsl11/" target="_blank" rel="noopener">BUSL-1.1</a> licensed.
+        Made in Costa Rica.
+        “Claude” and “Claude Code” are trademarks of Anthropic; DisTerm is not affiliated
         with or endorsed by Anthropic.
       </p>
     </footer>
-
-    <script>
-      // Point the download links at the latest release by reading the update feed.
-      // Falls back to the GitHub Releases page if the feed isn't reachable yet.
-      document.getElementById('year').textContent = String(new Date().getFullYear())
-      ;(async () => {
-        try {
-          const res = await fetch('updates/latest-mac.yml', { cache: 'no-cache' })
-          if (!res.ok) return
-          const txt = await res.text()
-          const ver = (txt.match(/version:\s*([\d.]+)/) || [])[1]
-          const dmgs = [...txt.matchAll(/url:\s*(\S+\.dmg)\b/g)].map((m) => m[1])
-          const arm = dmgs.find((f) => /arm64/.test(f))
-          const intel = dmgs.find((f) => !/arm64/.test(f))
-          if (arm) {
-            document.getElementById('dl-arm').href = 'updates/' + arm
-            document.getElementById('dl-arm2').href = 'updates/' + arm
-          }
-          if (intel) document.getElementById('dl-intel').href = 'updates/' + intel
-          if (ver) {
-            document.getElementById('ver-meta').textContent =
-              '— v' + ver + ' · free for personal use'
-          }
-        } catch (_) {
-          /* keep GitHub Releases fallback */
-        }
-      })()
-    </script>
   </body>
 </html>

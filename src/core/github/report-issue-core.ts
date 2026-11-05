@@ -32,7 +32,7 @@ export const RECOMMENT_WINDOW_MS = 24 * 60 * 60 * 1_000
 /** The label every auto-filed issue carries, so a maintainer can find, filter and mute them. */
 export const REPORT_LABEL = 'agent-report'
 export const REPORT_LABEL_COLOR = 'b60205'
-export const REPORT_LABEL_DESCRIPTION = 'Filed automatically by a nodeterm agent; not read by a human first.'
+export const REPORT_LABEL_DESCRIPTION = 'Filed automatically by a DisTerm agent; not read by a human first.'
 
 export interface ReportEnvironment {
   /** nodeterm version, e.g. `0.3.7`. */
@@ -116,7 +116,7 @@ export function composeReportBody(
   fingerprint: string
 ): string {
   const lines = [
-    '> **Filed automatically by a nodeterm agent.**',
+    '> **Filed automatically by a DisTerm agent.**',
     '> A human has not read this. It was written by an agent that could not complete something and',
     '> was configured to report it. Close it without ceremony if it is wrong, already known, or not',
     '> a real gap.',
@@ -134,7 +134,7 @@ export function composeReportBody(
     '',
     `| | |`,
     `|---|---|`,
-    `| nodeterm | ${env.version} |`,
+    `| DisTerm | ${env.version} |`,
     `| platform | ${env.os} |`,
     `| surface | ${env.edition} |`,
     `| agent | ${input.agent ?? 'unknown'} |`,
@@ -149,7 +149,7 @@ export function composeReportBody(
  *  everything; this only adds that it is still live on a later version. */
 export function composeRecurrenceComment(env: ReportEnvironment, fingerprint: string): string {
   return [
-    `Seen again by a nodeterm agent on ${env.version} (${env.os}, ${env.edition}).`,
+    `Seen again by a DisTerm agent on ${env.version} (${env.os}, ${env.edition}).`,
     '',
     reportMarker(fingerprint)
   ].join('\n')
@@ -228,7 +228,7 @@ export function decideReport(input: DecideInput): ReportDecision {
       action: 'refuse',
       fingerprint,
       reason:
-        `report-cap-run: this nodeterm run has already filed ${REPORT_CAP_PER_RUN} reports for ` +
+        `report-cap-run: this DisTerm run has already filed ${REPORT_CAP_PER_RUN} reports for ` +
         'this project, which is the limit. Do not retry; tell the user what you found instead.'
     }
   }

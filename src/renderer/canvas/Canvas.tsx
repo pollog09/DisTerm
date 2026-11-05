@@ -200,15 +200,12 @@ import {
   ShortcutsPanel,
   OnboardingFlow,
   DictationOverlay,
-  BugReportDialog,
   PhonePairPopover,
-  MobileLaunchCard,
   LogPanel,
   KanbanView
 } from '../components/lazyPanels'
 import { WelcomeScreen } from '../components/WelcomeScreen'
 import { CloneRepoDialog } from '../components/CloneRepoDialog'
-import { markMobileLaunchSeen, shouldShowMobileLaunch } from '../lib/mobileLaunch'
 import type { DictationTarget } from '../components/DictationOverlay'
 import {
   announceChatDictationRefusal,
@@ -217,7 +214,7 @@ import {
   dictationTargetFromRequest,
   shortcutDictationFocus
 } from '../lib/chatComposerDictation'
-import { describeOs, REPO_URL } from '../lib/bugReport'
+import { BUG_REPORT_OFF_REASON, describeOs, DOCS_OFF_REASON, REPO_URL } from '../lib/bugReport'
 import { shouldReleasePaneFocus } from '../lib/paneFocus'
 import {
   autosaveDelay,
@@ -269,7 +266,6 @@ import {
   type FocusDirection
 } from '../lib/directionalFocus'
 import { UpdateCard } from '../components/UpdateCard'
-import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { ResumeCard } from '../components/ResumeCard'
 import { TmuxBanner } from '../components/TmuxBanner'
 import { localSession } from '../session/localSession'
@@ -287,7 +283,6 @@ import { admitPendingPeer } from '../lib/pendingPeerAdmission'
 import { SAS_COMPARE_HINT } from '@shared/remote/sas'
 import { promptDialog } from '../components/promptDialog'
 import { UpgradeDialog } from '../components/UpgradeDialog'
-import { AnnouncementPopup } from '../components/AnnouncementPopup'
 import { ProjectLimitDialog } from '../components/ProjectLimitDialog'
 import {
   checkAgentProjectOpen,
@@ -300,6 +295,9 @@ import { opensProject, type OpenAction } from '../lib/projectOpens'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
+import { DEFAULT_SETTINGS } from '@shared/types'
+import { useRelayAvailability, useRelayConfigured } from '../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 import { liveLinkNoticeEffect } from '../lib/liveLink'
 import {
   liveLinkCommands,
@@ -600,6 +598,7 @@ import { useWorktrees } from '../state/worktrees'
 import { setupAckDecision, setupGateDone, useProjectSetup } from '../state/projectSetup'
 import {
   ensureProjectLaunchInfo,
+  trustedProjectShell,
   invalidateProjectLaunchInfo,
   projectLaunchInfoNow
 } from '../state/projectLaunchInfo'
@@ -800,7 +799,15 @@ import {
 } from '@shared/node-colors'
 import { parseLenses, verifyLensPrompt, verifySynthesisPrompt } from '../lib/verifyPanel'
 import { useSettings } from '../state/settings'
-import { activePermissionMode, cursorCliCapsNow, grokCliCapsNow, projectPermissionMode } from '../state/permissionMode'
+import {
+  activePermissionMode,
+  cursorCliCapsNow,
+  ensureWslClaudeCliCaps,
+  grokCliCapsNow,
+  projectPermissionMode,
+  wslClaudeCliCapsNow,
+  wslPermissionMode
+} from '../state/permissionMode'
 import { useContextWindow } from '../state/contextWindow'
 import { useSessionNaming } from '../state/sessionNaming'
 import { useSshServers } from '../state/sshServers'
@@ -860,10 +867,14 @@ import {
 } from '../state/viewMode'
 import { GlobalKanbanView } from '../components/kanban/GlobalKanbanView'
 import { useTerminalProfiles } from '../terminal/use-terminal-profiles'
+import { parseWslShell } from '@shared/terminal-profiles'
 import {
   mayStartWslTerminal,
+  nodePaneRunsInWsl,
   useWslTerminals,
+  WSL_ACCOUNT_REFUSED,
   useWslTerminalsFor,
+  wslShellForNewAgent,
   wslTerminalsForProject
 } from '../state/wslTerminals'
 import { AgentGraphView } from '../components/graph/AgentGraphView'
@@ -1610,6 +1621,8 @@ export function Canvas() {
   const [bufferCache, setBufferCache] = useState<Record<string, string>>({})
   const captureTsRef = useRef<Record<string, number>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Loads the answer the live-link facts and "Share with team" read, and re-renders when it lands.
+  useRelayConfigured()
   // Quick phone-pair popover (top-right phone button); non-null = open, anchored to the button.
   const [phonePairAnchor, setPhonePairAnchor] = useState<{ right: number; bottom: number } | null>(null)
   // "+" opens the start screen (WelcomeScreen) on demand over existing projects.
@@ -1640,8 +1653,6 @@ export function Canvas() {
   }, [])
   // First-run setup tour (agents / dictation / kanban / notifications) — see OnboardingFlow.
   const [onboardingOpen, setOnboardingOpen] = useState(false)
-  // One-shot mobile-launch announcement for established installs — see MobileLaunchCard.
-  const [mobileLaunchOpen, setMobileLaunchOpen] = useState(false)
   const [dictationOpen, setDictationOpen] = useState(false)
   // Target = the first selected terminal node AT OPEN TIME (not live-tracked while the
   // overlay is up — the design explicitly freezes it so a stray click elsewhere mid-dictation
@@ -1661,7 +1672,6 @@ export function Canvas() {
   // DictationOverlay.tsx — and its unmount cleanup discards any in-progress capture for the
   // node being retargeted away from.
   const [dictationNonce, setDictationNonce] = useState(0)
-  const [bugReportOpen, setBugReportOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
@@ -3309,22 +3319,15 @@ export function Canvas() {
       .hydrate()
       .then(() => {
         const s = useSettings.getState().settings
-        if (s.seenOnboarding) {
-          // Established install: the one-shot mobile-launch card (fresh installs get the same
-          // pitch from the tour's phone step instead, marked below so it never shows twice).
-          if (shouldShowMobileLaunch()) setMobileLaunchOpen(true)
-          return
-        }
+        if (s.seenOnboarding) return
         if (s.seenShortcuts) {
           // Existing install (pre-tour): the setup tour is for fresh installs — migrate
           // silently so it never pops over an established workspace. Rerunnable via ⌘K.
           useSettings.getState().update({ seenOnboarding: true })
-          if (shouldShowMobileLaunch()) setMobileLaunchOpen(true)
         } else {
           // Fresh install: the tour replaces the auto-opened ShortcutsPanel (⌘/ still
           // opens it manually) and owns the notification-consent question.
           setOnboardingOpen(true)
-          markMobileLaunchSeen()
         }
       })
     api.workspace.load().then((ws) => {
@@ -3981,7 +3984,8 @@ export function Canvas() {
     (projectId: string): LiveLinkAvailabilityFacts => ({
       serverEdition: isBrowserRuntime(),
       source: sessionForProject(projectId).source,
-      activeLinks: useWatchLinks.getState().links.length
+      activeLinks: useWatchLinks.getState().links.length,
+      relayConfigured: useRelayAvailability.getState().configured
     }),
     []
   )
@@ -6763,8 +6767,21 @@ export function Canvas() {
    */
   const agentCreateRefusal = useCallback(
     (agentId: AgentId, accountId?: string | null): string | null => {
-      if (!canCreateOnCanvas(nodesProjectIdRef.current, useProjects.getState().activeProjectId)) {
+      const activeId = useProjects.getState().activeProjectId
+      if (!canCreateOnCanvas(nodesProjectIdRef.current, activeId)) {
         return CANVAS_NOT_ACTIVE_NOTICE
+      }
+      if (
+        accountId &&
+        wslShellForNewAgent(
+          agentId,
+          undefined,
+          useSettings.getState().settings.defaultShell,
+          useProjects.getState().getProject(activeId),
+          trustedProjectShell(activeId)
+        )
+      ) {
+        return WSL_ACCOUNT_REFUSED
       }
       if (agentId !== 'codex') return null
       const decision = resolveNewCodexNodeAccount(
@@ -6803,6 +6820,8 @@ export function Canvas() {
         cwd?: string
         title?: string
         promptFile?: string
+        // A "New Claude: WSL: <distro>" row: the `wsl:` value this node runs in.
+        wslShell?: string
       }
     ): { node: CanvasNode; placed: CanvasNode; projectId: string } | undefined => {
       // Resolve the target project LIVE, at click time — never from this callback's render
@@ -6820,6 +6839,27 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
+      if (extra?.wslShell && !mayStartWslTerminal(project)) {
+        setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
+        return
+      }
+      // A distribution's Claude runs under its own ~/.claude: a managed account is a Windows-side
+      // dir, its env does not cross wsl.exe, and a label naming one would be a lie.
+      const wslShell = wslShellForNewAgent(
+        agentId,
+        extra?.wslShell,
+        useSettings.getState().settings.defaultShell,
+        project,
+        trustedProjectShell(targetProjectId)
+      )
+      // Choosing an account and getting a different login with no word would be worse than refusing.
+      if (wslShell && accountId) {
+        setNotice({ kind: 'error', text: WSL_ACCOUNT_REFUSED })
+        return
+      }
+      // A plain New Claude on a WSL default shell got here with no chance to ask, so this one may
+      // open with the bare line. The next will know.
+      if (wslShell && !wslClaudeCliCapsNow(wslShell).version) void ensureWslClaudeCliCaps(wslShell)
       const cwd = extra?.cwd ?? cwdForNewNodeIn(groupId) ?? project?.cwd
       // Codex accounts (S6) resolve through their OWN fail-closed gate: an explicitly picked account
       // that is missing/hostile/unconnected is REFUSED here rather than silently downgraded to the
@@ -6864,6 +6904,9 @@ export function Canvas() {
       // whose models are its own CLI's (grok, cursor): a gateway id is not in their catalogue.
       const settings = useSettings.getState().settings
       const model =
+        // The gateway's URL and key are env, which stops at wsl.exe: its model name would be sent to
+        // the distribution's own Claude login.
+        !wslShell &&
         settings.agentLaunchMode === 'gateway-model' &&
         settings.modelGatewayDefaultModel &&
         hasGatewayModels(agentId)
@@ -6878,13 +6921,15 @@ export function Canvas() {
         center ?? emptyNodePos(),
         initialPrompt,
         project?.ssh,
-        account,
-        activePermissionMode(agentId),
+        wslShell ? undefined : account,
+        wslShell ? wslPermissionMode(project, wslShell) : activePermissionMode(agentId),
         // Same funnel as the account above: the active project owns the node, so its own
         // `.nodeterm/settings.json` launch command layers over the global one.
         targetProjectId,
         model,
-        extra?.promptFile
+        extra?.promptFile,
+        undefined,
+        wslShell
       )
       const issueRef = normalizeIssueRef(extra?.issueRef)
       const titled = extra?.title
@@ -6912,6 +6957,24 @@ export function Canvas() {
       parentInto,
       connectedProjectIdForHost
     ]
+  )
+
+  /**
+   * A Claude in a distribution. Asks that distribution's CLI what it accepts before the line is
+   * built, bounded, so the first one of a run still gets its session id and permission mode. A switch
+   * of project during the wait opens nothing: the position and frame belong to the canvas it left.
+   */
+  const addWslClaude = useCallback(
+    async (shell: string, center?: { x: number; y: number }, groupId?: string): Promise<void> => {
+      const projectId = useProjects.getState().activeProjectId
+      await ensureWslClaudeCliCaps(shell)
+      if (useProjects.getState().activeProjectId !== projectId) {
+        setNotice({ kind: 'error', text: CANVAS_NOT_ACTIVE_NOTICE })
+        return
+      }
+      addAgentNode('claude', center, groupId, null, undefined, { wslShell: shell })
+    },
+    [addAgentNode]
   )
 
   // A terminal node asking for an agent node BESIDE it — today only the Gemini-retirement banner
@@ -8574,7 +8637,7 @@ export function Canvas() {
                 // "Prepare for update…" coordinates.
                 text:
                   `${action} skipped: this session runs on a session host started by an older ` +
-                  'nodeterm, which cannot stop the agent safely. It is replaced once its sessions ' +
+                  'DisTerm, which cannot stop the agent safely. It is replaced once its sessions ' +
                   'end (Prepare for update… does this). Nothing was written to the pane.'
               }
             : {
@@ -11175,7 +11238,10 @@ export function Canvas() {
 
   // Apply the accent color as a CSS variable.
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', settings.accent)
+    // The default leaves the stylesheet's own value in charge, which differs per theme: the dark
+    // theme's bright sky would be 2.5:1 on the light canvas. A colour the user picked applies as is.
+    if (settings.accent === DEFAULT_SETTINGS.accent) document.documentElement.style.removeProperty('--accent')
+    else document.documentElement.style.setProperty('--accent', settings.accent)
   }, [settings.accent])
 
   // Mirror the auto-hide preference into the ephemeral-card store, which is deliberately kept
@@ -11512,9 +11578,26 @@ export function Canvas() {
           onClick: () => create(aid)
         }
       }
+      // "New Claude: WSL: <distro>", beside New Claude. Not on a `pick` surface: starting on an issue
+      // carries a prompt, and a long one spills to a Windows file a distribution's shell cannot read.
+      const wslClaudeRows = pick
+        ? []
+        : wslTerminalsForProject(useProjects.getState().activeProjectId).map(
+            (wsl): AgentAddEntry => ({
+              agentId: 'claude',
+              item: {
+                label: `New Claude: ${wsl.label}`,
+                icon: <AgentIcon agentId="claude" />,
+                onClick: () => void addWslClaude(wsl.shell, at, groupId)
+              }
+            })
+          )
       return [
-        ...BUILTIN_AGENT_IDS.filter((aid) => !disabled.includes(aid)).map(
-          (aid): AgentAddEntry => ({ agentId: aid, item: itemForBuiltin(aid) })
+        ...BUILTIN_AGENT_IDS.filter((aid) => !disabled.includes(aid)).flatMap(
+          (aid): AgentAddEntry[] => [
+            { agentId: aid, item: itemForBuiltin(aid) },
+            ...(aid === 'claude' ? wslClaudeRows : [])
+          ]
         ),
         ...useSettings
           .getState()
@@ -11531,7 +11614,7 @@ export function Canvas() {
           )
       ]
     },
-    [addAgentNode, connectedProjectIdForHost]
+    [addAgentNode, addWslClaude, connectedProjectIdForHost]
   )
 
   const groupItems = useCallback(
@@ -11717,6 +11800,14 @@ export function Canvas() {
   // since the distributions belong to this desktop and not to an SSH or relay project's core.
   const terminalProfiles = useTerminalProfiles(isWindowsCore)
   useEffect(() => useWslTerminals.getState().publish(terminalProfiles), [terminalProfiles])
+  // A plain New Claude runs in the default shell's distribution and cannot wait to ask its CLI. Only
+  // if it is already up: opening the app must not boot one.
+  const defaultShellSetting = useSettings((s) => s.settings.defaultShell)
+  useEffect(() => {
+    if (isWindowsCore && parseWslShell(defaultShellSetting)) {
+      void ensureWslClaudeCliCaps(defaultShellSetting, { ifRunning: true })
+    }
+  }, [isWindowsCore, defaultShellSetting])
   const wslTerminals = useWslTerminalsFor(activeProjectId)
   const addCtx = useMemo(
     () => ({
@@ -12142,7 +12233,19 @@ export function Canvas() {
   // NOT through the board's pruned commit path: the fresh node isn't in the derived session
   // list until the next render, and a pruned commit would strip the assignment right back off.
   const createNodeInColumn = useCallback(
-    (choice: KanbanCreateChoice, columnId: string | null) => {
+    (choice: KanbanCreateChoice, columnId: string | null, capsAsked = false): void => {
+      // A Claude in a distribution asks that CLI first, as the canvas row does (`addWslClaude`).
+      if (choice.kind === 'agent' && choice.shell && !capsAsked) {
+        const askedFrom = useProjects.getState().activeProjectId
+        void ensureWslClaudeCliCaps(choice.shell).then(() => {
+          if (useProjects.getState().activeProjectId === askedFrom) {
+            createNodeInColumn(choice, columnId, true)
+          } else {
+            setNotice({ kind: 'error', text: CANVAS_NOT_ACTIVE_NOTICE })
+          }
+        })
+        return
+      }
       // Live read + epoch guard, like addAgentNode/addTerminal (issue #443): board cards are the
       // active project's sessions, so a board-created node must be charged to the project whose
       // canvas React Flow actually holds under the overlay.
@@ -12158,12 +12261,22 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
-      const wslShell = choice.kind === 'terminal' ? choice.shell : undefined
+      const pickedWsl = choice.kind === 'terminal' || choice.kind === 'agent' ? choice.shell : undefined
       // The Omni board creates after a project switch, so this is asked of the project it landed on.
-      if (wslShell && !mayStartWslTerminal(project)) {
+      if (pickedWsl && !mayStartWslTerminal(project)) {
         setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
         return
       }
+      const wslShell =
+        choice.kind === 'agent'
+          ? wslShellForNewAgent(
+              choice.agentId,
+              pickedWsl,
+              useSettings.getState().settings.defaultShell,
+              project,
+              trustedProjectShell(targetProjectId)
+            )
+          : pickedWsl
       const index = nodesRef.current.length
       const at = emptyNodePos() // board has no cursor — drop it in free canvas space, not on a pile
       const made =
@@ -12180,14 +12293,20 @@ export function Canvas() {
                 at,
                 undefined,
                 project?.ssh,
-                resolveNewNodeAccount(
-                  undefined,
-                  project,
-                  useSettings.getState().settings.claudeAccounts
-                ),
-                activePermissionMode(choice.agentId),
+                wslShell
+                  ? undefined
+                  : resolveNewNodeAccount(
+                      undefined,
+                      project,
+                      useSettings.getState().settings.claudeAccounts
+                    ),
+                wslShell ? wslPermissionMode(project, wslShell) : activePermissionMode(choice.agentId),
                 // Board-created nodes belong to the active project like any other.
-                targetProjectId
+                targetProjectId,
+                undefined,
+                undefined,
+                undefined,
+                wslShell
               )
       const node = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
       setNodes((ns) => [...ns, node])
@@ -16859,7 +16978,11 @@ export function Canvas() {
         // The same narrow fact the node menu's Pause row uses: `st?.sessionId` alone, never the
         // minted `data.agentSessionId` fallback, because the pause closure gates on the live id and
         // a row lit by the fallback would enable here and refuse there.
-        eligibility: restartEligibility(agentId, st?.state, st?.sessionId)
+        // A pane in a distribution can never be paused: the exit poll cannot see the CLI quit, so
+        // the row is absent rather than offered and refused (`not-resumable`).
+        eligibility: nodePaneRunsInWsl(node?.data, useProjects.getState().activeProjectId)
+          ? { ok: false, reason: 'not-resumable' }
+          : restartEligibility(agentId, st?.state, st?.sessionId)
       })
     },
     []
@@ -18118,7 +18241,11 @@ export function Canvas() {
   // status the connection banner shows.
   const shareBlockedReason = useCallback(
     (id: string): string | null =>
-      sshStatus[id] === 'connected' ? null : 'Connect this project first (its SSH connection is down).',
+      useRelayAvailability.getState().configured !== true
+        ? RELAY_UNAVAILABLE_REASON
+        : sshStatus[id] === 'connected'
+          ? null
+          : 'Connect this project first (its SSH connection is down).',
     [sshStatus]
   )
 
@@ -18722,7 +18849,7 @@ export function Canvas() {
       const action = nextSheetAction(cur, Date.now())
       if (action === 'drop') {
         ol.cancel(req.id)
-        setNotice({ kind: 'info', text: 'Another nodeterm link arrived while one is open — it was ignored.' })
+        setNotice({ kind: 'info', text: 'Another DisTerm link arrived while one is open — it was ignored.' })
         return
       }
       if (action === 'replace' && cur) ol.cancel(cur.req.id)
@@ -19199,6 +19326,14 @@ export function Canvas() {
             run: () => addAgentNode(c.id)
           })
         ),
+      ...(disabled.includes('claude') ? [] : wslTerminals).map(
+        (wsl): Command => ({
+          id: `new-claude-${wsl.shell}`,
+          label: `New Claude: ${wsl.label}`,
+          icon: <AgentIcon agentId="claude" />,
+          run: () => void addWslClaude(wsl.shell)
+        })
+      ),
       // One "New Claude — <label>" per account usable in the active project (local accounts for a
       // local project, this host's accounts for an SSH project). Plain "New Claude" above uses the
       // resolved project default; these pin a specific account.
@@ -19462,7 +19597,8 @@ export function Canvas() {
           setSettingsOpen(true)
         },
         openChat: () => setLiveChat((s) => nextLiveChat(s, { kind: 'open' })),
-        confirmStopAll: confirmStopAllLiveLinks
+        confirmStopAll: confirmStopAllLiveLinks,
+        relayConfigured: useRelayAvailability.getState().configured
       }),
       // Hidden when the canvas has no restartable agent node — the row would have nothing to act
       // on. `hint` is searchable, so "new model" / "update" find it too.
@@ -19672,7 +19808,6 @@ export function Canvas() {
       />
 
       <div className="top-banners">
-        <AnnouncementBanner />
         {/* Agent-integration consent (issue #744): the first-run question, the grandfathered
             install's one-time notice, and the active SSH host's own question. */}
         <IntegrationPromptBanner
@@ -20017,11 +20152,8 @@ export function Canvas() {
               y: r.bottom + 6,
               items: [
                 { label: 'Keyboard shortcuts', hint: chipFor('app.shortcutsPanel') || undefined, onClick: () => setShortcutsOpen(true) },
-                { label: 'Report a bug…', onClick: () => setBugReportOpen(true) },
-                {
-                  label: 'Documentation',
-                  onClick: () => window.nodeTerminal.shell.openExternal(`${REPO_URL}#readme`)
-                },
+                { label: 'Report a bug…', disabled: true, hint: BUG_REPORT_OFF_REASON, onClick: () => {} },
+                { label: 'Documentation', disabled: true, hint: DOCS_OFF_REASON, onClick: () => {} },
                 {
                   label: 'GitHub repository',
                   onClick: () => window.nodeTerminal.shell.openExternal(REPO_URL)
@@ -20029,7 +20161,7 @@ export function Canvas() {
                 { type: 'separator' },
                 {
                   type: 'label',
-                  label: `nodeterm${appVersion ? ` v${appVersion}` : ''} · ${describeOs(navigator.userAgent)}`
+                  label: `DisTerm${appVersion ? ` v${appVersion}` : ''} · ${describeOs(navigator.userAgent)}`
                 }
               ]
             })
@@ -20437,14 +20569,6 @@ export function Canvas() {
         />
       )}
       {logPanelOpen && <LogPanel onClose={() => setLogPanelOpen(false)} />}
-      {mobileLaunchOpen && (
-        <MobileLaunchCard
-          onClose={() => {
-            markMobileLaunchSeen()
-            setMobileLaunchOpen(false)
-          }}
-        />
-      )}
       {onboardingOpen && (
         <OnboardingFlow
           onClose={() => {
@@ -20472,14 +20596,6 @@ export function Canvas() {
             setSettingsSection('license')
             setSettingsOpen(true)
           }}
-        />
-      )}
-
-      {bugReportOpen && (
-        <BugReportDialog
-          env={{ appVersion, userAgent: navigator.userAgent }}
-          onOpen={(url) => window.nodeTerminal.shell.openExternal(url)}
-          onClose={() => setBugReportOpen(false)}
         />
       )}
 
@@ -20754,25 +20870,6 @@ export function Canvas() {
       )}
 
       <UpgradeDialog />
-      {/* The surfaces below are not on the dialog stack, so the popup is told about them here: it
-          must not land on the setup tour, Settings, the palette, a dictation in progress, …. The
-          kanban card modal registers on the stack itself; `cardModalOpen` is belt and braces. */}
-      <AnnouncementPopup
-        blocked={
-          onboardingOpen ||
-          mobileLaunchOpen ||
-          settingsOpen ||
-          paletteOpen ||
-          shortcutsOpen ||
-          scOpen ||
-          logPanelOpen ||
-          welcomeOpen ||
-          consentOpen ||
-          cloneDialogOpen ||
-          dictationOpen ||
-          cardModalOpen
-        }
-      />
       {/* The free-tier limit moment (docs/project-limit.md). Close is the ordinary non-destructive close — never
           `endSessions`: the limit only ever blocks a NEW open, it never ends anything. */}
       <ProjectLimitDialog onCloseProject={(id) => performCloseProject(id)} />
@@ -20993,6 +21090,7 @@ export function Canvas() {
         onAddWslTerminal={(shell) =>
           addTerminal(undefined, undefined, undefined, undefined, undefined, shell)
         }
+        onAddWslClaude={(shell) => void addWslClaude(shell)}
         onAddSticky={addSticky}
         onSpawnTeam={() => setSpawnTeamDialog({})}
         onAddDino={addDino}

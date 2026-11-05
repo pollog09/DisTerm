@@ -37,8 +37,8 @@ export function resolveBackgroundOnClose(
 export const BACKGROUND_HINT_MARKER = 'background-close-hint-shown'
 
 export const BACKGROUND_HINT = {
-  title: 'nodeterm is still running',
-  body: 'Closing the window keeps nodeterm in the notification area so your phone and agent notifications stay connected. Quit from the tray icon.'
+  title: 'DisTerm is still running',
+  body: 'Closing the window keeps DisTerm in the notification area so your phone and agent notifications stay connected. Quit from the tray icon.'
 } as const
 
 /**

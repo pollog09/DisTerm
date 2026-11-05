@@ -102,7 +102,7 @@ describe('deleteConfirmCopy', () => {
 
   it('no sessions: drops the session clause instead of claiming "0 sessions"', () => {
     const c = deleteConfirmCopy(project({ nodes: [{ id: 's', kind: 'sticky' }] }))
-    expect(c.message).toContain('Delete “Web”? This removes the project from nodeterm.')
+    expect(c.message).toContain('Delete “Web”? This removes the project from DisTerm.')
     expect(c.message).not.toContain('session')
   })
 

@@ -11,6 +11,8 @@ import { Button } from '@renderer/ui/Button'
 import { CopyButton } from '@renderer/ui/CopyButton'
 import { Input } from '@renderer/ui/Input'
 import { Select } from '@renderer/ui/Select'
+import { useRelayConfigured } from '@renderer/state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 const ROWS = {
   allow: { title: 'Allow remote access', keywords: ['remote', 'host', 'share', 'pairing', 'ssh'] },
@@ -70,6 +72,8 @@ export function RemoteSection({
   // CLIENT side — hand the offer to Canvas, which runs the relay connect → SAS compare → open-tab
   // flow (the same `connectOffer` the dock/palette "New Remote Connection" uses). We deliberately do
   // NOT call `relayClient.connect` here, so the SAS handshake lives in exactly one place.
+  const relay = useRelayConfigured()
+  const relayOff = relay !== true
   const connectToHost = () => {
     const code = clientCode.trim()
     if (!code) return
@@ -92,6 +96,11 @@ export function RemoteSection({
     >
       <SearchableRow {...ROWS.allow}>
         <div className="space-y-3">
+          {relay === false ? (
+            <p className="text-sm" style={{ color: 'var(--warn)' }}>
+              {RELAY_UNAVAILABLE_REASON}
+            </p>
+          ) : null}
           <h4 className="text-[13px] font-medium text-text">Allow remote access</h4>
           {isPremium ? (
             hostOffer ? (
@@ -150,14 +159,14 @@ export function RemoteSection({
                   {relayShareGrantCopy(sharedName || null, thisMachine())}
                 </p>
                 {shareRefusal ? <p className="text-sm text-danger">{shareRefusal}</p> : null}
-                <Button disabled={hostBusy || !!shareRefusal} onClick={() => void startHosting()}>
+                <Button disabled={hostBusy || !!shareRefusal || relayOff} onClick={() => void startHosting()}>
                   {hostBusy ? 'Starting…' : 'Allow remote access'}
                 </Button>
               </div>
             )
           ) : (
             <p className="text-sm text-muted">
-              Hosting this machine requires nodeterm Pro — upgrade above. Connecting to a host you
+              Hosting this machine requires DisTerm Pro — upgrade above. Connecting to a host you
               were given a code for is free.
             </p>
           )}
@@ -177,7 +186,7 @@ export function RemoteSection({
               />
             }
           />
-          <Button disabled={connecting || !clientCode.trim()} onClick={() => void connectToHost()}>
+          <Button disabled={connecting || !clientCode.trim() || relayOff} onClick={() => void connectToHost()}>
             {connecting ? (
               <>
                 <span className="ui-spinner" aria-hidden /> Connecting…

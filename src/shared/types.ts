@@ -2571,7 +2571,7 @@ export const DEFAULT_SETTINGS: Settings = {
   trackpadPan: true,
   canvasDragMode: 'select',
   browserMemorySaver: true,
-  accent: '#0a84ff',
+  accent: '#0ea5e9',
   tmuxEnabled: true,
   sessionBackend: 'tmux',
   ptyShadowClients: true,
@@ -3442,6 +3442,9 @@ export interface ClaudeUsage {
   email: string | null
   /** Active organization, absent when its metadata is unavailable. */
   organization?: ClaudeUsageOrganization
+  /** The endpoint refused a token that is present (HTTP 401), with status 'unavailable'. The CLI
+   *  renews its own token and we never do, so one idle for hours reads as this until Claude runs. */
+  loginExpired?: true
   /** Unix ms when this snapshot was produced. */
   updatedAt: number
   /**
@@ -3467,7 +3470,8 @@ export interface ClaudeUsage {
  * machines with two different quotas in flight.
  */
 interface RemoteAccountUsageBase {
-  /** `user@host` of the connection the numbers came from. */
+  /** `user@host` of the connection the numbers came from, or the `wsl:<distro>` value of a
+   *  distribution read directly. */
   hostKey: string
   /** Managed remote account id, or null for that provider's system identity on the host. */
   accountId: string | null
@@ -3482,7 +3486,7 @@ export type RemoteAccountUsage = RemoteAccountUsageBase & (
 
 /** What the usage indicator wants from the remote hosts right now. */
 export interface RemoteUsageQuery {
-  /** Read only this `user@host` — the machine the active project runs on. Omitted = every
+  /** Read only this `user@host` or `wsl:<distro>` — where the active project runs. Omitted = every
    *  connected host, which no scoped UI asks for but keeps the channel general. */
   hostKey?: string
   /** Bypass the cache debounce (the ⟳ button). */
@@ -4143,6 +4147,10 @@ export interface ClaudeApi {
   /** Capabilities of the local Claude CLI (memoized in the shell; safe to call repeatedly).
    *  Never rejects — an unknown version resolves to the fail-open caps. */
   cliCaps(): Promise<ClaudeCliCaps>
+  /** The same answer for the Claude inside a distribution (`wsl:<distro>`): a pane there runs that
+   *  CLI, not this machine's. `ifRunning` asks nothing of a stopped distribution, so it never boots
+   *  one. Never rejects. */
+  wslCliCaps(shell: string, opts?: { ifRunning?: boolean }): Promise<ClaudeCliCaps>
   /**
    * Reads a Claude session's full transcript as flat searchable lines ([] if unavailable).
    * Resolves by `sessionId` when known (exact); otherwise falls back to `cwd` (durable —
@@ -4283,10 +4291,12 @@ export type PhoneApprovalResult = {
 }
 
 export interface RemoteHostApi {
+  /** Whether this core has a relay server configured. False = every relay feature is off, and says so. */
+  relayConfigured(): Promise<boolean>
   /**
    * Enter host mode: mint a pairing token, connect to the relay as the host, and return the
    * pairing offer string (`nodeterm://pair?code=…`) to hand to a client. Rejects if the device
-   * is not entitled to Pro (or in a dev build without NODETERM_RELAY_URL).
+   * is not entitled to Pro (or in a build without NODETERM_RELAY_URL).
    */
   start(): Promise<{ offer: string }>
   /** Leave host mode: close the relay connection (ends served PTYs, drops client access). */

@@ -66,7 +66,7 @@ export function installManagedAgentHooks(agents: ReadonlySet<string>): void {
         `[agent-hooks] grok: could not confirm $GROK_HOME (the login-shell probe returned nothing), ` +
           `so hooks were installed into the default ${grokHomeDir()}. If grok reads a different ` +
           `GROK_HOME, its nodes will show no status, no session name and no notifications, silently. ` +
-          `Set GROK_HOME in the environment nodeterm itself is launched from to make this definite.`
+          `Set GROK_HOME in the environment DisTerm itself is launched from to make this definite.`
       )
     }
     if (grokHomeDir() === grokHomeAtInstall) return

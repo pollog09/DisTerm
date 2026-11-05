@@ -78,9 +78,9 @@ export function consumeUpdateFailedMarker(deps: MarkerDeps): UpdateInstallFailur
 export function describeUpdateInstallFailure(f: UpdateInstallFailure): string {
   const why =
     f.code === 10
-      ? 'nodeterm was still running when the installer checked'
+      ? 'DisTerm was still running when the installer checked'
       : f.code === 20
-        ? 'the installer could not verify that nodeterm had exited'
+        ? 'the installer could not verify that DisTerm had exited'
         : `reason ${f.reason}`
   return `the last update${f.version ? ` to ${f.version}` : ''} did not install: ${why}. The previous version was restarted.`
 }

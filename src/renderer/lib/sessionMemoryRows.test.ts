@@ -82,12 +82,12 @@ describe('totalMb', () => {
     const host = { pid: 9, selfMb: 60, consoleMb: 8, consoleCount: 2, totalMb: 68 }
     expect(totalMb(views, host)).toBe(168)
     expect(totalMb(views, undefined)).toBe(100)
-    expect(hostOverheadLabel(host)).toBe('nodeterm session host (2 consoles)')
-    expect(hostOverheadLabel({ ...host, consoleCount: 1 })).toBe('nodeterm session host (1 console)')
+    expect(hostOverheadLabel(host)).toBe('DisTerm session host (2 consoles)')
+    expect(hostOverheadLabel({ ...host, consoleCount: 1 })).toBe('DisTerm session host (1 console)')
   })
 })
 
-describe('"nodeterm itself" labels', () => {
+describe('"DisTerm itself" labels', () => {
   it('names each group, with a count only when there is more than one', () => {
     expect(appGroupLabel({ kind: 'gpu', count: 1 })).toBe('GPU')
     expect(appGroupLabel({ kind: 'renderer', count: 2 })).toBe('Renderers ×2')

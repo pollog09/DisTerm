@@ -545,7 +545,7 @@ export function GitHubIssuesSection({ isActive }: { isActive: boolean }): React.
                       ? view.auth.unreachable && !authenticated
                         ? 'Repository approved. GitHub could not be reached to check the sign-in.'
                         : 'Repository approved. Authentication is still needed.'
-                      : 'Approval is required before nodeterm reads the repository.'}
+                      : 'Approval is required before DisTerm reads the repository.'}
                 </span>
                 {!view?.project?.approved && repository && (
                   <Button variant="primary" disabled={busy !== ''} onClick={() => void approveRepository()}>

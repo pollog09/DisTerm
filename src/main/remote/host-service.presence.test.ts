@@ -28,6 +28,9 @@ vi.mock('electron', () => ({
     }
   }
 }))
+vi.hoisted(() => {
+  process.env.NODETERM_RELAY_URL = 'wss://relay.example'
+})
 vi.mock('../../core/pty-manager', () => ({ PtyManager: class {} }))
 vi.mock('../../core/license', () => ({
   isPremium: () => true,

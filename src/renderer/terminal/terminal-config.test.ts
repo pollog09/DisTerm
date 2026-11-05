@@ -12,6 +12,7 @@ import {
   isLetterboxed,
   letterboxFor,
   markRecycled,
+  planFit,
   recycleAction,
   repaintResync,
   reportedSize,
@@ -1139,5 +1140,36 @@ describe('scrollback bounds are the shared rule (session host and renderer canno
     expect(config.xtermScrollback).toBe(shared.xtermScrollback)
     expect(config.XTERM_SCROLLBACK_MAX).toBe(shared.XTERM_SCROLLBACK_MAX)
     expect(config.XTERM_SCROLLBACK_MIN).toBe(shared.XTERM_SCROLLBACK_MIN)
+  })
+})
+
+describe('planFit', () => {
+  const sized = (cols: number, rows: number) => ({ cols, rows })
+
+  it('only moves the emulator while no session exists', () => {
+    expect(planFit(sized(78, 25), sized(80, 25), false)).toBe('local')
+    expect(planFit(sized(80, 25), sized(80, 25), false)).toBe('local')
+  })
+
+  it('resizes nothing for an unchanged fit once the session is live', () => {
+    expect(planFit(sized(78, 25), sized(78, 25), true)).toBe('none')
+  })
+
+  it('reports a fit that differs in either dimension', () => {
+    expect(planFit(sized(78, 25), sized(80, 25), true)).toBe('report')
+    expect(planFit(sized(78, 24), sized(78, 25), true)).toBe('report')
+  })
+
+  it('catches up a fit that moved while the spawn was in flight', () => {
+    // What applyFit does: only `report` moves what the pty was told.
+    let sent = sized(80, 25) // `create()` carried this
+    const fit = (size: { cols: number; rows: number }, live: boolean) => {
+      const action = planFit(size, sent, live)
+      if (action === 'report') sent = size
+      return action
+    }
+    expect(fit(sized(78, 25), false)).toBe('local') // the fit moved mid-spawn
+    expect(fit(sized(78, 25), true)).toBe('report') // the catch-up once the session exists
+    expect(fit(sized(78, 25), true)).toBe('none')
   })
 })

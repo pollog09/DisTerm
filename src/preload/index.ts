@@ -704,6 +704,7 @@ const api: NodeTerminalApi = {
   },
   claude: {
     cliCaps: () => ipcRenderer.invoke(IPC.claudeCliCaps),
+    wslCliCaps: (shell, opts) => ipcRenderer.invoke(IPC.claudeWslCliCaps, shell, opts),
     readTranscript: (sessionId, cwd, accountId, nodeId) =>
       ipcRenderer.invoke(IPC.claudeReadTranscript, sessionId, cwd, accountId, nodeId)
   },
@@ -783,7 +784,8 @@ const api: NodeTerminalApi = {
     approvePhone: (id, pub) => ipcRenderer.invoke(IPC.remotePhoneApprove, { id, pub }),
     approve: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostApprove, { id, pub }),
     reject: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostReject, { id, pub }),
-    setPhoneAccess: (enabled) => ipcRenderer.send(IPC.remoteStandingHostSet, enabled)
+    setPhoneAccess: (enabled) => ipcRenderer.send(IPC.remoteStandingHostSet, enabled),
+    relayConfigured: () => ipcRenderer.invoke(IPC.remoteRelayConfigured)
   },
   relayHost: {
     start: (projectId?: string) => ipcRenderer.invoke(IPC.relayHostStart, projectId),

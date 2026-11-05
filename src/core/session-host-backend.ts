@@ -144,8 +144,11 @@ export function createSessionHostPty(
 /** Atomically attach to an already-running host session without resolving or transmitting any
  * spawn profile. If the session exits before this reaches the host, `ready` rejects and no shell
  * is created. This is the warm cross-process path used before profile/cwd resolution. */
-export function attachExistingSessionHostPty(name: string): SessionHostPty {
-  return new SessionHostPty(getClient(), name, null, 0)
+export function attachExistingSessionHostPty(
+  name: string,
+  size: { cols: number; rows: number }
+): SessionHostPty {
+  return new SessionHostPty(getClient(), name, null, 0, size)
 }
 
 /** A live link / relay viewer's READ-ONLY attachment to an already-running session: never spawns,

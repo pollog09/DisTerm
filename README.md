@@ -1,61 +1,39 @@
 <div align="center">
 
-<img src="docs/assets/nodeterm.png" alt="nodeterm" width="120" height="120" />
+<img src="docs/assets/disterm.png" alt="DisTerm" width="120" height="120" />
 
-# nodeterm
+# DisTerm
 
-**A node-based terminal manager — your terminals and agents on an infinite canvas.**
+**Your terminals and agents on an infinite canvas.**
 
 Multiple real terminals live as draggable nodes on a single pan/zoom canvas, and every
 project doubles as a **Trello-style board of live Claude Code sessions**. Built for
 people with ADHD and scattered workflows: a spatial layout instead of a stack of
 hidden tabs.
 
-[![Platform](https://img.shields.io/badge/platform-macOS%20(arm64%20%2B%20x64)%20·%20Linux%20(x64)%20·%20Windows%20(x64%2C%20beta)-black)](https://nodeterm.dev)
+[![Platform](https://img.shields.io/badge/platform-macOS%20(arm64%20%2B%20x64)%20·%20Linux%20(x64)%20·%20Windows%20(x64%2C%20beta)-black)](#-build-from-source)
 [![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/license-BUSL--1.1-blue)](./LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/eneskirca/nodeterm?style=flat)](https://github.com/eneskirca/nodeterm/stargazers)
-[![Latest release](https://img.shields.io/github/v/release/eneskirca/nodeterm?include_prereleases&sort=semver)](https://github.com/eneskirca/nodeterm/releases)
-<!-- Installer downloads only (.dmg + .AppImage + .deb + .rpm + .exe across every release), kept live by
-     .github/workflows/download-badge.yml, which writes a shields endpoint JSON to the `badges` branch.
-     shields' github/downloads/…/total reads ~14× higher because electron-updater's own traffic
-     (latest-*.yml polls, mac .zip deltas, blockmaps) is counted as downloads there. -->
-[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Feneskirca%2Fnodeterm%2Fbadges%2Fdownloads.json)](https://github.com/eneskirca/nodeterm/releases)
 
-<a href="https://trendshift.io/repositories/103825?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-103825" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/103825" alt="eneskirca%2Fnodeterm | Trendshift" width="250" height="55"/></a>
-
-[Download](#-download) · [Docs](https://nodeterm.dev/docs) · [Features](#-features) · [Build from source](#-build-from-source) · [Architecture](#-architecture) · [Sponsor](#sponsor) · [License](#-license)
+[Install](#-install) · [Features](#-features) · [Build from source](#-build-from-source) · [Architecture](#-architecture) · [License](#-license) · [Attribution](#attribution)
 
 </div>
 
 ---
 
-<div align="center">
-  <a href="docs/assets/hero-tour.mp4">
-    <img src="docs/assets/hero-tour.webp" alt="nodeterm in 30 seconds — the canvas, sessions that survive a restart, agents and the notch, the kanban board, dictation, the iPhone" width="900" />
-  </a>
-  <br/>
-  <sub>▶ <a href="docs/assets/hero-tour.mp4">Watch the 30-second tour with sound</a></sub>
-</div>
+DisTerm is a personal fork of [nodeterm](#attribution), branded under
+[Distriib](https://distriib.com). It is for personal use, not a commercial product.
 
-## Why nodeterm
+## Why DisTerm
 
-Stacked terminal tabs hide context — you lose track of what's running where. nodeterm
+Stacked terminal tabs hide context — you lose track of what's running where. DisTerm
 turns that into a **map**: every shell is a node you can place, group, label, and zoom
 into. Sessions are spatial and persistent, so your mental model stays intact across
 restarts. And because the app is built around a clean service seam, the same canvas runs
-three ways — as the **desktop app for macOS, Linux and Windows (beta)**, as a **self-hosted browser app**
-you reach from anywhere (Server Edition), and an **iOS companion** that attaches to the
-same live sessions.
-
-📚 **Full documentation lives at [nodeterm.dev/docs](https://nodeterm.dev/docs)** — get
-started, concepts, agents, remote access, troubleshooting.
+two ways: as the **desktop app for macOS, Linux and Windows (beta)**, and as a
+**self-hosted browser app** you reach from anywhere (Server Edition).
 
 ## ✨ Features
-
-<table>
-<tr>
-<td width="42%" valign="middle">
 
 ### Everything is a node
 
@@ -64,12 +42,6 @@ persistent tmux session, next to **sticky notes** (link one to feed an agent con
 **Monaco editors**, **diff views**, and **web/video** nodes — arranged spatially, like a
 map. Quit the app, even **restart the machine** — every session comes back.
 
-</td>
-<td><img src="docs/assets/canvas-tour.webp" alt="The canvas — right-click to add Claude Code, a terminal, a sticky note, an editor and a diff; link the note to Claude; restart, and every session comes back" /></td>
-</tr>
-<tr>
-<td width="42%" valign="middle">
-
 ### Know when an agent needs you
 
 Hook-driven status — no output scraping: pulsing **RUNNING / NEEDS YOU** badges,
@@ -77,48 +49,18 @@ Hook-driven status — no output scraping: pulsing **RUNNING / NEEDS YOU** badge
 notifications. Click the ping, answer the permission prompt right in the node, and get
 told the moment the turn is **done**. On a MacBook, agents live in the **notch** too.
 
-</td>
-<td><img src="docs/assets/agents-tour.webp" alt="Agent status — subagent fan-out with a context meter; a permission prompt lights the notch and posts a macOS notification; Go jumps to the node; ✓ Approve in its header" /></td>
-</tr>
-<tr>
-<td width="42%" valign="middle">
-
 ### One project, two views
 
 Every project is a canvas — **and also a kanban board**. Cards *are* your live
 sessions: drag them across columns while the agent keeps running, open a card into a
 **live card modal** (the real session + members, due date, priority, comments), and
 assign teammates. Toggle with `⌘⇧B`.
-<br/><sub>▶ <a href="docs/assets/kanban-launch.mp4">Watch the board video with sound</a></sub>
-
-</td>
-<td><img src="docs/assets/kanban-launch.webp" alt="The kanban board — ⌘⇧B turns the canvas into cards, drag one to Done while it keeps running, the card modal with the live Claude Code session and comments" /></td>
-</tr>
-<tr>
-<td width="42%" valign="middle">
-
-### Your sessions, anywhere
-
-**Pair your phone** with one QR — *scan with the nodeterm iOS app* — and the **same
-live session continues in your pocket**, E2E encrypted **over the relay, not just your
-LAN**. The same canvas also runs self-hosted in any browser (Server Edition).
-
-</td>
-<td><img src="docs/assets/remote-tour.webp" alt="Pair your phone — scan the QR, every session is one tap away, the real Claude Code on the iPhone, answer its permission prompt from there" /></td>
-</tr>
-<tr>
-<td width="42%" valign="middle">
 
 ### Talk to your terminal
 
 Hold `⌘⌥`, say it, let go. On-device **Whisper** transcribes it locally and types the
 text into the terminal's prompt — **you** press Enter (nothing auto-submits). Your voice
 never leaves the machine.
-
-</td>
-<td><img src="docs/assets/dictation-tour.webp" alt="Dictation — hold ⌘⌥ and speak, let go, local Whisper types the words into Claude Code's prompt, you press Enter" /></td>
-</tr>
-</table>
 
 ### Node kinds
 
@@ -131,9 +73,10 @@ Gemini / GitHub Copilot / opencode / Grok / Cursor / custom) · 📝 **Sticky no
 
 - **Session continuity (tmux)** — terminals keep running across node remounts *and* full
   app restarts, including live processes; machine reboots restore scrollback and resume
-  agent sessions (`claude --resume`). The macOS app **ships its own tmux**, so this works
-  with nothing installed; a tmux already on your system is always used in preference to it,
-  and terminals opened before an upgrade stay as they were until you refresh the node.
+  agent sessions (`claude --resume`). A macOS package carries its own tmux when you build one
+  into it (see [Build from source](#-build-from-source)); a tmux already on your system is
+  always used in preference to it, and terminals opened before an upgrade stay as they were
+  until you refresh the node.
 - **Agent superpowers** — **context links** so agent nodes read each other's transcripts
   on demand; Claude-only **branch a conversation** and **managed accounts** for several
   logged-in Claude identities side by side; agents can drive the canvas (open nodes,
@@ -147,10 +90,7 @@ Gemini / GitHub Copilot / opencode / Grok / Cursor / custom) · 📝 **Sticky no
   [setup and security details](./docs/github-issues-kanban.md).
 - **AI commit messages & terminal names** — bring-your-own local agent CLI run read-only
   on the staged diff or captured output.
-- **Your sessions, in your pocket** — **nodeterm mobile** (iOS) attaches to the same live
-  tmux sessions: watch an agent work, answer a "needs you", or type into any terminal
-  from your phone — plus push notifications and a mobile board view.
-- **Power & sleep** — while an agent is working, nodeterm keeps the machine from
+- **Power & sleep** — while an agent is working, DisTerm keeps the machine from
   idle-sleeping, and lets go the moment it finishes (on by default; toggle in the setup
   tour or Settings → Behavior). It lets the machine sleep anyway on battery below 5% or
   when the machine runs critically hot. No app can hold a machine awake through a closed lid
@@ -159,10 +99,41 @@ Gemini / GitHub Copilot / opencode / Grok / Cursor / custom) · 📝 **Sticky no
   that doesn't sleep via the [Server Edition](./docs/SERVER.md).
 - **Command palette** (⌘K), **file explorer** (⌘⇧E), **markdown view** (⌘M),
   **undo/redo**, and a native macOS dark UI.
-- **Auto-update & in-app announcements** — the app checks a self-hosted feed and
-  surfaces a "Restart to update" banner and product news.
 
-### 🌍 Server Edition — nodeterm in your browser
+### Off by default: anything that needs a relay
+
+DisTerm ships with no relay server and no push backend, so these stay disabled, and say why in
+the app, unless you run your own and start DisTerm with both `NODETERM_RELAY_URL` and
+`NODETERM_API_BASE`. A working relay needs both, because the second is where relay tokens come from.
+Push needs `NODETERM_API_BASE`.
+
+- phone remote access
+- Team Access and hosted teams
+- Live Links
+- push notifications and the push webhook
+
+Everything above this section works without them.
+
+**`NODETERM_API_BASE` also moves the license, check and project-limit calls.** `src/core/license.ts`,
+`src/core/check.ts` and `src/core/project-limit.ts` read the same variable, so setting it sends those
+calls to your server instead of `api.nodeterm.dev`, and your server's replies then decide the answers.
+For example, a check-shaped reply with no `limits` key reads as the project limit being off. Clause (b)
+of the Additional Use Grant in [`LICENSE`](./LICENSE) requires that the copy you use "has not had its
+license key, entitlement or usage-limit functionality moved, changed, disabled or circumvented", and
+says changing those mechanisms "for non-production purposes, such as developing, testing or
+contributing to the Licensed Work, remains permitted". Read that clause before you set this variable
+on a copy you use in production.
+
+### What still reaches the upstream server
+
+While `NODETERM_API_BASE` is unset, license checks and the free-tier open-project limit call
+`api.nodeterm.dev`, unchanged, and the fork leaves that code as it is because of clause (b) of the
+license (above). The limit is switched on or off by that server (see
+[`docs/project-limit.md`](./docs/project-limit.md)).
+Settings → Privacy controls only the open-project count sent with the check. The fork removed
+upstream's telemetry ping, update feed, in-app announcements and mandatory-update policy.
+
+### 🌍 Server Edition — DisTerm in your browser
 
 The same canvas runs headless on a Linux (or macOS) host and is used from any browser —
 so your terminals, editors, source control, board, and agents live on a server you reach
@@ -177,114 +148,39 @@ Terminals, files/editor/diff, the full git panel, the kanban board, and agent-st
 badges all work in the browser today. See [`docs/SERVER.md`](./docs/SERVER.md) for the
 quickstart, security model, and current limitations.
 
-#### 🔔 Get push notifications from any SSH host
+## 📦 Install
 
-The same server also runs **headless** as a background notification host: install it on any
-Linux box you SSH into, and your phone gets **RUNNING / NEEDS YOU** push + Live-Activity
-coverage for the agents running there — with **zero open ports** (the hook server stays
-loopback-only and push goes out over HTTPS under a grant your phone drops over SSH).
+There are no prebuilt downloads: build DisTerm from source. See
+[Build from source](#-build-from-source) for the requirements, then package for your platform:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/install-server.sh | bash
+npm install
+npm run dist:linux   # or: npm run dist (macOS), npm run dist:win (Windows)
 ```
 
-One line installs, builds, and runs it as a systemd service (`NODETERM_HEADLESS=1`); re-run it
-to update. See the [headless notification host](./docs/SERVER.md#headless-notification-host)
-section for details.
+The packages land in `dist/`. They are unsigned, and a package has no update feed, so to update,
+pull and build again.
 
-## 📦 Download
-
-Grab the latest build from **[nodeterm.dev](https://nodeterm.dev)** — the download button
-detects your platform. Everything is also listed at
-[nodeterm.dev/releases](https://nodeterm.dev/releases):
-
-- **macOS 12 Monterey or newer** — `.dmg` for Apple Silicon and Intel (auto-updates), or
-  **Homebrew**:
-
-  ```bash
-  brew install --cask nodeterm
-  ```
-
-  The cask is in the official `homebrew/cask`, so no tap is needed. The app updates itself
-  (electron-updater), so `brew upgrade` is rarely needed for it. If you installed from the
-  old `nodeterm/tap`, you can drop it with `brew untap nodeterm/tap`: the short name
-  `nodeterm` already resolves to the official cask.
-- **Linux (x64)** — self-updating **AppImage**, a `.deb` for Debian/Ubuntu
-  (`sudo apt install ./node-terminal_*.deb`), or an `.rpm` for Fedora/RHEL
-  (`sudo dnf install ./node-terminal-*.rpm`). Updates are manual for both packages: the app
-  tells you when a new version is out and links the download. The AppImage needs FUSE 2,
-  which Fedora does not install by default: `sudo dnf install fuse-libs` if it exits with
-  a `libfuse.so.2` error.
-- **Windows (x64) — beta** — `nodeterm-Setup-<version>.exe` (per-user installer) or a
-  portable `-win.zip`. Early support, so know what you are getting: the installer is
-  **unsigned** (SmartScreen will ask — *More info → Run anyway*), **updates are manual**
-  for now (the app tells you when a new version is out and links the download), and **session continuity across
-  restarts is still landing** — Windows has no tmux, so the standalone session host that
-  replaces it is being packaged in [#579](https://github.com/eneskirca/nodeterm/pull/579).
-  Everything else — canvas, agents, kanban, hooks — is the same app. Please
-  [report what breaks](https://github.com/eneskirca/nodeterm/issues).
-- **iOS** — **nodeterm mobile** on the
-  [App Store](https://apps.apple.com/app/nodeterm/id6790581233).
-- **Android** — **nodeterm mobile** on
-  [Google Play](https://play.google.com/store/apps/details?id=com.nodeterm.android).
-
-**Trying it out?** Removal is one script — it stops every process nodeterm started, reverts
-the status-hook/skill entries it merged into your agent CLIs' config (your own hooks and
-credentials are never touched), and deletes all of nodeterm's own state. Run it with
-`--dry-run` first to see the full list of what it found:
+**Removing it:** `scripts/uninstall.sh` stops every process the app started, reverts the
+status-hook/skill entries it merged into your agent CLIs' config (your own hooks and credentials
+are never touched), and deletes the app's own state. Run it with `--dry-run` first to see the full
+list of what it found:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/uninstall.sh | bash -s -- --dry-run
-curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/uninstall.sh | bash -s -- --yes
+bash scripts/uninstall.sh --dry-run
+bash scripts/uninstall.sh --yes
 ```
 
-The full inventory of what nodeterm writes where (and what the script keeps, like the
-`.nodeterm/` canvas folders inside your own repos) is documented in
-[docs/uninstall.md](docs/uninstall.md).
-
-## Sponsor
-
-nodeterm is an indie project, built with Claude across several Claude accounts — about
-**$2,000 a month** to keep running. There are **10 Founding Sponsor spots** at $200/month:
-your logo goes in this grid and on [nodeterm.dev](https://nodeterm.dev), and your feature
-requests go first.
-
-<p align="center">
-  <b>1 of 10 spots taken</b> · <a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04">Become a Founding Sponsor →</a>
-</p>
-
-<!-- Taking a spot: replace one open cell (in order, top-left first) with
-       <td align="center" width="20%"><a href="SPONSOR_URL"><img src="docs/assets/sponsors/SPONSOR.svg" alt="SPONSOR NAME" width="136" /></a></td>
-     The logo needs a transparent background that reads on GitHub's light AND dark themes (or wrap it in a <picture>
-     with a prefers-color-scheme: dark <source>). Bump the "N of 10 spots taken" line in the same edit. The spots are sold through a Stripe
-     payment link limited to 10 payments: it deactivates itself when the tenth is taken (existing subscriptions keep
-     renewing). If a sponsor cancels, raise the limit by one to reopen their spot. -->
-<table>
-  <tr>
-    <td align="center" width="20%"><a href="https://locomotive.agency/"><img src="docs/assets/sponsors/locomotive.png" alt="LOCOMOTIVE Agency" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-  </tr>
-  <tr>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-    <td align="center" width="20%"><a href="https://buy.stripe.com/3cI6oJfveehDeIL90w7EQ04"><img src="docs/assets/sponsors/open-spot.svg" alt="Open Founding Sponsor spot" width="136" /></a></td>
-  </tr>
-</table>
-
-Prefer a smaller amount, need an invoice, or want a different arrangement? Write to
-support@nodeterm.dev — and a ⭐ helps too.
+The full inventory of what the app writes where (and what the script keeps, like the
+`.nodeterm/` canvas folders inside your own repos) is documented in [docs/uninstall.md](docs/uninstall.md).
 
 ## 🛠 Build from source
 
-Requires Node.js 20+ on **macOS 12 Monterey or newer** or Linux (tmux recommended — it's
+Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` (`engines` in `package.json`) on **macOS 12
+Monterey or newer** or Linux (tmux recommended — it's
 what makes sessions survive restarts). A source checkout does **not** carry the bundled tmux: run
-`node scripts/build-tmux.mjs` once on macOS to build it into `resources/bin/tmux` (the
-release job does this automatically), or just install tmux yourself. On **Windows**, run
+`node scripts/build-tmux.mjs` once on macOS to build it into `resources/bin/tmux`, or just install
+tmux yourself. On **Windows**, run
 `bootstrap-windows.bat` from a fresh checkout first — it checks for Node, the Visual Studio
 C++ build tools and Python 3 (needed to compile node-pty) and points you at the exact
 `winget` commands for anything missing, then runs `npm ci`.
@@ -315,12 +211,18 @@ npm run dist:win   # unsigned NSIS installer + zip into dist/ (on a Windows host
 npm run server:dev # build + run the browser Server Edition (needs Node 22 + tmux)
 ```
 
+The Linux packages install with `sudo apt install ./node-terminal_*.deb` or
+`sudo dnf install ./node-terminal-*.rpm` (the package name stays `node-terminal`). The AppImage
+needs FUSE 2, which Fedora does not install by default: `sudo dnf install fuse-libs` if it exits
+with a `libfuse.so.2` error. The Windows installer is unsigned, so SmartScreen will ask
+(*More info → Run anyway*).
+
 **Minimum macOS is 12 (Monterey), for the app and for building it.** Both floors belong to
-the toolchain, not to nodeterm: Electron 42 ships binaries for Monterey and up, so the `.dmg`
+the toolchain, not to DisTerm: Electron 42 ships binaries for Monterey and up, so the `.dmg`
 does not launch on Big Sur, and the `esbuild` binary that Vite and the Server Edition build
 use is compiled with Go 1.25, which dropped macOS 11 — on Big Sur `npm install` dies in
 esbuild's postinstall with `dyld: Symbol not found: _SecTrustCopyCertificateChain`, and
-nothing downstream (`electron-vite`, `server:dev`) exists. An older Mac can still use nodeterm
+nothing downstream (`electron-vite`, `server:dev`) exists. An older Mac can still use DisTerm
 by running the [Server Edition](./docs/SERVER.md) on a Linux host and opening it in a browser.
 
 ## ⌨️ Keyboard shortcuts
@@ -344,7 +246,7 @@ These are the defaults — every one of them is remappable in **Settings → Key
 **Pasting screenshots on macOS:** in a terminal, **Cmd+V** saves the image and pastes its
 file path. **Ctrl+V** sends a control key to the foreground program. A local agent with
 clipboard-image support, such as Claude Code, may attach the image directly at its input
-prompt; shells and editors give that key other meanings. nodeterm does not detect this
+prompt; shells and editors give that key other meanings. DisTerm does not detect this
 capability or retry with the other route. Use Cmd+V for SSH sessions: the image is uploaded
 and its remote path is pasted. In Server Edition, image paste uploads to the terminal host
 and depends on browser clipboard access; Ctrl+V does not transfer the browser's clipboard
@@ -366,20 +268,22 @@ on macOS** and applies to both canvas and kanban terminals.
   to a remote agent over SSH — so remote projects drop in without touching the canvas UI.
 - **React Flow is the single source of truth** for live nodes; projects persist serialized
   nodes to disk, and tmux keeps sessions alive across restarts.
-- **Three surfaces** — the desktop app, the browser **Server Edition**, and the
-  **mobile companion** (a separate SwiftUI repo) all ride the same core + transport seams.
+- **Two surfaces** — the desktop app and the browser **Server Edition** ride the same core +
+  transport seams.
 
-See [`docs/architecture/`](./docs/architecture/README.md) for runtime diagrams and a code map
-generated from the imports, [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the
+See [`docs/architecture/`](./docs/architecture/README.md) for runtime diagrams, a task-oriented
+code map and a graph generated from the imports, [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the
 design docs under [`docs/`](./docs) for deeper notes.
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. **Start with [CONTRIBUTING.md](./CONTRIBUTING.md)** —
-setup, the process-boundary rules, and the house rules that come up in review.
-[CLAUDE.md](./CLAUDE.md) is the deep reference behind them (and is loaded automatically if
-you work with an AI coding agent). Questions or bug reports are also happy at
-[nodeterm.dev/support](https://nodeterm.dev/support) / support@nodeterm.dev. nodeterm is licensed under the
+This is a personal fork, so issues and pull requests here may not be actively maintained.
+Contributions meant for the upstream project should go to
+[eneskirca/nodeterm](https://github.com/eneskirca/nodeterm).
+
+If you do work on this code, **start with [CONTRIBUTING.md](./CONTRIBUTING.md)** — setup, the
+process-boundary rules, and the house rules. [docs/reference](./docs/reference) is the deep reference behind
+them, and [CLAUDE.md](./CLAUDE.md) is the short version loaded automatically if you work with an AI coding agent. DisTerm is licensed under the
 [Business Source License 1.1](https://mariadb.com/bsl11/) — you can use, modify,
 and redistribute it, including in production, except offering it as a competing
 product or service or running a copy whose license or usage-limit checks were removed
@@ -394,14 +298,30 @@ the project, and that the project may continue to relicense future versions
 
 **[BUSL-1.1](./LICENSE)** ([Business Source License](https://mariadb.com/bsl11/)): you may
 copy, modify, redistribute, and — under the Additional Use Grant — make **production
-use** of nodeterm, with two exceptions: you may not offer it (hosted, embedded, or as a
-standalone product/service) in a way that **competes** with nodeterm or with the
+use** of this software, with two exceptions: you may not offer it (hosted, embedded, or as a
+standalone product/service) in a way that **competes** with the Licensed Work or with the
 Licensor's products built on it, and you may not use in production a copy whose license
-key, entitlement or usage-limit checks have been **removed, disabled or bypassed**
-(changing that code to develop, test or contribute to nodeterm is fine). Each release automatically becomes plain **MIT** four
-years after it is published. See [`LICENSE`](./LICENSE) for the full terms and
+key, entitlement or usage-limit functionality has been **moved, changed, disabled or circumvented**
+(changing that code to develop, test or contribute is fine). Each version automatically becomes
+plain **MIT** four years after it is published. See [`LICENSE`](./LICENSE) for the full terms and
 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for the bundled open-source
-components. For a commercial license beyond the grant, contact eneskirca@gmail.com.
+components.
+
+The Licensor's commercial-licensing contact, eneskirca@gmail.com, is for the original nodeterm
+project, not for this fork.
+
+## Attribution
+
+DisTerm is a fork of [nodeterm](https://github.com/eneskirca/nodeterm) by Enes Kirca, licensed
+under BUSL-1.1.
 
 > "Claude" and "Claude Code" are trademarks of Anthropic, and "Trello" is a trademark of
-> Atlassian; nodeterm is not affiliated with or endorsed by either.
+> Atlassian; DisTerm is not affiliated with or endorsed by either.
+
+---
+
+<div align="center">
+
+Made in Costa Rica · https://distriib.com · support@distriib.com
+
+</div>

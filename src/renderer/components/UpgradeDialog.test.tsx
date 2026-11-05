@@ -28,6 +28,8 @@ vi.mock('../state/entitlement', async () => {
 import { UpgradeDialog } from './UpgradeDialog'
 import { useUpgradeGate } from '../state/upgradeGate'
 import { useProjectLimit } from '../state/projectLimit'
+import { useRelayAvailability } from '../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -66,6 +68,13 @@ function render(state: ProjectLimitState): string[] {
 }
 
 describe('UpgradeDialog', () => {
+  it('says which of what it lists this build cannot deliver, only while there is no relay', () => {
+    useRelayAvailability.setState({ configured: false })
+    expect(render(INACTIVE_PROJECT_LIMIT)[2]).toContain(RELAY_UNAVAILABLE_REASON)
+    useRelayAvailability.setState({ configured: true })
+    expect(render(INACTIVE_PROJECT_LIMIT)[2]).toBeUndefined()
+  })
+
   it('names the gated feature', () => {
     expect(render(INACTIVE_PROJECT_LIMIT)[0]).toBe('Live links is a Pro feature')
   })

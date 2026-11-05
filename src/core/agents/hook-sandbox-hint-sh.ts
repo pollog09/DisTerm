@@ -25,7 +25,7 @@
 
 /** Both platforms, line 1: what actually failed, and what NOT to do about it. */
 export const CODEX_SANDBOX_BLOCKED_LINE =
-  "Codex's sandbox blocked this connection to nodeterm. nodeterm itself is running — do not relink or restart it."
+  "Codex's sandbox blocked this connection to DisTerm. DisTerm itself is running — do not relink or restart it."
 
 /** Both platforms, line 2: the one action that works everywhere. */
 export const CODEX_SANDBOX_RETRY_LINE =

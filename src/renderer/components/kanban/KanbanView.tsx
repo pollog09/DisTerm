@@ -109,7 +109,7 @@ export type KanbanCreateChoice =
   | { kind: 'terminal'; shell?: string }
   | { kind: 'sticky' }
   | { kind: 'browser' }
-  | { kind: 'agent'; agentId: AgentId }
+  | { kind: 'agent'; agentId: AgentId; shell?: string }
 
 /** One "+ New" menu entry (label + the choice it fires). */
 export interface KanbanCreateOption {
@@ -534,7 +534,7 @@ export const KanbanView = memo(function KanbanView({
         icon: <IconAgent />
       })),
       { key: 'terminal', label: 'Terminal', choice: { kind: 'terminal' }, icon: <IconTerminal /> },
-      ...wslCreateOptions(wslTerminals),
+      ...wslCreateOptions(wslTerminals, !disabledAgents.includes('claude')),
       { key: 'browser', label: 'Browser', choice: { kind: 'browser' }, icon: <IconWeb /> },
       { key: 'sticky', label: 'Sticky note', choice: { kind: 'sticky' }, icon: <IconNote /> }
     ],

@@ -110,6 +110,18 @@ export function projectLaunchInfoNow(projectId: string): ProjectLaunchInfo | nul
 }
 
 /**
+ * The shell this project's settings give a new terminal, last known. A shared value counts only once
+ * this machine trusts it, as at the spawn (`trusted.shell`): an untrusted one starts nothing.
+ */
+export function trustedProjectShell(projectId: string | null | undefined): string | undefined {
+  const info = projectId ? projectLaunchInfoNow(projectId) : null
+  const entry = info?.resolved.terminal.shell
+  if (!info || !entry) return undefined
+  if (entry.source === 'shared' && !info.trusted.shell) return undefined
+  return typeof entry.value === 'string' ? entry.value.trim() || undefined : undefined
+}
+
+/**
  * Kick off (or join) the launch-info fetch for one project. Never rejects, and never takes longer
  * than `ENSURE_WAIT_MS` — on timeout the promise resolves with whatever is cached (possibly
  * nothing), and a late answer still lands in `cache` for the NEXT read PROVIDED nothing fresher

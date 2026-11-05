@@ -59,7 +59,7 @@ export function updateTextFile(
     const file = settingsTarget(requested)
     lock = `${file}.nodeterm-lock`
     try { mkdirSync(lock) } catch (error) {
-      console.warn(`[agent-hooks] Settings lock held: ${lock}. Another nodeterm writer is updating this file right now, so this installation skipped it; the next launch tries again. A lock that stays after every writer has finished was left by an interrupted one: stop nodeterm writers, then remove it.`)
+      console.warn(`[agent-hooks] Settings lock held: ${lock}. Another DisTerm writer is updating this file right now, so this installation skipped it; the next launch tries again. A lock that stays after every writer has finished was left by an interrupted one: stop DisTerm writers, then remove it.`)
       throw error
     }
     locked = true

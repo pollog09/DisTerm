@@ -22,7 +22,7 @@
 // and never rejects: a throw becomes `{ ok: false, error }`.
 import { childArgs } from '../../core/remote-ssh/control-master'
 import {
-  SHARE_INSTALL_SCRIPT,
+  shareInstallScript,
   killVerifyCommand,
   paneCommandsByNode,
   parseKillVerify,
@@ -255,7 +255,7 @@ export function createShareTeamHandlers(deps: ShareTeamDeps): ShareTeamHandlers 
           }
         }
         try {
-          const { exitCode } = await deps.runInstall(projectId, SHARE_INSTALL_SCRIPT, chunk, ctrl.signal)
+          const { exitCode } = await deps.runInstall(projectId, shareInstallScript(), chunk, ctrl.signal)
           // A cancelled run is never "finished": the renderer must end the share, not re-probe a
           // host that may still read as ready.
           if (ctrl.signal.aborted) return INSTALL_CANCELLED

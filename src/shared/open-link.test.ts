@@ -128,7 +128,7 @@ describe('parseNodetermLink — open', () => {
     expect(parseNodetermLink('nodeterm://open?agent=claude#x').ok).toBe(false)
     expect(parseNodetermLink('https://open?agent=claude').ok).toBe(false)
     const other = parseNodetermLink('nodeterm://delete?all=1')
-    expect(other.ok ? null : other.reason).toContain('not a link nodeterm opens')
+    expect(other.ok ? null : other.reason).toContain('not a link DisTerm opens')
     expect(parseNodetermLink(42).ok).toBe(false)
   })
 })

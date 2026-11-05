@@ -1,12 +1,12 @@
 name: Release
 
-# Build, code-sign, and notarize the macOS app on every version tag (e.g. v0.1.1),
-# then publish the artifacts (dmg + zip + latest-mac.yml + blockmaps). Those files
-# are what the self-hosted update feed at https://nodeterm.dev/updates serves.
+# Build, code-sign, and notarize the macOS app, build the Linux and Windows packages, and attach
+# them all to a GitHub Release. Run by hand only, against a version tag: pick the tag as the ref when
+# dispatching, since the jobs name the release after GITHUB_REF_NAME. DisTerm has no update feed, so
+# nothing here publishes one and nothing promotes a release to "latest": it stays a prerelease until
+# someone promotes it by hand.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write # allow creating the GitHub Release (canonical artifact store)
@@ -15,8 +15,7 @@ jobs:
   release-mac:
     # Runs on a SELF-HOSTED Apple Silicon Mac (no GitHub macOS-runner minutes — those are billed
     # 10× and a slow notarization poll can burn hundreds). Everything else is identical: the runner
-    # signs + notarizes + publishes the GitHub Release, which nodeterm.dev proxies for downloads and
-    # the update feed. The runner checks out into its own _work dir, so it never touches the dev repo.
+    # signs + notarizes + publishes the GitHub Release. The runner checks out into its own _work dir, so it never touches the dev repo.
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
@@ -124,7 +123,7 @@ jobs:
       # so without this an Intel app with no sharp binary would ship without anyone noticing.
       - name: Verify the Intel app has its sharp binary
         run: |
-          unpacked="dist/mac/nodeterm.app/Contents/Resources/app.asar.unpacked/node_modules/@img"
+          unpacked="dist/mac/DisTerm.app/Contents/Resources/app.asar.unpacked/node_modules/@img"
           for pkg in sharp-darwin-x64 sharp-libvips-darwin-x64; do
             if [ ! -f "$unpacked/$pkg/package.json" ]; then
               echo "::error::$pkg is missing from the Intel app ($unpacked)"
@@ -138,9 +137,7 @@ jobs:
       # below is the canonical store — it does not consume that quota — so the extra 90-day copy
       # bought nothing. Don't add it back.
 
-      # Canonical copy of every release on GitHub. The update feed itself lives on
-      # nodeterm.dev (see the deploy step below), but keeping a GitHub Release means
-      # there is always a downloadable, versioned backup.
+      # Canonical copy of every release.
       #
       # Shell + `gh release upload --clobber` instead of softprops: uploading ~800 MB from the
       # self-hosted runner hit a mid-upload `write EPIPE` (v0.2.17) that softprops cannot retry,
@@ -157,11 +154,11 @@ jobs:
           caffeinate -dims -w $$ &
           tag="${GITHUB_REF_NAME}"
           # The linux job may already have created the release for this tag; tolerate the race.
-          # Created as PRERELEASE: a half-built release must never become "latest" (the site and
-          # the update feed follow /releases/latest). The `publish` job flips it once BOTH
-          # platform jobs have uploaded.
+          # Created as PRERELEASE: nothing in this workflow promotes it.
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true
+          # No build.publish in package.json, so electron-builder may write no yml or blockmap at all.
+          shopt -s nullglob
           n=1
           until gh release upload "$tag" dist/*.dmg dist/*.zip dist/*.yml dist/*.blockmap --clobber --repo "$GITHUB_REPOSITORY"; do
             if [ "$n" -ge 5 ]; then
@@ -173,21 +170,10 @@ jobs:
             sleep 30
           done
 
-      # Publish the feed to nodeterm.dev/updates. Fill in for your host. Example for
-      # SSH/rsync (store the private key as the DEPLOY_SSH_KEY secret):
-      #
-      # - name: Deploy update feed to nodeterm.dev
-      #   run: |
-      #     mkdir -p ~/.ssh && echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
-      #     chmod 600 ~/.ssh/id_ed25519
-      #     ssh-keyscan nodeterm.dev >> ~/.ssh/known_hosts
-      #     rsync -avz dist/*.dmg dist/*.zip dist/*.yml dist/*.blockmap \
-      #       deploy@nodeterm.dev:/var/www/nodeterm.dev/updates/
 
   # Linux build: unsigned, so it runs on a plain GitHub runner (fast + free tier), in
   # parallel with the self-hosted mac job — it must never queue behind notarization.
-  # Publishes AppImage + deb + rpm + latest-linux.yml to the SAME tag's GitHub Release; the
-  # nodeterm.dev update feed serves latest-linux.yml alongside the mac files.
+  # Publishes AppImage + deb + rpm to the SAME tag's GitHub Release.
   release-linux:
     runs-on: ubuntu-latest
     steps:
@@ -220,8 +206,7 @@ jobs:
       # Both jobs target the release for the same tag; softprops updates an existing
       # release rather than failing, so mac/linux artifact sets merge. (A same-instant
       # creation race is theoretically possible — rerunning the failed job resolves it.)
-      # prerelease: a half-built release must never become "latest" — the `publish` job
-      # flips it once both platform jobs are done.
+      # prerelease: nothing in this workflow promotes it.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -230,23 +215,9 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.rpm
-            dist/latest-linux.yml
 
-  # Windows build: UNSIGNED BETA (#454), on a plain GitHub runner. Publishes the NSIS
-  # installer + zip + latest.yml as assets on the same tag's GitHub Release. latest.yml is a
-  # PASSIVE notice feed only: `dist:win:release` stamps the package `nodeTermUpdates=manual`
-  # (see src/shared/update-platform.ts), so the shipped app checks the feed and shows a
-  # "new version available — Download" card linking the releases page, but never downloads or
-  # installs (quitAndInstall is refused in main). Self-install arrives with code signing; an
-  # unsigned auto-update is a trust downgrade. The nodeterm.dev/updates mirror must serve
-  # latest.yml the way it serves latest-mac.yml / latest-linux.yml (hosted outside this repo);
-  # the `verify-feed` job below reports whether it does.
-  #
-  # BEST-EFFORT by design: the `publish` promote gate below deliberately does NOT wait on
-  # this job, so a Windows failure never strands the mac+linux release as a prerelease. A
-  # failed run is rerun and uploads into the (possibly already published) release. Uploads
-  # use `gh release upload --clobber` (never softprops) so a late finish can't flip an
-  # already-promoted release back to prerelease by re-writing its fields.
+  # Windows build: unsigned, on a plain GitHub runner. Publishes the NSIS installer + zip as assets on
+  # the same tag's GitHub Release. Best-effort: the `publish` job deliberately does not wait on it.
   release-win:
     runs-on: windows-latest
     steps:
@@ -266,11 +237,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # make-icon + electron-vite build + electron-builder --win --x64 --publish never, stamped
-      # nodeTermUpdates=manual (plain `dist:win` stays `disabled` for local packages that must
-      # never poll). Unsigned: no signing secrets exist for Windows yet; SmartScreen will warn.
+      # make-icon + build + electron-builder --win --x64 --publish never. Unsigned: no signing
+      # secrets exist for Windows; SmartScreen will warn.
       - name: Build Windows packages (NSIS installer + zip, unsigned)
-        run: npm run dist:win:release
+        run: npm run dist:win
 
       # The artifact names are the contract (same check as win-package-smoke.yml): a silent
       # target/artifactName regression must fail here, before the upload step lies about it.
@@ -279,14 +249,10 @@ jobs:
         run: |
           ls -la dist
           version=$(node -p "require('./package.json').version")
-          test -f "dist/nodeterm-Setup-${version}.exe" || { echo "::error::NSIS installer missing"; exit 1; }
-          ls dist/nodeterm-*-win.zip >/dev/null 2>&1 || { echo "::error::win zip missing"; exit 1; }
-          test -f dist/latest.yml || { echo "::error::latest.yml (update notice feed) missing"; exit 1; }
+          test -f "dist/DisTerm-Setup-${version}.exe" || { echo "::error::NSIS installer missing"; exit 1; }
+          ls dist/DisTerm-*-win.zip >/dev/null 2>&1 || { echo "::error::win zip missing"; exit 1; }
 
-      # Deliberately narrow globs: the installer + zip + latest.yml (the passive notice feed).
-      # No *.blockmap: differential downloads belong to the self-install story that waits on
-      # signing. The feed may briefly name this version before `publish` promotes it — harmless,
-      # the card only links the releases page and never downloads a file.
+      # Deliberately narrow globs: the installer + zip.
       - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -294,12 +260,11 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           # Another platform job may already have created the release for this tag; tolerate
-          # the race. Created as PRERELEASE for the same reason the mac job does it — a
-          # half-built release must never become "latest"; the `publish` job flips it.
+          # the race. Created as PRERELEASE for the same reason the mac job does it.
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true
           n=1
-          until gh release upload "$tag" dist/nodeterm-Setup-*.exe dist/nodeterm-*-win.zip dist/latest.yml --clobber --repo "$GITHUB_REPOSITORY"; do
+          until gh release upload "$tag" dist/DisTerm-Setup-*.exe dist/DisTerm-*-win.zip --clobber --repo "$GITHUB_REPOSITORY"; do
             if [ "$n" -ge 5 ]; then
               echo "::error::asset upload failed after $n attempts"
               exit 1
@@ -309,13 +274,8 @@ jobs:
             sleep 30
           done
 
-  # Flips the release to a published "latest" only when BOTH the mac and linux jobs uploaded
-  # their assets. Until then it stays a prerelease, so /releases/latest (the site + both update
-  # feeds) keeps serving the previous complete release — a mac-runner sleep or an upload
-  # failure can no longer put a partial release in front of users. If one platform job
-  # fails, fix/rerun it; this job then runs on the rerun and publishes.
-  # release-win is deliberately NOT in `needs`: the Windows asset is an unsigned beta whose feed
-  # is a passive notice only, and its failure must never hold the mac+linux release hostage.
+  # Writes the release notes once the mac and linux jobs uploaded their assets. release-win is
+  # deliberately NOT in `needs`: its failure must never hold the notes back.
   publish:
     runs-on: ubuntu-latest
     needs: [release-mac, release-linux]
@@ -330,8 +290,7 @@ jobs:
         with:
           fetch-depth: 0 # full history + tags — notes diff against the previous release tag
 
-      # Release notes, in two layers (issue #841). Written BEFORE the promote below, so the
-      # release is complete — assets AND notes — the moment it becomes "latest".
+      # Release notes, in two layers (issue #841).
       #
       #   Layer 1  scripts/release-notes.mjs asks GitHub's own generator for the PR-resolved
       #            list (PR number, PR title, author) and regroups it into New / Improved /
@@ -397,90 +356,3 @@ jobs:
             } > notes.md
           fi
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
-
-      - name: Promote release to latest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --prerelease=false --latest
-
-      # Homebrew: the cask is NOT updated from here. It lives in the official homebrew/cask,
-      # whose autobump follows /releases/latest — which excludes prereleases, so it only ever
-      # picks up a release this publish job has promoted. (nodeterm/homebrew-tap is retired.)
-
-  # The update FEED is what installed apps actually read, and it is not the GitHub Release: the
-  # apps poll https://nodeterm.dev/updates (package.json build.publish), a mirror hosted OUTSIDE
-  # this repo. Nothing used to check it, which is how latest.yml 404'd there while every job here
-  # was green — and a check-only Windows build reports a failed automatic check only in its log, so
-  # the passive update notice was dead with no signal anywhere (U2). This job turns that hidden
-  # dependency into a visible result, AFTER the release is already promoted: it never holds a
-  # release back, a red run is the alarm.
-  #
-  # STRICT files fail the job when the mirror does not serve this tag's version within the retry
-  # window (mirror sync / CDN delay); ADVISORY files only warn. latest.yml is advisory until the
-  # mirror is confirmed to serve it — move it to STRICT then. It is checked only when release-win
-  # itself succeeded (that job is best-effort and may finish later or need a rerun).
-  #
-  # The budget is ONE deadline for the whole job, not a retry count per file, and that is the
-  # v0.4.4 lesson. Measured on run 39079366383: publish promoted at 00:25:02, this job started at
-  # 00:25:03 — one second later — and the mirror did not serve 0.4.4 until somewhere inside
-  # 00:29:43…00:30:14, i.e. ~5 minutes behind the promote, for every file AT ONCE. Under a per-file
-  # count the first STRICT file absorbs that entire wait alone, and it ran out ~30 s short: the job
-  # failed on latest-mac.yml and then passed latest-linux.yml and latest.yml seconds later, which
-  # reads as a mac-specific cache problem and is nothing of the kind. A shared deadline charges the
-  # one lag once — the first file waits, the rest are free — and it bounds a genuinely dead mirror
-  # to BUDGET_MINUTES instead of BUDGET_MINUTES × files. If STRICT spends the whole budget then
-  # ADVISORY gets exactly one attempt, deliberately: the mirror is demonstrably behind and a second
-  # full wait buys a warning nobody is waiting for. Do NOT "fix" a red run here by reordering the
-  # file list — the lag is global, so whichever file is checked first is the one that fails.
-  verify-feed:
-    runs-on: ubuntu-latest
-    needs: [publish, release-win]
-    if: ${{ always() && needs.publish.result == 'success' }}
-    steps:
-      - name: Verify the update feed serves this release
-        env:
-          FEED: https://nodeterm.dev/updates
-          STRICT: latest-mac.yml latest-linux.yml
-          ADVISORY: latest.yml
-          WIN_RESULT: ${{ needs.release-win.result }}
-          # ~2.4× the 5 min lag measured on v0.4.4, and a cap on the JOB, not on each file.
-          BUDGET_MINUTES: 12
-          INTERVAL: 30
-        run: |
-          want="${GITHUB_REF_NAME#v}"
-          # One deadline for every file, taken once up front — see the comment above the job.
-          deadline=$(( $(date +%s) + ${BUDGET_MINUTES:-12} * 60 ))
-          fail=0
-          check() {
-            f="$1"; level="$2"; got=""
-            while :; do
-              # `|| true` is load-bearing: GitHub runs this step under `bash -eo pipefail`, so a
-              # mirror that 404s makes `curl -f` exit non-zero, pipefail hands that to the
-              # assignment and `-e` kills the whole step on the FIRST attempt — no retry, no
-              # ::error::, no ::warning::, exit 22 and an empty log. A MISSING file is the case this
-              # job was written for (latest.yml 404'd on the mirror for v0.4.3) and the one the
-              # '<missing>' default below was always meant to report; advisory also has to mean
-              # advisory when the file is absent, not just when it is stale. It covers the EPIPE
-              # from `head -n 1` closing the pipe early for the same reason.
-              got=$(curl -fsSL --max-time 20 "$FEED/$f" 2>/dev/null \
-                | sed -n 's/^version:[[:space:]]*//p' | head -n 1 | tr -d "\"' \r" || true)
-              if [ "$got" = "$want" ]; then
-                echo "$FEED/$f serves $got"
-                return 0
-              fi
-              # Every file gets at least one attempt, however little budget is left.
-              left=$(( deadline - $(date +%s) ))
-              if [ "$left" -le 0 ]; then break; fi
-              echo "$FEED/$f serves '${got:-<missing>}', want $want; retrying in ${INTERVAL}s (${left}s of budget left)…"
-              sleep "$INTERVAL"
-            done
-            echo "::$level::$FEED/$f serves version '${got:-<missing>}', expected $want"
-            if [ "$level" = error ]; then fail=1; fi
-          }
-          for f in $STRICT; do check "$f" error; done
-          if [ "$WIN_RESULT" = success ]; then
-            for f in $ADVISORY; do check "$f" warning; done
-          else
-            echo "::warning::release-win result is '$WIN_RESULT'; latest.yml was not checked"
-          fi
-          exit "$fail"

@@ -572,7 +572,7 @@ async function ensureServer(): Promise<State> {
         } catch {}
       }
     }
-    throw new Error('NodeTerm Codex relay unavailable')
+    throw new Error('DisTerm Codex relay unavailable')
   } finally {
     if (ownsLock) {
       releaseProcessLock(lock)
@@ -761,7 +761,7 @@ function hookRequest(
     const token = env.NODETERM_HOOK_TOKEN
     const endpoint = hookEndpointOptions(env, pathname)
     if (!endpoint || !token || !SAFE_NODE_TOKEN.test(route.nodeToken)) {
-      reject(new Error('NodeTerm hook endpoint unavailable'))
+      reject(new Error('DisTerm hook endpoint unavailable'))
       return
     }
     const body = new URLSearchParams(fields).toString()
@@ -782,7 +782,7 @@ function hookRequest(
       }
     )
     req.on('error', reject)
-    req.setTimeout(3_000, () => req.destroy(new Error('NodeTerm hook request timed out')))
+    req.setTimeout(3_000, () => req.destroy(new Error('DisTerm hook request timed out')))
     req.end(body)
   })
 }
@@ -799,7 +799,7 @@ function hookJsonRequest<T>(route: Route, pathname: string): Promise<T> {
     const token = env.NODETERM_HOOK_TOKEN
     const endpoint = hookEndpointOptions(env, pathname)
     if (!endpoint || !token || !SAFE_NODE_TOKEN.test(route.nodeToken)) {
-      reject(new Error('NodeTerm hook endpoint unavailable'))
+      reject(new Error('DisTerm hook endpoint unavailable'))
       return
     }
     const req = request(
@@ -818,19 +818,19 @@ function hookJsonRequest<T>(route: Route, pathname: string): Promise<T> {
         res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
         res.on('end', () => {
           if (res.statusCode !== 200) {
-            reject(new Error('NodeTerm hook request failed'))
+            reject(new Error('DisTerm hook request failed'))
             return
           }
           try {
             resolve(JSON.parse(Buffer.concat(chunks).toString()) as T)
           } catch {
-            reject(new Error('NodeTerm hook returned invalid JSON'))
+            reject(new Error('DisTerm hook returned invalid JSON'))
           }
         })
       }
     )
     req.on('error', reject)
-    req.setTimeout(10_000, () => req.destroy(new Error('NodeTerm hook request timed out')))
+    req.setTimeout(10_000, () => req.destroy(new Error('DisTerm hook request timed out')))
     req.end()
   })
 }
@@ -1332,7 +1332,7 @@ function serve(): void {
                     id: message.id,
                     error: {
                       code: -32001,
-                      message: 'Codex thread is already open in another NodeTerm node'
+                      message: 'Codex thread is already open in another DisTerm node'
                     }
                   })
                 )
@@ -1381,7 +1381,7 @@ function serve(): void {
                     id: message.id,
                     error: {
                       code: -32003,
-                      message: 'NodeTerm could not uniquely resolve this Codex session'
+                      message: 'DisTerm could not uniquely resolve this Codex session'
                     }
                   })
                 )
@@ -1409,7 +1409,7 @@ function serve(): void {
                     id: message.id,
                     error: {
                       code: -32001,
-                      message: 'Codex thread is already open in another NodeTerm node'
+                      message: 'Codex thread is already open in another DisTerm node'
                     }
                   })
                 )
@@ -1439,7 +1439,7 @@ function serve(): void {
                     id: message.id,
                     error: {
                       code: -32001,
-                      message: 'Codex thread is already open in another NodeTerm node'
+                      message: 'Codex thread is already open in another DisTerm node'
                     }
                   })
                 )
@@ -1492,7 +1492,7 @@ function serve(): void {
                 id: message.id,
                 error: {
                   code: -32002,
-                  message: 'NodeTerm could not commit Codex thread ownership'
+                  message: 'DisTerm could not commit Codex thread ownership'
                 }
               })
             )
@@ -1663,7 +1663,7 @@ async function exposeThread(): Promise<void> {
 if (process.argv[2] === 'serve') serve()
 else if (process.argv[2] === 'register')
   void register().catch((error) => {
-    console.error(error instanceof Error ? error.message : 'NodeTerm Codex relay unavailable')
+    console.error(error instanceof Error ? error.message : 'DisTerm Codex relay unavailable')
     process.exit(69)
   })
 else if (process.argv[2] === 'account-read')

@@ -227,11 +227,11 @@ describe('LiveLinkPopover', () => {
     const c = chip()!
     expect(c.textContent).toBe('LIVE · 1 waiting')
     expect(c.className).toContain('live-chip--waiting')
-    expect(c.title).toBe('Viewers are waiting — open this terminal in nodeterm to let them watch.')
+    expect(c.title).toBe('Viewers are waiting — open this terminal in DisTerm to let them watch.')
     click(c)
     const p = pop()!
     expect(p.querySelector('.live-pop__status')!.textContent).toBe(
-      'Viewers are waiting — open this terminal in nodeterm to let them watch.'
+      'Viewers are waiting — open this terminal in DisTerm to let them watch.'
     )
     expect(p.querySelector('.live-pop__status')!.className).toContain('live-pop__status--waiting')
     const rows = [...p.querySelectorAll('.live-pop__viewers li')].map((e) => e.textContent)
@@ -239,7 +239,7 @@ describe('LiveLinkPopover', () => {
     expect(rows[1]).not.toContain('waiting')
   })
 
-  it('Stop sharing revokes; a stop that did not reach nodeterm says so (H23)', async () => {
+  it('Stop sharing revokes; a stop that did not reach DisTerm says so (H23)', async () => {
     render(<LiveLinkChip nodeId="n1" source="local" />)
     setLinks([link()])
     click(chip()!)
@@ -651,7 +651,7 @@ describe('LiveLinkPopover — a Control link', () => {
     expect(api.revoke).toHaveBeenCalledWith('L')
   })
 
-  it("a stop from the unsaved notice that did not reach nodeterm says so", async () => {
+  it("a stop from the unsaved notice that did not reach DisTerm says so", async () => {
     render(<LiveLinkChip nodeId="n1" source="local" />)
     setLinks([controller()])
     click(chip()!)

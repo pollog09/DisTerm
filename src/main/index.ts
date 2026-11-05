@@ -181,7 +181,7 @@ import {
 } from '../core/commit-message'
 import { initUpdater, type UpdaterHandle } from './updater'
 import { requestRendererFlush } from './renderer-flush'
-import { configureCheck, fetchCheck } from '../core/check'
+import { configureCheck } from '../core/check'
 import {
   hookServer,
   OPEN_PROJECT_CONTROL_REFUSAL,
@@ -279,7 +279,8 @@ import { createPtyPressureMonitor } from '../core/pty-pressure'
 import { registerPtmxLimitHandler } from './ptmx-limit'
 import { getDeviceId } from '../core/device-id'
 import { createPushWebhookClient } from '../core/push-webhook'
-import { PUSH_WEBHOOK_DEFAULT_API_BASE } from '../shared/push-webhook'
+import { PUSH_WEBHOOK_EXAMPLE_API_BASE } from '../shared/push-webhook'
+import { RELAY_UNAVAILABLE_REASON } from '../shared/relay-availability'
 import { initRemoteStatusPush } from './remote-ssh/remote-status-push'
 import { initCanvasSync } from '../core/canvas-sync'
 import { retainUntilDismissed } from './notifications'
@@ -369,7 +370,6 @@ import { CONTROL_REQUEST_TIMEOUT_MS } from '../shared/control-confirm'
 import { createControlForwarder, type ControlForwardReply } from './control-forward'
 import { claimOpenedBrowser } from './browser-open-claim'
 import { initTranscriptIndex, searchTranscripts } from '../core/transcript-index'
-import { initTelemetry } from './telemetry'
 import { initClaudeUsage } from './claude-usage'
 import {
   readWindowState,
@@ -837,9 +837,9 @@ function confirmQuit(parentWin: BrowserWindow | null): Promise<boolean> {
     buttons: ['Cancel', 'Quit'],
     defaultId: 0,
     cancelId: 0,
-    title: 'Quit nodeterm?',
-    message: 'Quit nodeterm?',
-    detail: 'Terminal sessions keep running in the background and will still be here next time you open nodeterm.'
+    title: 'Quit DisTerm?',
+    message: 'Quit DisTerm?',
+    detail: 'Terminal sessions keep running in the background and will still be here next time you open DisTerm.'
   }
   // Off macOS a background-mode window may be HIDDEN (tray Quit): a dialog parented to it would be
   // modal to an invisible window, so it is shown unparented there. macOS keeps its sheet as before.
@@ -1119,19 +1119,21 @@ function buildAppMenu(win: BrowserWindow): void {
   const template: Electron.MenuItemConstructorOptions[] = isMac
     ? [
         {
-          label: app.name,
+          label: 'DisTerm',
+          // Explicit labels: Electron words these roles from the app's name, which stays `node-terminal`
+          // (package.json `name` decides userData and the Keychain entry).
           submenu: [
-            { role: 'about' },
+            { role: 'about', label: 'About DisTerm' },
             { type: 'separator' },
             settingsItem,
             { type: 'separator' },
             { role: 'services' },
             { type: 'separator' },
-            { role: 'hide' },
+            { role: 'hide', label: 'Hide DisTerm' },
             { role: 'hideOthers' },
             { role: 'unhide' },
             { type: 'separator' },
-            { role: 'quit' }
+            { role: 'quit', label: 'Quit DisTerm' }
           ]
         },
         {
@@ -1165,7 +1167,8 @@ function buildAppMenu(win: BrowserWindow): void {
         }
       ]
     : [
-        { label: 'File', submenu: [{ role: 'quit' }] },
+        // Windows' own word is Exit; Electron words Linux's from the app's name, like the mac items above.
+        { label: 'File', submenu: [{ role: 'quit', label: process.platform === 'win32' ? 'Exit' : 'Quit DisTerm' }] },
         {
           label: 'Edit',
           submenu: [
@@ -1303,7 +1306,7 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#1e1e1e',
     // NT_MULTI instances are throwaway dev sandboxes: label the window so a second instance is
     // never mistaken for the real one (the dock already shows the Electron icon in dev).
-    title: NT_MULTI ? 'node-terminal (test instance)' : 'node-terminal',
+    title: NT_MULTI ? 'DisTerm (test instance)' : 'DisTerm',
     icon: linuxIcon,
     // Integrate the macOS traffic lights into our top bar (modern Mac app look). Both options are
     // macOS-only in Electron, and the renderer's tab bar reserves its 86px of left padding for
@@ -1438,6 +1441,7 @@ function createWindow(): BrowserWindow {
       void dialog
         .showMessageBox(win, {
           type: 'error',
+          title: 'DisTerm',
           message: 'The window keeps crashing',
           detail: `The interface process died repeatedly (${details.reason}). Your terminal sessions are still running.`,
           buttons: ['Reload', 'Not Now'],
@@ -2066,9 +2070,12 @@ app.whenReady().then(async () => {
     openProjects: () => workspaceStore.openProjectCount(),
     telemetryEnabled: () => settingsStore.get().telemetryEnabled
   })
-  ipcMain.handle(IPC.announcementsFetch, async () => (await fetchCheck()).messages)
-  ipcMain.handle(IPC.announcementsPopups, async () => (await fetchCheck()).popups)
-  ipcMain.handle(IPC.appUpdatePolicy, async () => (await fetchCheck()).update)
+  // DisTerm acts on nothing the feed says except the project limit, which core/project-limit.ts reads
+  // through its own `fetchCheck` calls. Upstream's banners, popups and mandatory-update policy never
+  // reach this build's UI, so the renderer's three readers get the empty answers here.
+  ipcMain.handle(IPC.announcementsFetch, async () => [])
+  ipcMain.handle(IPC.announcementsPopups, async () => [])
+  ipcMain.handle(IPC.appUpdatePolicy, async () => ({ minSupported: null, mandatory: false }))
 
   // Writable base dir for app-managed files (e.g. default git worktree location). On the platform:
   // a remote tab derives the default worktree path from it, and the worktree lives on THIS host.
@@ -2126,7 +2133,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(IPC.pairingWebhookStatus, () => pushWebhook.status())
   ipcMain.handle(IPC.pairingWebhookMint, () => pushWebhook.mint())
   ipcMain.handle(IPC.pairingWebhookRevoke, () => pushWebhook.revoke())
-  ipcMain.handle(IPC.pairingWebhookEndpoint, () => process.env.NODETERM_API_BASE || PUSH_WEBHOOK_DEFAULT_API_BASE)
+  ipcMain.handle(IPC.pairingWebhookEndpoint, () => process.env.NODETERM_API_BASE || PUSH_WEBHOOK_EXAMPLE_API_BASE)
 
   // Revoking a bridged PEER must CUT THE LIVE SESSION, not just unpin it (revocation.ts): unpinning
   // refuses only the NEXT handshake, while the open relay socket keeps full shell access — "the
@@ -4923,7 +4930,6 @@ app.whenReady().then(async () => {
   setMirrorUsageProvider(() =>
     buildMirrorUsage(usageService.snapshot(), settingsStore.get().claudeAccounts ?? [], Date.now())
   )
-  initTelemetry(() => settingsStore.get())
   // The free-tier open-project limit (core/project-limit.ts). Its state goes to THIS machine's
   // window only: sendToMain, never platform().broadcast, which also fans out to every relay peer
   // (the state carries this host's Pro and DO_NOT_TRACK facts). The Server Edition does not run it.
@@ -5217,6 +5223,7 @@ app.whenReady().then(async () => {
   // this Mac from anywhere. Honors settings.phoneAccessEnabled internally.
   const standingHost = initStandingHost(win, ptyManager, () => settingsStore.get(), listProjectsOutput, hostBridge)
   ipcMain.on(IPC.remoteStandingHostSet, (_e, enabled: boolean) => standingHost.setEnabled(!!enabled))
+  ipcMain.handle(IPC.remoteRelayConfigured, () => relayAllowed())
   // Reconcile from persisted settings on launch (starts hosting if enabled).
   standingHost.syncFromSettings()
   // Interactive relay CLIENT (Stage 4): connect OUT to another desktop's host. `connectRelayClient`
@@ -5236,7 +5243,7 @@ app.whenReady().then(async () => {
       // No Pro gate on the client: the paywall is the HOST minting the pairing token, so a valid offer
       // is the credential (the paywall is host-side). The dev/relay gate still applies.
       if (!relayAllowed()) {
-        throw new Error('Remote access is unavailable in development builds (set NODETERM_RELAY_URL).')
+        throw new Error(RELAY_UNAVAILABLE_REASON)
       }
       // A hosted team's join code (a Server Edition hosting over the relay). It runs the CORE relay
       // client with no pin store, so the host key never reaches approved-devices; the pairing-offer

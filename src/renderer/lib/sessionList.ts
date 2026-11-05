@@ -268,7 +268,7 @@ export function sessionStateAgeTitle(
   const when = label.replace(/^seen /, '')
   if (clock === 'seen') return `Last hook event ${when}. The current state is unknown until the agent reports one.`
   const what = lastSeenState ? ` (${STATE_LABEL[sessionStatusKind(lastSeenState)]})` : ''
-  return `Last hook event ${when}${what}, before nodeterm restarted. The current state is unknown until the agent reports again.`
+  return `Last hook event ${when}${what}, before DisTerm restarted. The current state is unknown until the agent reports again.`
 }
 
 /**

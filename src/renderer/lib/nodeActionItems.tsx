@@ -45,6 +45,8 @@ import { useAgentStatus } from '../state/agentStatus'
 import { drivingNodeIds, useBrowserLease } from '../state/browserLease'
 import type { ModelDiscoveryStatus } from '../state/modelGateway'
 import { useSettings } from '../state/settings'
+import { nodePaneRunsInWsl, WSL_PANE_EXIT_HINT } from '../state/wslTerminals'
+import { useProjects } from '../state/projects'
 import { useSystemAccount } from '../state/systemAccount'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
 import {
@@ -564,6 +566,7 @@ function sessionRows(nodeId: string, ctx: NodeActionCtx, hidden: readonly string
   const sessionId = restartSessionId(st?.sessionId, n?.data.agentSessionId)
   const gate = restartEligibility(sourceAgentId, st?.state, sessionId)
   const settings = useSettings.getState().settings
+  const wslPane = nodePaneRunsInWsl(n?.data, useProjects.getState().activeProjectId, ctx.sessionSource)
   const variants = sourceAgentId
     ? reopenVariants(sourceAgentId, settings.customAgents, settings.disabledAgents)
     : []
@@ -588,7 +591,9 @@ function sessionRows(nodeId: string, ctx: NodeActionCtx, hidden: readonly string
     ? gate.reason === 'working'
       ? 'This session is busy — restart it once its turn (or permission prompt) is done.'
       : 'Nothing to resume yet — this session has not reported an id.'
-    : // Not every dead end is visible from here: the closure ALSO refuses a tmux
+    : wslPane
+      ? WSL_PANE_EXIT_HINT
+      : // Not every dead end is visible from here: the closure ALSO refuses a tmux
       // session that is closed / ended / gone, and a pane it cannot observe at all
       // (tmux off / absent — it pre-flights one `pane_current_command` before writing
       // anything). Only the node knows the first, and the second costs an IPC that must
@@ -609,7 +614,9 @@ function sessionRows(nodeId: string, ctx: NodeActionCtx, hidden: readonly string
     ? pauseGate.reason === 'working'
       ? 'This session is busy — try again once its turn (or permission prompt) is done.'
       : 'Nothing to resume yet — this session has not reported an id.'
-    : detachedHint(ctx, ids[0])
+    : wslPane
+      ? WSL_PANE_EXIT_HINT
+      : detachedHint(ctx, ids[0])
   const restartRows: MenuItem[] = [
     {
       label: 'Restart agent',
@@ -663,10 +670,13 @@ function sessionRows(nodeId: string, ctx: NodeActionCtx, hidden: readonly string
             disabled:
               !clearEnvEligibility(sourceAgentId, sessionId).ok ||
               ctx.sessionSource === 'relay' ||
+              wslPane ||
               !ctx.attached(ids[0]),
             hint: !clearEnvEligibility(sourceAgentId, sessionId).ok
               ? 'Nothing to resume yet — this session has not reported an id.'
-              : ctx.sessionSource === 'relay'
+              : wslPane
+                ? WSL_PANE_EXIT_HINT
+                : ctx.sessionSource === 'relay'
                 ? 'Restart the shell on the machine hosting this relay session.'
                 : detachedHint(ctx, ids[0]) ??
                   'Restarts the session with gateway/provider env stripped — uses your own subscription/credentials.',
@@ -814,7 +824,9 @@ export function buildAccountSwitchRows(nodeId: string, ctx: NodeActionCtx): Menu
     ? gate.reason === 'working'
       ? 'This session is busy — switch it once its turn (or permission prompt) is done.'
       : 'Nothing to resume yet — this session has not reported an id.'
-    : detachedHint(ctx, nodeId)
+    : nodePaneRunsInWsl(n?.data, useProjects.getState().activeProjectId, ctx.sessionSource)
+      ? WSL_PANE_EXIT_HINT
+      : detachedHint(ctx, nodeId)
   return [
     // Switch this running Claude node onto another account already logged in on its
     // machine — this one, or the SSH host its pane runs on — with no /login in the pane

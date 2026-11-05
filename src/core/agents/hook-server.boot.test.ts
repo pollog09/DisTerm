@@ -26,7 +26,7 @@ describe('nonfatal hook startup used by both application shells', () => {
     const warning = await h.startForApp()
     expect(warning).toContain('Agent hooks are disabled')
     expect(warning).toContain(h.endpointFilePath())
-    expect(warning).toContain('restart nodeterm')
+    expect(warning).toContain('restart DisTerm')
     expect(h.getPort()).toBe(0)
     expect(h.getToken()).toBe('')
     expect(fs.readFileSync(h.endpointFilePath(), 'utf8')).toBe('NODETERM_HOOK_PO')
@@ -48,7 +48,7 @@ describe('nonfatal hook startup used by both application shells', () => {
     expect(await owner.startForApp()).toBeNull()
     const contents = fs.readFileSync(owner.endpointFilePath(), 'utf8')
     const other = hook()
-    expect(await other.startForApp()).toContain('Close any other nodeterm instance')
+    expect(await other.startForApp()).toContain('Close any other DisTerm instance')
     expect(other.getPort()).toBe(0)
     expect(fs.readFileSync(owner.endpointFilePath(), 'utf8')).toBe(contents)
     const response = await fetch(`http://127.0.0.1:${owner.getPort()}/verify`, {

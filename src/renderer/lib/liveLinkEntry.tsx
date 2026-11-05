@@ -42,11 +42,18 @@ export interface LiveLinkAvailabilityFacts {
   source: SessionSource | null
   /** This machine's active links (the store's list length). */
   activeLinks: number
+  /** This core has a relay server. Absent is not a refusal; see `shareDisabledReason`. */
+  relayConfigured?: boolean | null
 }
 
 /** Why a live link cannot be created for a node seen through these facts, or null. */
 export function liveLinkUnavailable(f: LiveLinkAvailabilityFacts): string | null {
-  return shareDisabledReason({ serverEdition: f.serverEdition, relayTab: f.source === 'relay', activeLinks: f.activeLinks })
+  return shareDisabledReason({
+    serverEdition: f.serverEdition,
+    relayTab: f.source === 'relay',
+    activeLinks: f.activeLinks,
+    relayConfigured: f.relayConfigured
+  })
 }
 
 export interface LiveLinkOpenDeps {
@@ -299,6 +306,8 @@ export function liveLinkCommands(o: {
   /** Open the Live chat drawer (on the link picked last). */
   openChat: () => void
   confirmStopAll: () => void
+  /** Stop all reaches the relay's server: with none configured there is nothing to stop. Absent = yes. */
+  relayConfigured?: boolean | null
 }): Command[] {
   return [
     {
@@ -320,7 +329,8 @@ export function liveLinkCommands(o: {
           }
         ]
       : []),
-    ...(showsStopAll({ serverEdition: o.serverEdition, entitled: o.entitled, activeLinks: o.activeLinks })
+    ...((o.relayConfigured === undefined || o.relayConfigured === true) &&
+    showsStopAll({ serverEdition: o.serverEdition, entitled: o.entitled, activeLinks: o.activeLinks })
       ? [
           {
             id: 'live-links-stop-all',

@@ -71,7 +71,7 @@ export function TmuxBanner({ onInstall }: { onInstall?: (command: string) => voi
       : phase === 'ready'
         ? 'tmux is now available for new local terminals. Existing plain-shell terminals are not upgraded.'
         : phase === 'failed'
-          ? 'The install hasn’t completed. Check the terminal node for errors, or install tmux with your package manager and restart nodeterm.'
+          ? 'The install hasn’t completed. Check the terminal node for errors, or install tmux with your package manager and restart DisTerm.'
           : persistenceDescription(status)
 
   const showInstall =

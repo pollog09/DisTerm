@@ -165,7 +165,7 @@ export function LicenseSection({
     <SettingsSection
       id="license"
       title="License"
-      description="Manage your nodeterm Pro subscription."
+      description="Manage your DisTerm Pro subscription."
       isActive={isActive}
       searchEntries={ENTRIES}
     >

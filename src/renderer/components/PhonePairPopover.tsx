@@ -12,6 +12,8 @@ import {
   relayOnlyExplanation
 } from '@shared/pairing-gate'
 import { thisMachine } from '@renderer/lib/machineName'
+import { useRelayConfigured } from '@renderer/state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 /** Same table the Phone settings section prints from — see @shared/ssh-server. */
 const sshServer = sshServerCopy(hostOsFromNavigator())
@@ -50,6 +52,7 @@ export function PhonePairPopover({
 
   const phoneAccessEnabled = useSettings((s) => s.settings.phoneAccessEnabled)
   const updateSettings = useSettings((s) => s.update)
+  const relay = useRelayConfigured()
 
   const togglePhoneAccess = (next: boolean): void => {
     updateSettings({ phoneAccessEnabled: next })
@@ -62,11 +65,12 @@ export function PhonePairPopover({
     if (phase === 'waiting') void start()
   }
 
-  // Straight into the QR on open (local-network pairing is free — no gate here).
+  // Straight into the QR on open, once this build is known to have a relay: with none, pairing is
+  // off here as it is in Settings → Phone, and the popover says why instead.
   useEffect(() => {
-    void start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run exactly once, on open
-  }, [])
+    if (relay === true) void start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run exactly once, when the answer lands
+  }, [relay])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -87,7 +91,9 @@ export function PhonePairPopover({
       >
         <div className="phone-pair__title">Pair your phone</div>
 
-        {phase === 'waiting' && qr ? (
+        {relay === false ? (
+          <div className="phone-pair__warn">{RELAY_UNAVAILABLE_REASON}</div>
+        ) : phase === 'waiting' && qr ? (
           gate === 'relay-off' || gate === 'relay-dev' ? (
             <div className="phone-pair__warn">
               {relayGateMessage(gate, `Reach ${thisMachine()} from anywhere`)}
@@ -122,8 +128,7 @@ export function PhonePairPopover({
                 <div className="phone-pair__hint">{relayOnlyExplanation(windowsKeyFile)}</div>
               ) : relayPlan === 'dev' ? (
                 <div className="phone-pair__warn">
-                  Dev build: the relay is off regardless of the toggle, so this code pairs
-                  LAN-only. Run a packaged build — or set NODETERM_RELAY_URL — for remote access.
+                  {RELAY_UNAVAILABLE_REASON}
                 </div>
               ) : !phoneAccessEnabled ? (
                 <div className="phone-pair__warn">
@@ -154,7 +159,7 @@ export function PhonePairPopover({
               <div className="phone-pair__hint">LAN-only pairing — remote access is off.</div>
             ) : relayResult === 'dev' ? (
               <div className="phone-pair__hint">
-                LAN-only pairing — dev builds disable the relay (set NODETERM_RELAY_URL to test).
+                LAN-only pairing. {RELAY_UNAVAILABLE_REASON}
               </div>
             ) : null}
           </>
@@ -182,8 +187,9 @@ export function PhonePairPopover({
             <div className="phone-pair__row-sub">E2E encrypted over the relay — not just your LAN.</div>
           </div>
           <Switch
-            checked={phoneAccessEnabled}
+            checked={phoneAccessEnabled && relay === true}
             onChange={togglePhoneAccess}
+            disabled={relay !== true}
             ariaLabel={`Reach ${thisMachine()} from anywhere`}
           />
         </div>

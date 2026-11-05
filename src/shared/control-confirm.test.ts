@@ -428,7 +428,7 @@ describe('waiveChoices — what the dialog offers, and what each choice promises
     // project bound would promise something the grant does not keep.
     const session = waiveChoices({ id: 'p1', name: 'web-app' }).find((c) => c.value === 'session')!
     expect(session.label).toContain('any project')
-    expect(session.label).toContain('until nodeterm quits')
+    expect(session.label).toContain('until DisTerm quits')
     expect(session.label).not.toContain('web-app')
   })
 

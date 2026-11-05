@@ -22,6 +22,7 @@ import { FindBar } from '../FindBar'
 import { useProjects } from '../../state/projects'
 import { isRemoteProjectId, useSession, useSessionStores } from '../../session/session'
 import { relayStatusGates } from '../../terminal/relay-status-gates'
+import { nodePaneRunsInWsl } from '../../state/wslTerminals'
 import { REMOTE_PROJECT_SPAWN_REFUSAL, spawnBelongsElsewhere, useOwningProjectId } from '../../session/owning-project'
 import { isHostedReadOnly } from '../../state/hostedTeams'
 import { useSettings } from '../../state/settings'
@@ -223,7 +224,10 @@ export function ModalTerminal({
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
   // MIRROR TerminalNode: the meter's rehydration reads the same session the ⌘M view does.
   const transcript = transcriptSessionFor({ live: agentSessionId, persisted: spawn.agentSessionId, cwd: spawn.cwd })
-  useContextEnsure(api.context, nodeId, spawn.agentId ?? observedAgentId, transcript.sessionId, transcript.cwd,
+  // MIRROR TerminalNode: nothing here can read a distribution's transcript, and the resolver's cwd
+  // fallback would answer with another conversation's.
+  const paneInWsl = nodePaneRunsInWsl(spawn, owningProject ?? owningProjectId(), session.source)
+  useContextEnsure(api.context, nodeId, spawn.agentId ?? observedAgentId, paneInWsl ? null : transcript.sessionId, transcript.cwd,
     effectiveAccountId(spawn.accountId, observedAccount, claudeAccounts))
   // One shallow-compared subscription for the whole appearance slice — see useXtermVisualSettings.
   // MIRROR TerminalNode: scoped to the OWNING project (`owningProjectId`, the active one — a modal
@@ -272,7 +276,7 @@ export function ModalTerminal({
     // spans codex and gemini too) — see lib/transcriptGates.ts. And on `gates.transcriptSearch`: it
     // reads THIS machine's transcripts (`window.nodeTerminal.claude`), never a relay host's, and a
     // team tab's card holds the HOST's session id.
-    searchTranscript: gates.transcriptSearch && readsClaudeTranscript(spawn.agentId),
+    searchTranscript: gates.transcriptSearch && readsClaudeTranscript(spawn.agentId) && !paneInWsl,
     open: searchOpen,
     readBuffer
   })

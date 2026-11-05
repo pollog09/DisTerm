@@ -5,5 +5,5 @@
 // chunks in every download, for a feature a sketching board does not need. Rejecting here makes
 // a mermaid-looking paste fall back to plain text; the dialog's entry is hidden in the editor.
 export async function parseMermaidToExcalidraw(): Promise<never> {
-  throw new Error('Text to diagram is not available in nodeterm')
+  throw new Error('Text to diagram is not available in DisTerm')
 }

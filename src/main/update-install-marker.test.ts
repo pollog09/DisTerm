@@ -79,7 +79,7 @@ describe('update-failed marker (U6)', () => {
 
   it('says why in one line', () => {
     expect(describeUpdateInstallFailure({ reason: 'preflight', code: 10, version: '0.4.5' })).toMatch(
-      /update to 0\.4\.5 did not install: nodeterm was still running/
+      /update to 0\.4\.5 did not install: DisTerm was still running/
     )
     expect(describeUpdateInstallFailure({ reason: 'preflight', code: 20, version: null })).toMatch(/could not verify/)
   })

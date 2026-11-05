@@ -134,6 +134,7 @@ import { runResume } from '../core/relay/team-resume'
 import { launchHeadless } from '../core/headless-launch'
 import { HEADLESS_COLS, HEADLESS_ROWS, localNodePtyOptions } from '../shared/node-pty-options'
 import { assembleResumeCommand } from '../shared/agents/launch'
+import { RELAY_UNAVAILABLE_REASON } from '../shared/relay-availability'
 import { gatePermissionMode, type AgentId, type BuiltinAgentId } from '../shared/agents/config'
 import {
   createWatchLinkService,
@@ -147,12 +148,13 @@ import { createWatchLinkApi } from '../core/watch-link/api'
 import { WatchLinkStore } from '../core/watch-link/store'
 import { createWatchPty, watchRemoteFor, watchRemoteRecords, type WatchRemote } from '../core/watch-link/pty-seam'
 
-// Same env-override + default as src/core/check.ts / license.ts / src/main/telemetry.ts — each
-// shell derives it locally rather than sharing an import (src/server must not import src/main).
-const API_BASE = process.env.NODETERM_API_BASE || 'https://api.nodeterm.dev'
-// The hosted team relay's wss endpoint. Same env override + default as the desktop's RELAY_URL
-// (src/main/remote/host-service.ts), derived locally for the same reason as API_BASE.
-const RELAY_URL = process.env.NODETERM_RELAY_URL || 'wss://relay.nodeterm.dev'
+// The backend for relay tokens and everything else this shell talks to. No default, like the
+// desktop's (src/main/remote/host-service.ts); derived locally because src/server must not import
+// src/main.
+const API_BASE = process.env.NODETERM_API_BASE || ''
+// The hosted team relay's wss endpoint. No default either: with none, hosting stays off and
+// `team status` says why.
+const RELAY_URL = process.env.NODETERM_RELAY_URL || ''
 /** How long close() waits for the live-link service's last write (the desktop races 1.5 s). */
 const WATCH_LINKS_STOP_MS = 2_000
 
@@ -1122,7 +1124,7 @@ export async function startServer(
   })
   if (otherServerHere) {
     console.error(
-      'Hosted team relay: NOT started — another nodeterm server is already running on this data ' +
+      'Hosted team relay: NOT started — another DisTerm server is already running on this data ' +
         `directory (${config.dataDir}). Stop it, or give this server its own --data-dir.`
     )
   } else {
@@ -1151,6 +1153,7 @@ export async function startServer(
       return null
     })
     if (hostedStart === 'started') console.log('Hosted team relay: ON (see `team status`).')
+    else if (hostedStart === 'no-relay') console.log(`Hosted team relay: OFF. ${RELAY_UNAVAILABLE_REASON}`)
     else if (hostedStart === 'host-key-unreadable') {
       console.error('Hosted team relay: OFF — the host key could not be read (see above; `team status`).')
     }
@@ -1175,7 +1178,7 @@ export async function startServer(
     relayUrl: RELAY_URL,
     store: new WatchLinkStore({ file: path.join(config.dataDir, 'watch-links.json') }),
     entitlement: () => null,
-    relayAllowed: () => true,
+    relayAllowed: () => !!RELAY_URL,
     nodeState: (nodeId) => workspaceNodeState(workspaceStore, nodeId),
     clients: {
       attach: (sink) => platform.attach(sink, { quiet: true, selfPaced: true }),
@@ -1198,7 +1201,7 @@ export async function startServer(
   registerWatchLinkIpc(platform, watchLinks)
   // Two servers on one data dir would host (and revoke) each other's links.
   if (otherServerHere) {
-    console.error('Live links: NOT started — another nodeterm server owns this data directory.')
+    console.error('Live links: NOT started — another DisTerm server owns this data directory.')
   } else void watchLinks.init()
 
   // Headless notification host: every core service above (incl. the loopback hook server, which

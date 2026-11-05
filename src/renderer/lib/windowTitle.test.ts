@@ -9,7 +9,7 @@ import {
   windowBaseTitle
 } from './windowTitle'
 
-const BASE = 'node-terminal'
+const BASE = 'DisTerm'
 
 describe('composeWindowTitle', () => {
   it('disabled → the base title, whatever parts are around', () => {
@@ -21,12 +21,12 @@ describe('composeWindowTitle', () => {
   it('node + project + base, em-dash separated', () => {
     expect(
       composeWindowTitle({ enabled: true, baseTitle: BASE, nodeTitle: 'api', projectName: 'repo' })
-    ).toBe('api — repo — node-terminal')
+    ).toBe('api — repo — DisTerm')
   })
 
   it('no node → project + base; nothing at all → base alone', () => {
     expect(composeWindowTitle({ enabled: true, baseTitle: BASE, projectName: 'repo' })).toBe(
-      'repo — node-terminal'
+      'repo — DisTerm'
     )
     expect(composeWindowTitle({ enabled: true, baseTitle: BASE })).toBe(BASE)
   })
@@ -34,13 +34,13 @@ describe('composeWindowTitle', () => {
   it('whitespace-only parts drop out instead of leaving a dangling separator', () => {
     expect(
       composeWindowTitle({ enabled: true, baseTitle: BASE, nodeTitle: '  ', projectName: 'repo' })
-    ).toBe('repo — node-terminal')
+    ).toBe('repo — DisTerm')
   })
 
   it('a node titled exactly like its project shows once, not twice', () => {
     expect(
       composeWindowTitle({ enabled: true, baseTitle: BASE, nodeTitle: 'repo', projectName: 'repo' })
-    ).toBe('repo — node-terminal')
+    ).toBe('repo — DisTerm')
   })
 })
 
@@ -97,8 +97,8 @@ describe('base title capture + apply', () => {
 
   it('captures the boot title once, before any write, and restores through it', () => {
     expect(windowBaseTitle()).toBe(BASE)
-    applyWindowTitle('api — repo — node-terminal')
-    expect(document.title).toBe('api — repo — node-terminal')
+    applyWindowTitle('api — repo — DisTerm')
+    expect(document.title).toBe('api — repo — DisTerm')
     // The capture is not re-read after writes — restoring composes back to the boot title.
     applyWindowTitle(composeWindowTitle({ enabled: false, baseTitle: windowBaseTitle() }))
     expect(document.title).toBe(BASE)

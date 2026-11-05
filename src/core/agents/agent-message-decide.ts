@@ -256,7 +256,7 @@ export function hookScriptStaleNote(targetIsRemote: boolean | undefined): string
   return targetIsRemote
     ? 'the target runs a hook script that predates per-node identity; reconnect the SSH project ' +
         'from the desktop that owns it (RemoteHooks.setup() is the only writer of a remote script)'
-    : 'the target runs a hook script that predates per-node identity; restart the nodeterm app on ' +
+    : 'the target runs a hook script that predates per-node identity; restart the DisTerm app on ' +
         'that host (the boot install rewrites the script unconditionally)'
 }
 

@@ -478,7 +478,11 @@ Rough edges a user can notice (behaviour, not bypasses):
 
 Run on **packaged** builds (a dev build is never active). For the server runs, launch the app with
 `NODETERM_API_BASE=<staging URL>` in its environment (start the binary from a terminal — on macOS
-`<app>/Contents/MacOS/nodeterm`, not `open`, which drops the environment). The build must carry an
+`<app>/Contents/MacOS/DisTerm`, not `open`, which drops the environment). That variable redirects the
+license, check and project-limit calls to the staging server: see the warning under "Off by default"
+in the [README](../README.md#off-by-default-anything-that-needs-a-relay). `LICENSE` clause (b) does
+not cover production use of a copy with those mechanisms moved, changed, disabled or circumvented,
+and permits changing them for non-production purposes such as testing. The build must carry an
 allowance public key — without one it is never active, and the server runs show nothing — and the
 staging server must hold its private half: with a mismatched pair every claim's token fails
 verification and reads as "Couldn't check your free allowance".

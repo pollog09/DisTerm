@@ -164,7 +164,7 @@ describe('the first event after a restart (SessionStart of a cold-restore resume
       nodes: [{ id: 'r', kind: 'terminal' as const, title: 'r', color: '#fff', agentId: 'claude' as const }]
     }
     const row = buildStatusList([project], null, 'p', lookupFromMap(after), '').flatMap((g) => g.rows)[0]
-    expect(row.statusClock).toBe('seen') // NOT "before nodeterm restarted"
+    expect(row.statusClock).toBe('seen') // NOT "before DisTerm restarted"
     const { sessionStateAgeTitle } = await import('../lib/sessionList')
     expect(sessionStateAgeTitle('seen just now', row.statusClock)).not.toMatch(/restarted/)
   })
@@ -330,7 +330,7 @@ describe('sidebar ordering and age label', () => {
     expect(recent.statusKind).toBe('unknown') // the restored state is display-only
     const label = sessionStateAgeLabel(recent.statusUpdatedAt, now, recent.statusClock)
     expect(label).toBe('seen 1h ago')
-    expect(sessionStateAgeTitle(label!, 'restored', 'working')).toMatch(/before nodeterm restarted/)
+    expect(sessionStateAgeTitle(label!, 'restored', 'working')).toMatch(/before DisTerm restarted/)
     expect(sessionStateAgeTitle(label!, 'restored', 'working')).toMatch(/Running/)
     // A live transition wins.
     useAgentStatus.getState().setState('old', 'done', 'claude')

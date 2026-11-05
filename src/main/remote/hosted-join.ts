@@ -73,13 +73,13 @@ const CODES: Record<HostedJoinFailure, JoinErrorCode> = {
 const MESSAGES: Record<HostedJoinFailure, string> = {
   'invalid-code': 'That team code is invalid.',
   'rate-limited': 'Too many join attempts for this team today. Try again tomorrow.',
-  refused: 'The nodeterm service refused to register this device for that team.',
-  network: 'Could not reach the nodeterm service. Check the connection and try again.',
-  'bad-token': "The nodeterm service did not accept this device's token for that team.",
+  refused: 'The DisTerm service refused to register this device for that team.',
+  network: 'Could not reach the DisTerm service. Check the connection and try again.',
+  'bad-token': "The DisTerm service did not accept this device's token for that team.",
   revoked: "This device's relay access was revoked.",
   'key-locked': 'This device identity could not be loaded.',
   busy: 'Already joining this team; wait for that attempt to finish.',
-  throttled: 'The nodeterm service is limiting requests from this network. Try again in a minute.'
+  throttled: 'The DisTerm service is limiting requests from this network. Try again in a minute.'
 }
 
 /** A join that did not reach the relay. `kind` says why; the message is `[<code>] <for the human>`,
@@ -282,7 +282,7 @@ async function joinWithCode(code: JoinCode, deps: HostedJoinDeps, ev: HostedJoin
   // The client token is a bearer for the relay: never send it over plaintext to another machine,
   // whoever named the endpoint. Same rule a join code's own endpoint is held to.
   if (!allowedEndpoint(j.relayEndpoint)) {
-    throw new HostedJoinError('network', 'The nodeterm service named a relay this device will not use.')
+    throw new HostedJoinError('network', 'The DisTerm service named a relay this device will not use.')
   }
   if (JSON.stringify(record()) !== saved) await persist()
 

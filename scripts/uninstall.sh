@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # nodeterm uninstaller — removes the app and every trace it leaves on this machine.
 #
-#   curl -fsSL https://nodeterm.dev/uninstall.sh | bash -s -- --dry-run   # list what would happen
-#   curl -fsSL https://nodeterm.dev/uninstall.sh | bash -s -- --yes       # actually uninstall
-#   bash scripts/uninstall.sh                                             # interactive (asks first)
-# (a piped bash has no interactive stdin, so the piped form requires an explicit --yes)
+#   bash scripts/uninstall.sh --dry-run   # list what would happen
+#   bash scripts/uninstall.sh --yes       # actually uninstall
+#   bash scripts/uninstall.sh             # interactive (asks first)
 #
 # What it does, in order:
 #   1. PLAN: inspects the machine and prints everything it found (processes, tmux sessions,
@@ -25,7 +24,7 @@
 #        ~/.config/opencode/plugins/nodeterm-status.js (owned, marker-checked) + AGENTS.md blocks
 #      Your agents' credentials, sessions and own settings are never touched.
 #   4. Deletes nodeterm's own state: ~/.nodeterm, the Electron user-data dir, caches, prefs,
-#      logs, the Keychain entry, /Applications/nodeterm.app (or the brew cask), and the Server
+#      logs, the Keychain entry, /Applications/DisTerm.app and /Applications/nodeterm.app (or the brew cask), and the Server
 #      Edition checkout + data dir if present.
 #   5. Reports what it deliberately does NOT delete: the per-project `.nodeterm/` folders inside
 #      your repos (they are your canvas layouts, and may be committed/shared), and anything on
@@ -74,7 +73,9 @@ fi
 NT_HOME="$HOME/.nodeterm"                       # agent-hooks, ssh-cm sockets, acks, push-grants…
 SERVER_APP="${NODETERM_APP_DIR:-$HOME/.nodeterm-server-app}"
 SERVER_DATA="${NODETERM_DATA_DIR:-$HOME/.nodeterm-server}"
-APP_BUNDLE="/Applications/nodeterm.app"
+APP_BUNDLE="/Applications/DisTerm.app"
+# What this app was called before the rename: a prior install is still found and removed.
+OLD_APP_BUNDLE="/Applications/nodeterm.app"
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 COPILOT_HOME="${COPILOT_HOME:-$HOME/.copilot}"
 if [ -n "${XDG_CONFIG_HOME:-}" ] && [ "${XDG_CONFIG_HOME#\/}" != "$XDG_CONFIG_HOME" ]; then
@@ -304,8 +305,8 @@ echo
 FOUND_ANY=0
 
 # -- processes / services
-APP_PGREP="$APP_BUNDLE/Contents/MacOS"
-[ "$OS" != "Darwin" ] && APP_PGREP='/opt/nodeterm/nodeterm|nodeterm.*\.AppImage'
+APP_PGREP="$APP_BUNDLE/Contents/MacOS|$OLD_APP_BUNDLE/Contents/MacOS"
+[ "$OS" != "Darwin" ] && APP_PGREP='/opt/DisTerm/|DisTerm.*\.AppImage|/opt/nodeterm/nodeterm|nodeterm.*\.AppImage'
 if pgrep -f "$APP_PGREP" >/dev/null 2>&1; then
   plan "Quit the running nodeterm app"; FOUND_ANY=1
 fi
@@ -364,11 +365,16 @@ add_dir "$NT_HOME"
 add_dir "$USER_DATA"
 if [ "$OS" = "Darwin" ]; then
   add_dir "$HOME/Library/Caches/$APP_NAME"
+  add_dir "$HOME/Library/Caches/com.distriib.disterm"
   add_dir "$HOME/Library/Caches/com.nodeterm.app"
+  add_dir "$HOME/Library/Caches/com.distriib.disterm.ShipIt"
   add_dir "$HOME/Library/Caches/com.nodeterm.app.ShipIt"
   add_dir "$HOME/Library/Caches/$APP_NAME-updater"
+  add_dir "$HOME/Library/Preferences/com.distriib.disterm.plist"
   add_dir "$HOME/Library/Preferences/com.nodeterm.app.plist"
+  add_dir "$HOME/Library/Saved Application State/com.distriib.disterm.savedState"
   add_dir "$HOME/Library/Saved Application State/com.nodeterm.app.savedState"
+  add_dir "$HOME/Library/HTTPStorages/com.distriib.disterm"
   add_dir "$HOME/Library/HTTPStorages/com.nodeterm.app"
   add_dir "$HOME/Library/Logs/$APP_NAME"
 else
@@ -385,6 +391,9 @@ if [ "$OS" = "Darwin" ]; then
     plan "Uninstall the Homebrew cask 'nodeterm' (removes $APP_BUNDLE)"; FOUND_ANY=1
   elif [ -d "$APP_BUNDLE" ]; then
     plan "Delete $APP_BUNDLE"; FOUND_ANY=1
+  fi
+  if [ "$BREW_CASK" != 1 ] && [ -d "$OLD_APP_BUNDLE" ]; then
+    plan "Delete $OLD_APP_BUNDLE"; FOUND_ANY=1
   fi
   if security find-generic-password -s "$APP_NAME Safe Storage" >/dev/null 2>&1; then
     plan "Delete the '$APP_NAME Safe Storage' Keychain entry"; FOUND_ANY=1
@@ -451,6 +460,7 @@ if [ -n "$SYSTEMD_SCOPE" ]; then
 fi
 
 if pgrep -f "$APP_PGREP" >/dev/null 2>&1; then
+  [ "$OS" = "Darwin" ] && osascript -e 'quit app "DisTerm"' >/dev/null 2>&1
   [ "$OS" = "Darwin" ] && osascript -e 'quit app "nodeterm"' >/dev/null 2>&1
   [ "$OS" != "Darwin" ] && pkill -TERM -f "$APP_PGREP" 2>/dev/null
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -513,7 +523,12 @@ if [ "$OS" = "Darwin" ]; then
     rm -rf "$APP_BUNDLE" && ok "Deleted $APP_BUNDLE" \
       || warn "Could not delete $APP_BUNDLE — drag it to the Trash"
   fi
+  if [ "$BREW_CASK" != 1 ] && [ -d "$OLD_APP_BUNDLE" ]; then
+    rm -rf "$OLD_APP_BUNDLE" && ok "Deleted $OLD_APP_BUNDLE" \
+      || warn "Could not delete $OLD_APP_BUNDLE — drag it to the Trash"
+  fi
   security delete-generic-password -s "$APP_NAME Safe Storage" >/dev/null 2>&1 || true
+  defaults delete com.distriib.disterm >/dev/null 2>&1 || true
   defaults delete com.nodeterm.app >/dev/null 2>&1 || true
 fi
 
@@ -535,7 +550,7 @@ note "    script's agent-integration steps there if you used agents on that host
 note "  • The tmux/agent CLIs themselves (claude, codex, …) — nodeterm never owned them."
 if [ "$OS" != "Darwin" ]; then
   # Both packages carry package.json's `name`, not the productName the app is installed
-  # under: electron-builder's linuxPackageName is `node-terminal`, /opt/nodeterm is not.
+  # under: electron-builder's linuxPackageName is `node-terminal`, /opt/DisTerm is not.
   if command -v dpkg >/dev/null 2>&1 && dpkg -s node-terminal >/dev/null 2>&1; then
     note "  • The .deb package needs root to remove: sudo apt remove node-terminal"
   elif command -v rpm >/dev/null 2>&1 && rpm -q node-terminal >/dev/null 2>&1; then
@@ -545,5 +560,5 @@ if [ "$OS" != "Darwin" ]; then
       note "  • The .rpm package needs root to remove: sudo rpm -e node-terminal"
     fi
   fi
-  note "  • If you used the AppImage, delete the nodeterm-*.AppImage file you downloaded."
+  note "  • If you used the AppImage, delete the DisTerm-*.AppImage (or older nodeterm-*.AppImage) file you downloaded."
 fi

@@ -27,7 +27,7 @@ export const CONTROL_UNSUPPORTED_ERROR = 'control-unsupported-on-this-edition'
  * an agent can act on.
  */
 export const CONTROL_UNSUPPORTED_SENTENCE =
-  'Canvas control is not available on the nodeterm Server Edition. This is permanent on this ' +
+  'Canvas control is not available on the DisTerm Server Edition. This is permanent on this ' +
   'host, not a temporary failure — do not retry.'
 
 /**
@@ -136,7 +136,7 @@ export function unsupportedServerVerbMessage(verb: string): string {
   const why = verb === 'browser' ? ` ${BROWSER_UNSUPPORTED_CLAUSE}` : ''
   return (
     `${CONTROL_UNSUPPORTED_ERROR}: The "${verb}" canvas-control verb is not supported by ` +
-    `nodeterm Server Edition v1. This is not a temporary failure — do not retry.${why}`
+    `DisTerm Server Edition v1. This is not a temporary failure — do not retry.${why}`
   )
 }
 

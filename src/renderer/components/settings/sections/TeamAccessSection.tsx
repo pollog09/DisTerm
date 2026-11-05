@@ -10,6 +10,8 @@ import { Button } from '@renderer/ui/Button'
 import { thisMachine } from '@renderer/lib/machineName'
 import { CopyButton } from '@renderer/ui/CopyButton'
 import { Input } from '@renderer/ui/Input'
+import { useRelayConfigured } from '@renderer/state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 const ROWS = {
   team: {
@@ -50,6 +52,9 @@ export function TeamAccessSection({
   const used = usedCount(seatTable)
   const seatList = useMemo(() => listSeats(seatTable), [seatTable])
   const view = teamAccessView({ premium: ent.isPremium, seats, used })
+  // Inviting and hosting ride the relay. Billing below is untouched.
+  const relay = useRelayConfigured()
+  const relayOff = relay !== true
 
   const [email, setEmail] = useState('')
   const [offer, setOffer] = useState('')
@@ -91,6 +96,11 @@ export function TeamAccessSection({
       searchEntries={ENTRIES}
     >
       <SearchableRow {...ROWS.team}>
+        {relay === false ? (
+          <p className="mb-3 text-sm" style={{ color: 'var(--warn)' }}>
+            {RELAY_UNAVAILABLE_REASON}
+          </p>
+        ) : null}
         {!view.gated ? (
           <div className="space-y-5">
             {/* Seat counter */}
@@ -139,7 +149,7 @@ export function TeamAccessSection({
               />
               <Button
                 variant="primary"
-                disabled={busy || !view.canInvite}
+                disabled={busy || !view.canInvite || relayOff}
                 onClick={() => void generateInvite()}
               >
                 {busy ? 'Generating…' : 'Generate invite'}
@@ -162,7 +172,7 @@ export function TeamAccessSection({
                   <p className="text-sm text-muted">
                     Share this single-use pairing code with{' '}
                     <strong className="text-text">{offerEmail || 'your teammate'}</strong> — they
-                    paste it in nodeterm → New Remote Connection:
+                    paste it in DisTerm → New Remote Connection:
                   </p>
                   <FieldRow
                     label="Pairing code"

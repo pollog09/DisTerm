@@ -32,6 +32,7 @@ interface DockProps {
   onAddTerminal: () => void
   /** A terminal in this WSL distribution (a `wsl:<distro>` shell value). */
   onAddWslTerminal: (shell: string) => void
+  onAddWslClaude: (shell: string) => void
   onAddSticky: () => void
   /** Opens the Spawn-a-team dialog (issue #78) — the conductor lands at the Dock's default spot. */
   onSpawnTeam: () => void
@@ -89,6 +90,7 @@ export function Dock({
   canGoForward,
   onAddTerminal,
   onAddWslTerminal,
+  onAddWslClaude,
   onAddSticky,
   onSpawnTeam,
   onAddDino,
@@ -289,6 +291,13 @@ export function Dock({
                 <TerminalIcon />
                 <span>Remote…</span>
               </button>
+              {!disabledAgents.includes('claude') &&
+                wslTerminals.map((wsl) => (
+                  <button key={`claude-${wsl.shell}`} onClick={pick(() => onAddWslClaude(wsl.shell))}>
+                    <AgentIcon agentId="claude" size={18} />
+                    <span>Claude: {wsl.label}</span>
+                  </button>
+                ))}
               {BUILTIN_AGENT_IDS.filter((aid) => !disabledAgents.includes(aid)).flatMap((aid) => {
                 const inheriting = inheritingByBase.get(aid) ?? []
                 // No inheriting customs → the builtin stays a flat button (with Claude's account

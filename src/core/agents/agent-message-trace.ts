@@ -80,7 +80,7 @@ export interface DeliveryTraceInput {
 const ring: DeliveryTraceEntry[] = []
 
 /** The author stamped on a board-log line. A delivery is the app's own action, not a person's. */
-const TRACE_AUTHOR = { name: 'nodeterm', color: '#8b8b8b' } as const
+const TRACE_AUTHOR = { name: 'DisTerm', color: '#8b8b8b' } as const
 
 /**
  * Record one delivery. Never throws and never refuses: a trace failure must not fail a delivery

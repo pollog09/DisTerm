@@ -578,7 +578,7 @@ export function classifyHostImage(
   const base = image.slice(image.lastIndexOf('\\') + 1)
   const under = (dir: string | null | undefined): boolean =>
     typeof dir === 'string' && dir.trim().length > 0 && image.startsWith(norm(dir.trim()) + '\\')
-  if (under(installDir) || base === 'nodeterm.exe' || base === 'nodeterm-session-host.exe') {
+  if (under(installDir) || base === 'disterm.exe' || base === 'nodeterm.exe' || base === 'nodeterm-session-host.exe') {
     return 'install'
   }
   if (base === STAGED_HOST_EXE && under(stagedRoot)) return 'staged'

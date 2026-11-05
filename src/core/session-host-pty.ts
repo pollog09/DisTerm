@@ -28,14 +28,23 @@ export class SessionHostPty {
    */
   readonly ready: Promise<AttachResult>
 
+  constructor(client: SessionHostClient, name: string, spawn: SessionHostSpawnOptions, scrollback: number)
+  /** Joins a running session. `existing` is the viewer's own grid, which becomes its size claim, or
+   *  `'watch'` for a read-only viewer's attachment (`SessionHostClient.attachWatch`), whose writes,
+   *  resizes and pauses never reach the host. */
+  constructor(
+    client: SessionHostClient,
+    name: string,
+    spawn: null,
+    scrollback: number,
+    existing: 'watch' | { cols: number; rows: number }
+  )
   constructor(
     client: SessionHostClient,
     name: string,
     spawn: SessionHostSpawnOptions | null,
     scrollback: number,
-    /** A read-only viewer's attachment (`SessionHostClient.attachWatch`): `spawn` must be null. Its
-     *  writes, resizes and pauses never reach the host. */
-    mode: 'owner' | 'watch' = 'owner'
+    existing?: 'watch' | { cols: number; rows: number }
   ) {
     this.client = client
     this.name = name
@@ -56,9 +65,9 @@ export class SessionHostPty {
     }
     this.ready = spawn
       ? client.attach(name, spawn, scrollback, this.sub)
-      : mode === 'watch'
+      : existing === 'watch'
         ? client.attachWatch(name, this.sub)
-        : client.attachExisting(name, this.sub)
+        : client.attachExisting(name, this.sub, existing as { cols: number; rows: number })
     // node-pty's real spawn never rejects asynchronously (a spawn failure throws synchronously,
     // before a Session is even constructed) — an attach failure here is the closest analogue, and
     // it must not become an unhandled rejection just because some callers (write/resize/pause/

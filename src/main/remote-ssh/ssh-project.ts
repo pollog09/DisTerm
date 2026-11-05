@@ -1258,7 +1258,7 @@ export class SshProjectManager {
       !cancelled &&
       /permission denied/i.test(stderr ?? '') &&
       !(this.r.askpassAsked?.(master.pid?.()) ?? false)
-        ? ' nodeterm authenticates through its own ssh-agent, so a key held only in your system agent is not offered. Set IdentityAgent for this host in ~/.ssh/config (e.g. "IdentityAgent SSH_AUTH_SOCK" to use your login agent), or give this server an identity file.'
+        ? ' DisTerm authenticates through its own ssh-agent, so a key held only in your system agent is not offered. Set IdentityAgent for this host in ~/.ssh/config (e.g. "IdentityAgent SSH_AUTH_SOCK" to use your login agent), or give this server an identity file.'
         : ''
     const message = cancelled
       ? 'SSH connection cancelled: this key needs its passphrase.'

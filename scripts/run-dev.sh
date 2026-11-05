@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# run-dev.sh — kill the running nodeterm and launch a fresh one from this branch.
+# run-dev.sh — kill the running DisTerm and launch a fresh one from this branch.
 #
-# Kills the installed /Applications/nodeterm.app and any `electron-vite dev` instance,
+# Kills the installed /Applications/DisTerm.app (and an older nodeterm.app) and any `electron-vite dev` instance,
 # builds the renderer+main (npm run build — native modules like node-pty ship N-API
 # prebuilds, so electron-rebuild is NOT needed), then launches the Electron binary
 # against the built out/ with this branch's code. Logs to stdout/stderr.
@@ -21,9 +21,10 @@ for arg in "$@"; do
 done
 
 # --- 1. Kill any running nodeterm -----------------------------------------------
-# The installed app's main process is literally named "nodeterm"; a `dev` run is the
+# The installed app's main process is literally named "DisTerm" ("nodeterm" before the rename); a `dev` run is the
 # Electron binary (path contains node_modules/electron). Kill both, tolerate absence.
-echo "→ Stopping running nodeterm…"
+echo "→ Stopping running DisTerm…"
+pkill -x DisTerm 2>/dev/null || true
 pkill -x nodeterm 2>/dev/null || true
 pkill -f "node_modules/electron/dist/Electron.app" 2>/dev/null || true
 # `electron-vite dev` spawns an Electron whose app name is "Electron"; scope the match
@@ -47,6 +48,6 @@ fi
 
 # --- 4. Launch -----------------------------------------------------------------
 # Electron loads `main` from package.json (./out/main/index.js). Running from the repo
-# root with our binary uses this branch's built code, NOT /Applications/nodeterm.app.
-echo "→ Launching nodeterm from this branch…"
+# root with our binary uses this branch's built code, NOT the installed app.
+echo "→ Launching DisTerm from this branch…"
 exec "$ELECTRON_BIN" .

@@ -29,7 +29,7 @@ export const SHARE_ROOT_REFUSAL = Object.freeze({
   homeAncestor:
     "This project's folder contains your home directory. Whoever you share it with could read every file in it, your SSH keys included. Move the project into its own folder, then share it.",
   dataDir:
-    "This project's folder contains nodeterm's own data folder. Move the project into its own folder, then share it."
+    "This project's folder contains DisTerm's own data folder. Move the project into its own folder, then share it."
 })
 
 export interface ShareRootDeps {

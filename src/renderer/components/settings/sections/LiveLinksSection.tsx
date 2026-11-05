@@ -9,6 +9,8 @@ import { projectSessionSource, showsLiveLinks } from '../../LiveLinkChip'
 import { useEntitlement } from '../../../state/entitlement'
 import { useProjects } from '../../../state/projects'
 import { useWatchLinks } from '../../../state/watchLinks'
+import { useRelayConfigured } from '../../../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 import {
   formatRemaining,
   NOT_IN_OPEN_PROJECT,
@@ -106,7 +108,10 @@ export function LiveLinksSection({ isActive }: { isActive: boolean }): React.JSX
    *  machine, nothing else on this page changes. */
   const [stopAllResult, setStopAllResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [stoppingAll, setStoppingAll] = useState(false)
-  const stopAllShown = showsStopAll({ serverEdition, entitled: premium, activeLinks: links.length })
+  const relay = useRelayConfigured()
+  // Stop all reaches the same server links are made on; with no relay there is none to reach.
+  const stopAllShown =
+    relay === true && showsStopAll({ serverEdition, entitled: premium, activeLinks: links.length })
   useEffect(() => {
     if (!isActive) return
     setNow(Date.now())
@@ -147,6 +152,10 @@ export function LiveLinksSection({ isActive }: { isActive: boolean }): React.JSX
         ) : serverEdition ? (
           // R43: no license layer in the Server Edition yet — say so, never offer an Upgrade.
           <p className="text-sm text-muted">{SERVER_EDITION_UNSUPPORTED}</p>
+        ) : relay === false ? (
+          <p className="text-sm" style={{ color: 'var(--warn)' }}>
+            {RELAY_UNAVAILABLE_REASON}
+          </p>
         ) : premium ? (
           <div className="space-y-1">
             <p className="text-sm text-muted">

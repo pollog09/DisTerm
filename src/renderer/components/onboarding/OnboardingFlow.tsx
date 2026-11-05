@@ -11,7 +11,6 @@ import {
   dictationBinding,
   effectiveBindings
 } from '../../lib/keybindingOverrides'
-import { mobileStoreLinks, mobileStoreNames } from '../../lib/links'
 import { useSettings } from '../../state/settings'
 import { useEntitlement } from '../../state/entitlement'
 import { Switch } from '@renderer/ui/Switch'
@@ -27,7 +26,6 @@ import {
   SceneKeepAwake,
   SceneNotch,
   SceneNotify,
-  ScenePhone,
   SceneShortcuts
 } from './scenes'
 import type { CommandId } from '@shared/keybindings'
@@ -46,8 +44,7 @@ function formatSize(mb: number): string {
   return mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`
 }
 
-/** Info step + the setting it configures, one per screen. Step 0 is the welcome cover; the last
- *  step is the mobile-app announcement (info-only). Steps are addressed by ID, not index, because
+/** Info step + the setting it configures, one per screen. Step 0 is the welcome cover. Steps are addressed by ID, not index, because
  *  the notch step only exists on macOS — an index-keyed tour would shift under it. */
 const STEPS = [
   'cover',
@@ -58,8 +55,7 @@ const STEPS = [
   'notify',
   'keepawake',
   ...(isMac ? (['notch'] as const) : []),
-  'shortcuts',
-  'phone'
+  'shortcuts'
 ] as const
 type StepId = (typeof STEPS)[number]
 const STEP_COUNT = STEPS.length
@@ -284,7 +280,7 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
         <div className="onb-cover">
           <div className="onb-cover__brand">
             <OnbBrandMark />
-            <span className="onb-cover__name">nodeterm</span>
+            <span className="onb-cover__name">DisTerm</span>
           </div>
           <p className="onb-cover__tagline">A canvas of terminals — spatial, not stacked.</p>
           <div className="onb-cover__props">
@@ -339,7 +335,6 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
             )}
             {stepId === 'notch' && <SceneNotch />}
             {stepId === 'shortcuts' && <SceneShortcuts keys={paletteKeys} query={`new ${agent.label.toLowerCase()}`} pulseKey={palettePulse} />}
-            {stepId === 'phone' && <ScenePhone />}
           </div>
           <div className="onb-pane">
             <div className="onb-step-no">Step {step} of {STEP_COUNT - 1}</div>
@@ -541,7 +536,7 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
               <>
                 <h2>Know when an agent needs you</h2>
                 <p>
-                  nodeterm can notify you when an agent finishes — or gets stuck waiting on an
+                  DisTerm can notify you when an agent finishes — or gets stuck waiting on an
                   approval — while you're somewhere else. Change any time in Settings →
                   Notifications.
                 </p>
@@ -558,7 +553,7 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
               <>
                 <h2>Long runs survive your lunch break</h2>
                 <p>
-                  While an agent is working, nodeterm keeps this machine from idle-sleeping —
+                  While an agent is working, DisTerm keeps this machine from idle-sleeping —
                   and lets go the moment it finishes.
                 </p>
                 <p>
@@ -583,13 +578,13 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
               <>
                 <h2>Your agents, inside the notch</h2>
                 <p>
-                  On a MacBook, nodeterm can grow the notch into a small black capsule: a walking
+                  On a MacBook, DisTerm can grow the notch into a small black capsule: a walking
                   mascot for every agent that's working, a red dot when one needs you, and a green
                   blob when one has finished and you haven't looked yet.
                 </p>
                 <p>
                   Point at it and it opens a mini panel of your live sessions — hit <strong>Go</strong>{' '}
-                  and nodeterm comes forward with that node centred.
+                  and DisTerm comes forward with that node centred.
                 </p>
                 <div className="onb-toggle-row">
                   <Switch
@@ -610,7 +605,7 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
               <>
                 <h2>A few keys worth knowing</h2>
                 <p>
-                  Everything in nodeterm has a keyboard shortcut — and every one of them can be
+                  Everything in DisTerm has a keyboard shortcut — and every one of them can be
                   remapped.
                 </p>
                 <div className="onb-keys">
@@ -659,32 +654,6 @@ export function OnboardingFlow({ onClose }: { onClose: () => void }) {
                     </>
                   ) : null}
                   Remap anything in Settings → Keyboard Shortcuts.
-                </div>
-              </>
-            )}
-
-            {stepId === 'phone' && (
-              <>
-                <h2>Your sessions, in your pocket</h2>
-                <p>
-                  <strong>nodeterm mobile</strong> attaches to these same live tmux sessions from
-                  your phone — watch an agent work, answer a "needs you", or type into any
-                  terminal from anywhere.
-                </p>
-                <p>
-                  Grab it from {mobileStoreNames()}, then pair in seconds: Settings → Phone (or the
-                  phone button top-right) shows a QR — scan it and you're in.
-                </p>
-                <div className="onb-notify-actions">
-                  {mobileStoreLinks().map((store) => (
-                    <button
-                      key={store.id}
-                      className="onb-btn onb-btn--primary"
-                      onClick={() => window.nodeTerminal.shell.openExternal(store.url)}
-                    >
-                      {store.label}
-                    </button>
-                  ))}
                 </div>
               </>
             )}

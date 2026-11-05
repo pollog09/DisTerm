@@ -10,7 +10,7 @@ export const MAX_TEAM_ROLES = 8
 /**
  * The prompt the conductor node launches with.
  *
- * "Build with Nodeterm orchestration" is load-bearing: it is the trigger phrase the
+ * "Build with DisTerm orchestration" is load-bearing: it is the trigger phrase the
  * manage-nodeterm-canvas skill documents (canvas-control-core.ts, "Nodeterm orchestration"
  * section), and the whole station/worktree/collect-and-synthesize doctrine hangs off it —
  * re-stating that doctrine here would just be a second copy to drift. The only thing this
@@ -25,5 +25,5 @@ export function conductorPrompt(opts: { task: string; worktrees: boolean }): str
   const worktreeSentence = opts.worktrees
     ? 'Give each independent workstream its own worktree station (open-worktree per stream).'
     : 'Do not create git worktrees for this run — open the team in the shared working tree instead (spawn-team, or open-agent per stream).'
-  return `Build with Nodeterm orchestration: ${task} ${worktreeSentence}`
+  return `Build with DisTerm orchestration: ${task} ${worktreeSentence}`
 }

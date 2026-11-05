@@ -24,6 +24,7 @@ import {
 } from '@shared/watch-link-types'
 import { controlPasswordProblem, type ControlPasswordProblem } from '@shared/watch-link-password'
 import { otherMachines, thisMachine } from './machineName'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 export const ROLE_LABEL: Record<WatchLinkRole, string> = {
   viewer: 'Can watch',
@@ -134,7 +135,7 @@ export const CONTROL_CHANGE_FAILED_MESSAGE = "That change didn't take — try ag
 /** A NARROWING change (typing off, a new password) answered 'unsaved': it is in force, but the next
  *  launch would not have it — beside Stop sharing, which ends the link for good. */
 export const CONTROL_CHANGE_UNSAVED_MESSAGE =
-  "Applied, but couldn't be saved — it will undo when nodeterm restarts. Stop the link to end it for good."
+  "Applied, but couldn't be saved — it will undo when DisTerm restarts. Stop the link to end it for good."
 /** `setPassword` answered false, or did not answer: the old password still works. */
 export const PASSWORD_CHANGE_FAILED_MESSAGE = "The password wasn't changed — try again. The old one still works."
 /** How long a password save may hold the popover open before it lets go (`PASSWORD_UNCONFIRMED_MESSAGE`). */
@@ -168,9 +169,9 @@ export const PRO_GATE_FEATURE = 'Sharing a live link'
 /** R47: the create dialog's flush before create failed (or the canvas is under a conflict). */
 export const SAVE_FIRST_MESSAGE = "Save the canvas first — this terminal isn't saved yet. Nothing was shared."
 /** H23: `revoke`/`revokeAll` rejected (the Server Edition's socket was down). */
-export const STOP_FAILED_MESSAGE = "The stop didn't reach nodeterm — try again."
+export const STOP_FAILED_MESSAGE = "The stop didn't reach DisTerm — try again."
 /** Kick rejected (the same dropped socket). */
-export const KICK_FAILED_MESSAGE = "The kick didn't reach nodeterm — try again."
+export const KICK_FAILED_MESSAGE = "The kick didn't reach DisTerm — try again."
 /** Kick answered false: core found no connected viewer by that id (or its host could not end it). */
 export const KICK_NOT_DONE_MESSAGE = 'That viewer was not disconnected — they may already have left.'
 /** `sendChat` answered null or rejected: nothing reached the viewers; the draft is kept. */
@@ -233,7 +234,7 @@ export type LiveLinkTone = 'live' | 'offline' | 'refused' | 'waiting'
 /** R63: a connected viewer with no session it may join. On a machine with no watcher client of its
  *  own (Windows' session host, no local tmux, Zellij) only a terminal open in this app can be
  *  watched, so the owner is the one who can fix it — and is told how. */
-export const VIEWERS_WAITING_MESSAGE = 'Viewers are waiting — open this terminal in nodeterm to let them watch.'
+export const VIEWERS_WAITING_MESSAGE = 'Viewers are waiting — open this terminal in DisTerm to let them watch.'
 
 /** How many of a link's (or node's) connected viewers are waiting for a session (R63). */
 export function waitingViewers(links: readonly Pick<WatchLinkView, 'viewers'>[]): number {
@@ -286,14 +287,14 @@ export function chipView(links: readonly WatchLinkView[]): { label: string; tone
     return {
       label: 'LIVE · refused',
       tone: 'refused',
-      title: "nodeterm's service won't host a live link on this terminal. Open it for details."
+      title: "DisTerm's service won't host a live link on this terminal. Open it for details."
     }
   }
   if (links.some((l) => l.status === 'reconnecting')) {
     return {
       label: 'LIVE · offline',
       tone: 'offline',
-      title: "A live link on this terminal is reconnecting to nodeterm's relay. Open it for details."
+      title: "A live link on this terminal is reconnecting to DisTerm's relay. Open it for details."
     }
   }
   if (waiting > 0) return { label: `LIVE · ${waiting} waiting`, tone: 'waiting', title: VIEWERS_WAITING_MESSAGE }
@@ -317,9 +318,9 @@ export function chipView(links: readonly WatchLinkView[]): { label: string; tone
 /** One line per link in the popover (and Settings) explaining a state that needs explaining (H9):
  *  not `live`, or live with viewers waiting for a session (R63). null when there is nothing to say. */
 export function statusLine(link: Pick<WatchLinkView, 'status' | 'viewers'>): string | null {
-  if (link.status === 'reconnecting') return "Reconnecting to nodeterm's relay — viewers see no updates until it's back."
+  if (link.status === 'reconnecting') return "Reconnecting to DisTerm's relay — viewers see no updates until it's back."
   if (link.status === 'refused') {
-    return "nodeterm's service won't host this link — the Pro plan may have lapsed, or this build can't relay. Viewers can't join."
+    return "DisTerm's service won't host this link — the Pro plan may have lapsed, or this build can't relay. Viewers can't join."
   }
   if (waitingViewers([link]) > 0) return VIEWERS_WAITING_MESSAGE
   return null
@@ -399,7 +400,7 @@ export function watchableOnlyWhileOpen(o: {
   return !(o.persistence.backend === 'session-host' && o.persistence.watchJoin === true)
 }
 export function watchWhileOpenNote(): string {
-  return `On ${thisMachine()}, viewers can watch this terminal only while it is open in nodeterm; otherwise they wait until you open it.`
+  return `On ${thisMachine()}, viewers can watch this terminal only while it is open in DisTerm; otherwise they wait until you open it.`
 }
 /** Which surface a create or a share affordance is on — read by the caller, never by this module. */
 export type LiveLinkSurface = 'desktop' | 'server' | 'relay'
@@ -418,17 +419,17 @@ export function createErrorMessage(e: CreateWatchLinkError, surface: LiveLinkSur
     case 'limit-daily':
       return 'Your license created 50 live links in the last day. Try again later.'
     case 'rate-limited':
-      return "nodeterm's service is limiting requests from this network. Try again in a minute."
+      return "DisTerm's service is limiting requests from this network. Try again in a minute."
     // A timeout, a thrown fetch, a 5xx, a malformed reply or a dropped socket — never "offline".
     case 'network':
-      return "Couldn't reach nodeterm's service. Nothing was shared."
+      return "Couldn't reach DisTerm's service. Nothing was shared."
     case 'license-check':
-      return "nodeterm's service couldn't confirm your license right now. Nothing was shared; try again shortly."
+      return "DisTerm's service couldn't confirm your license right now. Nothing was shared; try again shortly."
     case 'relay-unavailable':
-      return 'Live links need the installed app.'
+      return RELAY_UNAVAILABLE_REASON
     // Absent AND unknown both answer node-missing, so the copy names neither (H8).
     case 'node-missing':
-      return "nodeterm couldn't find that terminal in a saved project. Nothing was shared."
+      return "DisTerm couldn't find that terminal in a saved project. Nothing was shared."
     case 'bad-request':
       return 'That live link request was not valid. Nothing was shared.'
     case 'persist-failed':
@@ -452,9 +453,16 @@ export function createErrorMessage(e: CreateWatchLinkError, surface: LiveLinkSur
  * `serverEdition` is `isBrowserRuntime()`, `relayTab` the node's project session — both read by the
  * caller.
  */
-export function shareDisabledReason(o: { serverEdition: boolean; relayTab: boolean; activeLinks: number }): string | null {
+export function shareDisabledReason(o: {
+  serverEdition: boolean
+  relayTab: boolean
+  activeLinks: number
+  /** False = this build has no relay server. Absent = the caller did not ask, which never refuses. */
+  relayConfigured?: boolean | null
+}): string | null {
   if (o.serverEdition) return SERVER_EDITION_UNSUPPORTED
   if (o.relayTab) return RELAY_TAB_UNSUPPORTED
+  if (o.relayConfigured === false || o.relayConfigured === null) return RELAY_UNAVAILABLE_REASON
   if (o.activeLinks >= MAX_LINKS_PER_MACHINE) return LIMIT_MACHINE
   return null
 }
@@ -509,7 +517,7 @@ export function noticeText(n: WatchLinkNotice): string | null {
       // Core ends a link for node-gone only on a DEFINITE absence (no project in the index holds it).
       if (n.reason === 'node-gone') return `The live link to ${title} ended — the terminal is no longer on any canvas.`
       // A server-side revoke: the service ended it. Which person or machine asked is not known here.
-      return `nodeterm's service ended the live link to ${title}.`
+      return `DisTerm's service ended the live link to ${title}.`
     }
     case 'control-taken':
       return controlTakenText(n)

@@ -1,3 +1,5 @@
+import { SYSTEM_NODE_COLOR_SWATCHES } from '@shared/node-colors'
+import { DEFAULT_SETTINGS } from '@shared/types'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -324,5 +326,45 @@ describe('no nested blur for the context popover', () => {
     const glassRules = CSS.split('}').filter((r) => r.includes(":root[data-nt-glass='on']") && /(ctx|color)-popover/.test(r.slice(0, r.indexOf('{'))))
     expect(glassRules.filter((r) => /backdrop-filter|--glass-(chrome|control)-bg/.test(r))).toEqual([])
     expect(CSS).toMatch(/\.ctx-popover \{[^}]*background: rgba\(var\(--popover-rgb\), 0\.98\)/)
+  })
+})
+
+describe('text on an accent fill', () => {
+  const luminance = (hex: string): number => {
+    const c = [1, 3, 5]
+      .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi + 0.05) / (lo + 0.05)
+  }
+
+  it('--on-accent clears 4.5:1 on every accent the picker offers and on both default accents', () => {
+    const ink = block(':root').get('--on-accent') as string
+    expect(ink).toBe(block(":root[data-theme='light']").get('--on-accent'))
+    const accents = [
+      ...SYSTEM_NODE_COLOR_SWATCHES.map((s) => s.value),
+      block(':root').get('--accent') as string,
+      block(":root[data-theme='light']").get('--accent') as string
+    ]
+    for (const accent of accents) {
+      expect(contrast(ink, accent), accent).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('no rule paints an accent background under hardcoded white', () => {
+    const rules = CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)
+    const offenders: string[] = []
+    for (const [, selector, body] of rules) {
+      const fill = /background(-color)?:\s*var\(--accent(-hover)?(, ?#[0-9a-f]+)?\)/.test(body)
+      if (fill && /(^|[;\s])color:\s*(#fff(fff)?|white)\b/.test(body)) offenders.push(selector.trim())
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('the default accent can be represented in the accent picker', () => {
+    expect(SYSTEM_NODE_COLOR_SWATCHES.map((s) => s.value)).toContain(DEFAULT_SETTINGS.accent)
   })
 })

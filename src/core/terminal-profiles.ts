@@ -80,6 +80,17 @@ export async function listWslDistros(exec: ProfileExec = defaultExec): Promise<s
   }
 }
 
+/** Distributions running now. `--running` starts nothing. Null: WSL did not answer, so nothing is
+ *  known to be running. */
+export async function listRunningWslDistros(exec: ProfileExec = defaultExec): Promise<string[] | null> {
+  try {
+    const result = await exec(wslExe(), ['--list', '--running', '--quiet'], WSL_LIST_TIMEOUT_MS)
+    return result.code === 0 ? parseWslDistroList(result.stdout) : null
+  } catch {
+    return null
+  }
+}
+
 /** The picker's rows. Empty on a non-Windows core, where the shell stays a free-text setting. */
 export async function listTerminalProfiles(
   platform: NodeJS.Platform | string,

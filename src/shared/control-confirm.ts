@@ -187,7 +187,7 @@ export function waiveChoices(project?: {
       label: `Don\u2019t ask again for agents in "${project.name || 'this project'}"`
     })
   }
-  out.push({ value: 'session', label: 'Don\u2019t ask again in any project until nodeterm quits' })
+  out.push({ value: 'session', label: 'Don\u2019t ask again in any project until DisTerm quits' })
   return out
 }
 
@@ -378,7 +378,7 @@ export function projectWaiverState(
 export function otherWaiverHint(via: ConfirmWaiverVia): string {
   switch (via) {
     case 'session':
-      return 'Waived in every project until nodeterm quits — revoke it in Settings → Agents.'
+      return 'Waived in every project until DisTerm quits — revoke it in Settings → Agents.'
     case 'always':
       return 'Waived permanently in every project on this computer — change it in Settings → Agents.'
     case 'bypass':

@@ -755,7 +755,7 @@ export class NativeMux {
     }
     if (!via && host.unsupported?.length) {
       this.warnOnce(
-        `[native-ssh] ${target.host}: ~/.ssh/config options nodeterm's SSH transport does not support are ignored: ${host.unsupported.join(', ')}`
+        `[native-ssh] ${target.host}: ~/.ssh/config options DisTerm's SSH transport does not support are ignored: ${host.unsupported.join(', ')}`
       )
     }
     const timeoutMs =
@@ -850,7 +850,7 @@ export class NativeMux {
   /** The ProxyCommand stream for `host` (tokens expanded), owned by `conn`. */
   private proxySocket(conn: Conn, query: HostQuery & { user?: string }, host: ResolvedHost, timeoutMs: number): Duplex {
     if (host.proxyUseFdpass) {
-      throw new Error(`ssh: ProxyUseFdpass is not supported by nodeterm's SSH transport (host ${query.host})`)
+      throw new Error(`ssh: ProxyUseFdpass is not supported by DisTerm's SSH transport (host ${query.host})`)
     }
     const cmd = expandProxyTokens(host.proxyCommand ?? '', {
       hostname: host.hostname,

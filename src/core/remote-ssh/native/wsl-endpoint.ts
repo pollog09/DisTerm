@@ -35,7 +35,7 @@ import {
 import { parseWslShell, wslShellValue } from '../../../shared/terminal-profiles'
 import { writeFileAtomic } from '../../fs-atomic'
 import { isSafeRemoteHome } from '../../remote-safety'
-import { decodeWslOutput, listWslDistros, parseWslDistroList, wslExe } from '../../terminal-profiles'
+import { decodeWslOutput, listWslDistros, parseWslDistroList, wslExe, type ProfileExec } from '../../terminal-profiles'
 import { windowsSystemDrive } from '../../win32-powershell'
 import { formatCksum, posixCksum } from '../posix-cksum'
 import type { HostQuery, ResolvedHost } from './ssh-config'
@@ -256,6 +256,13 @@ export function wslProgram(
   env: NodeJS.ProcessEnv = process.env
 ): string {
   return platform === 'win32' ? wslExe(env) : 'wsl.exe'
+}
+
+/** A {@link ProfileExec} on {@link wslRunner}, for a list that must not outlive its timeout. */
+export const wslProfileExec: ProfileExec = async (file, args, timeoutMs) => {
+  const r = await wslRunner(file)(args, { timeoutMs })
+  if (r.timedOut || r.code === null) throw new Error('wsl.exe did not answer')
+  return { code: r.code, stdout: r.stdout, stderr: r.stderr }
 }
 
 export interface WslRunResult {

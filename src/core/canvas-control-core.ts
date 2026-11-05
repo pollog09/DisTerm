@@ -382,7 +382,7 @@ function settingsVerbDocLines(): string[] {
 function reportIssueDocLines(): string[] {
   return [
     '- `report-issue --kind <code> --title <one line> --body <text> [--dry-run]` — open a GitHub',
-    '  issue in THIS project\'s repository when NODETERM ITSELF could not do something. Off by',
+    '  issue in THIS project\'s repository when DISTERM ITSELF could not do something. Off by',
     '  default: the user switches it on per project, and until then this is refused by name.',
     '  FILE WHEN the thing you could not do is a gap in the product: a verb refused because this',
     '  edition does not implement it, a capability that does not exist, a refusal whose reason is',
@@ -1117,7 +1117,7 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     '',
     ...codexSandboxGuidanceLines(CONTROL_UNREACHABLE_MSG),
     '',
-    'Orchestration ("Build with Nodeterm orchestration"): first decide what is genuinely',
+    'Orchestration ("Build with DisTerm orchestration"): first decide what is genuinely',
     'independent — for every "and then", ask whether the next step READS the previous step\'s',
     'output. If not, they are separate stations, open them all at once; if it does, open the',
     'downstream one with `--after <upstream-id>` and it starts itself when the upstream goes',
@@ -1163,7 +1163,7 @@ export function buildCanvasControlInstructions(shimPath: string): string {
 // the old and the new loop: give every flag a value, and the two loops agree.
 /** The shim's generic transport-failure sentence — exported so the agent-facing docs can quote it
  *  verbatim and the parity test holds the two ends together (issue #367). */
-export const CONTROL_UNREACHABLE_MSG = 'Could not reach nodeterm (control endpoint unreachable).'
+export const CONTROL_UNREACHABLE_MSG = 'Could not reach DisTerm (control endpoint unreachable).'
 
 /** The verb list `help` prints, DERIVED from the registry rather than re-typed — a verb added to
  *  `VERBS` is discoverable from the CLI the day it lands, which is the whole point of the verb.
@@ -1438,7 +1438,7 @@ export function buildCanvasSkillBody(shimPath: string, dialect: ShimDialect = 'p
   const agentLabels = BUILTIN_AGENT_IDS.map((id) => AGENT_CONFIG[id].label).join(' / ')
   return `---
 name: manage-nodeterm-canvas
-description: Create, organize and control nodes on the nodeterm canvas — open ${agentLabels} / terminal nodes, spawn agent teams, create git worktrees as bound groups, group/arrange/align/resize/place/rename/move nodes, link nodes to read back their work, move kanban cards, show an image/video/web page, write to or close a terminal. Use when the user says "Build with Nodeterm orchestration", asks to open nodes/sessions/terminals on the canvas, or wants work run in separate, visible canvas sessions or worktrees; wants the canvas or kanban board organized; wants results read back from nodes it opened; or wants output shown as a node. Not for in-process background subagents. Only works inside a nodeterm agent session.
+description: Create, organize and control nodes on the nodeterm canvas — open ${agentLabels} / terminal nodes, spawn agent teams, create git worktrees as bound groups, group/arrange/align/resize/place/rename/move nodes, link nodes to read back their work, move kanban cards, show an image/video/web page, write to or close a terminal. Use when the user says "Build with DisTerm orchestration", asks to open nodes/sessions/terminals on the canvas, or wants work run in separate, visible canvas sessions or worktrees; wants the canvas or kanban board organized; wants results read back from nodes it opened; or wants output shown as a node. Not for in-process background subagents. Only works inside a nodeterm agent session.
 ---
 
 # Manage the nodeterm canvas
@@ -1793,10 +1793,10 @@ Typical requests this skill covers:
 - "Rename this node/group" → \`rename\`.
 - "Color these nodes/groups by subject" → \`color --node <id,id> --color <name or hex>\` (e.g. \`--color teal\`).
 
-## Nodeterm orchestration ("Build with Nodeterm orchestration")
+## DisTerm orchestration ("Build with DisTerm orchestration")
 
-When the user says "Build with Nodeterm orchestration" (or asks you to orchestrate a build
-across Nodeterm sessions), be the orchestration chef — plan the kitchen, then run it:
+When the user says "Build with DisTerm orchestration" (or asks you to orchestrate a build
+across DisTerm sessions), be the orchestration chef — plan the kitchen, then run it:
 
 0. First decide what is actually independent. For every "and then" in your plan, ask: does
    the next step READ the previous step's output? If it does not, there is no dependency and

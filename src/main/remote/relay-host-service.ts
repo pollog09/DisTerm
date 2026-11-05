@@ -36,6 +36,7 @@ import { encodeOffer } from './pairing'
 import { loadOrCreatePeerKeyPair } from './peer-identity'
 import { isPremium as licenseIsPremium, getStoredEntitlement, licensedSeats as licenseSeats } from '../../core/license'
 import { RELAY_URL, relayAllowed as hostRelayAllowed, mintPairingToken } from './host-service'
+import { RELAY_UNAVAILABLE_REASON } from '../../shared/relay-availability'
 import { canAcceptSeat } from './seat-cap'
 import type { ScopedGuestDeps } from '../../core/relay/scoped-guest-policy'
 import { shareRootProblem } from '../../core/relay/share-root'
@@ -137,14 +138,14 @@ export function initRelayHost(
     const refusal = scopeRefusal(projectId)
     if (refusal) throw new Error(refusal)
     if (!isPremium()) {
-      throw new Error('Remote access requires nodeterm Pro.')
+      throw new Error('Remote access requires DisTerm Pro.')
     }
     if (!relayAllowed()) {
-      throw new Error('Remote access is unavailable in development builds (set NODETERM_RELAY_URL).')
+      throw new Error(RELAY_UNAVAILABLE_REASON)
     }
     const entitlement = getEntitlement()
     if (!entitlement) {
-      throw new Error('No entitlement found — please re-activate nodeterm Pro.')
+      throw new Error('No entitlement found — please re-activate DisTerm Pro.')
     }
 
     // SEAT CAP + RESERVATION — atomic (no await between reading the count and reserving). The count is

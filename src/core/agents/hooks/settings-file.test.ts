@@ -100,7 +100,7 @@ for (const remote of [false, true]) {
       expect(lstatSync(file).isSymbolicLink()).toBe(true)
     })
 
-    it('does not take over another nodeterm writer lock', async () => {
+    it('does not take over another DisTerm writer lock', async () => {
       writeFileSync(file, '{}')
       mkdirSync(`${file}.nodeterm-lock`)
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -108,7 +108,7 @@ for (const remote of [false, true]) {
       expect(readFileSync(file, 'utf8')).toBe('{}')
       expect(lstatSync(`${file}.nodeterm-lock`).isDirectory()).toBe(true)
       expect(warning).toHaveBeenCalledWith(expect.stringContaining(`${file}.nodeterm-lock`))
-      expect(warning).toHaveBeenCalledWith(expect.stringContaining('stop nodeterm writers'))
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('stop DisTerm writers'))
     })
 
     it.each([false, true])('refuses stale snapshots including concurrent creation (missing=%s)', async (missing) => {

@@ -37,11 +37,14 @@
   --text: rgba(var(--tint-rgb), 0.85); /* label */
   --muted: rgba(var(--tint-rgb), 0.55); /* secondaryLabel */
   --muted-2: rgba(var(--tint-rgb), 0.25); /* tertiaryLabel */
-  --accent: #0a84ff; /* systemBlue */
-  --accent-hover: #3a9bff;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  /* Text and icons drawn ON an accent fill. Dark, not white: white on #0ea5e9 is 2.8:1, this is 6.7:1,
+     and it clears 4.5:1 on every swatch the accent picker offers (styles.palette.test.ts). */
+  --on-accent: #13111c;
   /* Accent as TEXT on a surface — lighter than the fill accent so it reads on a dark panel, and
-     the light theme has to go the other way. Was `#6cb0ff`/`#a9c0ff` at ~14 hover/link sites. */
-  --accent-text: #6cb0ff;
+     the light theme has to go the other way. Used at ~14 hover/link sites. */
+  --accent-text: #7dd3fc;
   /* Status hues, named so the light theme can darken them for a white field in one place. */
   --danger: #ff453a;
   --warn: #ff9f0a;
@@ -103,7 +106,7 @@
   /* THE CANVAS. Deliberately blacker than `--bg` in dark — the nodes are the content and the
      field behind them recedes. In light it has to go the other way, off-white and slightly
      greyer than a node, or the nodes lose their edges. */
-  --canvas-bg: #000000;
+  --canvas-bg: #13111c;
   /* Floating surfaces, each written as a triple so every per-use alpha survives (same idea as
      --tint-rgb). Menus/dock/banners, popovers, and cards sit at three different depths. */
   --menu-rgb: 40, 40, 42;
@@ -269,14 +272,14 @@
   --surface-raised: #fdfbf7; /* …while raised surfaces come up, but never to pure white */
   --surface-overlay: #fdfbf7;
 
-  /* systemBlue's light-mode value — the dark one is deliberately lighter for a dark field and
-     loses contrast against a pale one. Kept BLUE on a warm field: the accent is the product's
-     identity across both themes and is user-configurable (Settings → Appearance), so it is not
-     the palette's job to change it. */
-  --accent: #007aff;
-  --accent-hover: #0a6ed1;
+  /* The dark value is deliberately bright for a dark field and loses contrast against a pale one
+     (2.5:1 on this canvas), so an accent still at the default takes this one here: 3.6:1 on the
+     canvas, 4.6:1 under --on-accent. A colour the user picked is set inline by Canvas and wins. */
+  --accent: #0284c7;
+  --accent-hover: #38bdf8;
   /* Accent as text has to DARKEN here, where the dark theme's lightened blue disappears. */
-  --accent-text: #0060df;
+  --accent-text: #0369a1;
+  --on-accent: #13111c;
 
   /* The canvas sits BELOW every node, so it is the one surface that must be darker than the
      panels — otherwise the nodes dissolve into the field and the layout loses its edges. */
@@ -429,7 +432,7 @@ body,
   background: var(--accent);
   border: none;
   border-radius: 7px;
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -455,8 +458,15 @@ body,
   -webkit-app-region: drag;
 }
 
+.brand-mark {
+  display: inline-block;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
 .brand__mark {
   flex-shrink: 0;
+  color: var(--text);
 }
 
 .brand__name {
@@ -714,7 +724,7 @@ body,
   padding: 0 5px;
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 10.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -980,16 +990,16 @@ body,
 
 .dock-add {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .dock-btn.dock-add:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 85%, black);
+  background: color-mix(in srgb, var(--accent) 85%, white);
 }
 
 .dock-btn.dock-add.active:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 72%, black);
-  color: #fff;
+  background: color-mix(in srgb, var(--accent) 72%, white);
+  color: var(--on-accent);
 }
 
 .dock-btn.active {
@@ -1568,7 +1578,7 @@ body,
 .dictation__btn--primary {
   background: var(--accent);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -3901,7 +3911,7 @@ body,
   background: rgba(var(--tint-rgb), 0.12);
 }
 .term-chat__answer-btn--primary {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
 }
@@ -4471,7 +4481,7 @@ body,
   cursor: default;
 }
 .run-bar__btn--run {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
 }
@@ -5330,7 +5340,7 @@ body,
 }
 
 .editor-node__save:not(:disabled) {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
 }
@@ -5683,7 +5693,7 @@ body,
   background: var(--accent);
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -6278,7 +6288,7 @@ body,
 
 .sc-btn.primary {
   background: var(--accent, var(--accent));
-  color: #fff;
+  color: var(--on-accent);
   border-color: transparent;
   font-weight: 600;
 }
@@ -6652,7 +6662,7 @@ body,
   width: 100%;
   margin-top: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 9px;
   padding: 11px;
@@ -7266,7 +7276,7 @@ body,
 
 .consent-btn.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .consent-btn.primary:hover {
@@ -7516,7 +7526,7 @@ body,
 .confirm__btn.primary {
   background: var(--accent);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -9727,7 +9737,7 @@ button.group-node__setup:disabled {
 }
 .seg-pill-opt.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .agents-row {
   display: flex;
@@ -9929,7 +9939,7 @@ button.group-node__setup:disabled {
 .pubdlg__opt:hover:not(:disabled),
 .pubdlg__opt:focus-visible {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   outline: none;
 }
 .pubdlg__opt:disabled {
@@ -11139,7 +11149,7 @@ button.group-node__setup:disabled {
 }
 .chat-node__slash-item--active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 /* Image-attachment chips row (above the compose box). */
 .chat-node__attach {
@@ -11483,7 +11493,7 @@ button.group-node__setup:disabled {
 
 .presence-prompt__ok {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
 }
 
@@ -11928,7 +11938,7 @@ button.group-node__setup:disabled {
 }
 .kanban-card__open:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .kanban-card:hover {
   border-color: rgba(var(--tint-rgb), 0.2);
@@ -13583,7 +13593,7 @@ button.pull-checks__name {
 .global-kanban__pill--active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .kanban-empty {
   padding: 40px 18px;
@@ -13829,7 +13839,7 @@ button.pull-checks__name {
 }
 .kanban-col__newmenu button:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .kanban-card__stickytext {
   flex: 1;
@@ -14292,7 +14302,7 @@ button.pull-checks__name {
 }
 .kanban-modal__action[aria-pressed='true'] {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* Read-only document preview stacked over a Kanban card. The card and board remain mounted below,
@@ -15064,7 +15074,7 @@ button.pull-checks__name {
 }
 .kanban-meta__picker > button:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .kanban-meta__pname {
   flex: 1;
@@ -15393,7 +15403,7 @@ button.pull-checks__name {
 .onb-btn--primary {
   background: var(--accent);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent);
 }
 .onb-btn--primary:hover {
   background: var(--accent);
@@ -15556,7 +15566,7 @@ button.pull-checks__name {
 }
 .onb-seg__btn.is-on {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .onb-tryit.is-done {
   border-style: solid;
@@ -15642,7 +15652,7 @@ button.pull-checks__name {
 }
 @keyframes onb-menu-hl {
   0%, 30% { background: transparent; }
-  36%, 54% { background: var(--accent); color: #fff; }
+  36%, 54% { background: var(--accent); color: var(--on-accent); }
   58%, 100% { background: transparent; }
 }
 /* The spawned node mirrors the real .term-node look: 3px color top border, panel header. */
@@ -16002,7 +16012,7 @@ button.pull-checks__name {
 .onb-cview__msg--user {
   align-self: flex-end;
   background: var(--accent, #0a84ff);
-  color: #fff;
+  color: var(--on-accent);
 }
 .onb-cview__msg--assistant {
   align-self: flex-start;
@@ -16272,7 +16282,7 @@ button.pull-checks__name {
   right: 15%;
   transform: rotate(8deg);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -16375,7 +16385,7 @@ button.pull-checks__name {
   .onb-menu__hl {
     animation: none;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
   .onb-node {
     animation: none;
@@ -16498,7 +16508,7 @@ button.pull-checks__name {
   bottom: -5px;
 }
 
-/* ---- one-shot mobile-launch announcement (MobileLaunchCard) ---- */
+/* ---- mobile-launch card: no longer mounted, its component was removed ---- */
 .mlaunch__backdrop {
   position: fixed;
   inset: 0;

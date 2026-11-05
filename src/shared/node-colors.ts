@@ -47,7 +47,8 @@ export const SYSTEM_NODE_COLOR_SWATCHES: readonly NodeColorSwatch[] = [
   { value: '#ff453a', label: 'Red', aliases: ['red'] },
   { value: '#bf5af2', label: 'Purple', aliases: ['purple'] },
   { value: '#6ac4dc', label: 'Teal', aliases: ['teal', 'cyan'] },
-  { value: '#ff9f0a', label: 'Orange', aliases: ['orange'] }
+  { value: '#ff9f0a', label: 'Orange', aliases: ['orange'] },
+  { value: '#0ea5e9', label: 'Sky', aliases: ['sky'] }
 ]
 
 /**

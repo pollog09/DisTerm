@@ -199,7 +199,7 @@ const Swimlane = memo(function Swimlane({
       key: a.id, label: a.label, choice: { kind: 'agent', agentId: a.id } as KanbanCreateChoice, icon: <IconAgent />
     })),
     { key: 'terminal', label: 'Terminal', choice: { kind: 'terminal' } as KanbanCreateChoice, icon: <IconTerminal /> },
-    ...wslCreateOptions(wslTerminals),
+    ...wslCreateOptions(wslTerminals, !disabledAgents.includes('claude')),
     { key: 'browser', label: 'Browser', choice: { kind: 'browser' } as KanbanCreateChoice, icon: <IconWeb /> },
     { key: 'sticky', label: 'Sticky note', choice: { kind: 'sticky' } as KanbanCreateChoice, icon: <IconNote /> }
   ], [customAgents, disabledAgents, wslTerminals])

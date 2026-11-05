@@ -6,6 +6,7 @@ import { ProjectGlyph } from './ProjectGlyph'
 import type { RecentConversation } from '@shared/recent-conversations'
 import { RecentConversations } from './RecentConversations'
 import { useCoreIsWindows } from '../terminal/use-core-platform'
+import { BrandMark } from './BrandMark'
 
 /**
  * Rows before the "Recently closed" filter box appears (issue #506). `.welcome__recent-list` is
@@ -113,27 +114,8 @@ export function WelcomeScreen({
         </button>
       )}
       <div className="welcome__brand">
-        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-          <defs>
-            <linearGradient id="wtg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#a38dff" />
-              <stop offset="1" stopColor="#622994" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M13 12 L31 24 L13 36"
-            fill="none"
-            stroke="url(#wtg)"
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="13" cy="12" r="3.6" fill="#a38dff" />
-          <circle cx="13" cy="36" r="3.6" fill="#a38dff" />
-          <circle cx="31" cy="24" r="3.6" fill="#fff" />
-          <rect x="33.5" y="32.5" width="10.5" height="5" rx="2.5" fill="#a38dff" />
-        </svg>
-        <span className="welcome__name">nodeterm</span>
+        <BrandMark size={40} />
+        <span className="welcome__name">DisTerm</span>
       </div>
       <p className="welcome__tagline">A canvas of terminals. Start a project to begin.</p>
 

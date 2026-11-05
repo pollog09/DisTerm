@@ -14,7 +14,9 @@ try {
         # %LOCALAPPDATA%\nodeterm\session-host, issue #829) is deliberately NOT matched by name:
         # it maps none of this installation's files, so the install may replace them while it
         # keeps its sessions. It is still caught by the path test below if it ever ran from here.
-        if ($process.Name -ieq 'nodeterm.exe' -or $process.Name -ieq 'nodeterm-session-host.exe') {
+        # DisTerm.exe is this build's main executable (build.productName); nodeterm.exe is what a
+        # build from before the rename left running.
+        if ($process.Name -ieq 'DisTerm.exe' -or $process.Name -ieq 'nodeterm.exe' -or $process.Name -ieq 'nodeterm-session-host.exe') {
             if ([string]::IsNullOrWhiteSpace($process.ExecutablePath)) { exit 20 }
             exit 10
         }

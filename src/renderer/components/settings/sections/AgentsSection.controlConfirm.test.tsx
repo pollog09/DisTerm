@@ -129,16 +129,16 @@ describe('destructive canvas-control confirmations in Settings', () => {
   })
 
   it('surfaces an app-run waiver granted from a dialog, and offers Revoke', () => {
-    expect(host.textContent).not.toContain('Waived until nodeterm quits')
+    expect(host.textContent).not.toContain('Waived until DisTerm quits')
     act(() => useControlConfirm.getState().waiveForSession('close'))
     const text = host.textContent ?? ''
     // The dialog that granted it is gone, so this row is the only place it can be seen or ended.
-    expect(text).toContain('Waived until nodeterm quits')
+    expect(text).toContain('Waived until DisTerm quits')
     const revoke = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Revoke')
     expect(revoke, 'an app-run waiver must be revocable here').toBeTruthy()
     act(() => revoke!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(useControlConfirm.getState().sessionWaived).toEqual([])
-    expect(host.textContent).not.toContain('Waived until nodeterm quits')
+    expect(host.textContent).not.toContain('Waived until DisTerm quits')
     // Revoking an app-run waiver must not write anything to disk.
     expect(useSettings.getState().settings.controlConfirmWaivers).toBeUndefined()
   })
@@ -146,7 +146,7 @@ describe('destructive canvas-control confirmations in Settings', () => {
   it('does not offer Revoke for a PERMANENT waiver — the dropdown is that control', () => {
     choose(CLOSE_LABEL, 'never')
     act(() => useControlConfirm.getState().waiveForSession('close'))
-    expect(host.textContent).not.toContain('Waived until nodeterm quits')
+    expect(host.textContent).not.toContain('Waived until DisTerm quits')
     // A Revoke beside a permanent waiver would clear the app-run one and change nothing the user
     // can see, since the permanent waiver still applies — a button that appears to do nothing.
     expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Revoke')).toBe(false)

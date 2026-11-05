@@ -251,7 +251,7 @@ export function UpdateCard(): JSX.Element | null {
               : status.kind === 'preparing'
                 ? 'Preparing update…'
                 : status.kind === 'restarting'
-                  ? 'Restarting nodeterm…'
+                  ? 'Restarting DisTerm…'
                   : status.kind === 'upToDate'
                     ? "You're up to date"
                     : status.kind === 'required'
@@ -292,7 +292,7 @@ export function UpdateCard(): JSX.Element | null {
 
       {status.kind === 'available' && (
         <>
-          <p className="update-card__body">nodeterm v{status.version} is downloading.</p>
+          <p className="update-card__body">DisTerm v{status.version} is downloading.</p>
           {highlightList}
           <button className="update-card__link" onClick={openNotes}>
             Release notes
@@ -320,9 +320,6 @@ export function UpdateCard(): JSX.Element | null {
       {status.kind === 'noChannel' && (
         <>
           <p className="update-card__body">{noSelfInstallCopy('no-channel').body}</p>
-          <button className="update-card__btn" onClick={openReleases}>
-            {noSelfInstallCopy('no-channel').action}
-          </button>
           {prepareButton}
         </>
       )}
@@ -331,7 +328,7 @@ export function UpdateCard(): JSX.Element | null {
         <>
           {/* `downloaded` is only reached on self-install delivery, where install-on-quit is on. */}
           <p className="update-card__body">
-            nodeterm v{status.version} is ready. It installs automatically the next time you quit.
+            DisTerm v{status.version} is ready. It installs automatically the next time you quit.
           </p>
           {highlightList}
           {status.installError && <p className="update-card__hint">{status.installError}</p>}
@@ -353,8 +350,8 @@ export function UpdateCard(): JSX.Element | null {
         <>
           <p className="update-card__body">
             {status.kind === 'preparing'
-              ? `Getting nodeterm v${status.version} ready to install. This can take a moment.`
-              : 'nodeterm will close and reopen on the new version. Your terminals keep running.'}
+              ? `Getting DisTerm v${status.version} ready to install. This can take a moment.`
+              : 'DisTerm will close and reopen on the new version. Your terminals keep running.'}
           </p>
           <button className="update-card__btn" disabled>
             <span className="update-card__spinner" aria-hidden="true" />
@@ -364,7 +361,7 @@ export function UpdateCard(): JSX.Element | null {
       )}
 
       {status.kind === 'upToDate' && (
-        <p className="update-card__body">nodeterm is on the latest version.</p>
+        <p className="update-card__body">DisTerm is on the latest version.</p>
       )}
 
       {status.kind === 'updated' && (

@@ -213,6 +213,26 @@ describe('SessionHostClient geometry (issue #914)', () => {
     expect((hello as { features?: string[] }).features).toContain('geometry')
   })
 
+  // A live `wsl:` pane reattaches through this path after an app restart or an offscreen release.
+  // Measured on Windows through ConPTY and wsl.exe: the hard-coded 80x24 this replaced resized the
+  // pane within about 30 ms, under an xterm rendering its own fit, and nothing corrected it.
+  it('a warm attach claims the viewer\'s own grid, so the running pane stays that size', async () => {
+    const { userDataDir, endpoint } = fixture('nt-geo-warm-')
+    const host = await fakeHost(endpoint, { geometry: true })
+    const client = new SessionHostClient({ userDataDir })
+    const pty = new SessionHostPty(client, 'nt-geometry', null, 0, { cols: 78, rows: 25 })
+    livePtys.add(pty)
+    const sizes: View['sizes'] = []
+    pty.onSize((size) => sizes.push(size))
+    await within(pty.ready, 'warm attach')
+    expect(host.requests.filter((r) => r.cmd === 'attachExisting')).toMatchObject([
+      { cols: 78, rows: 25 }
+    ])
+    // Claim and pane agree, so there is nothing to correct and nothing to resize.
+    expect(host.resizes).toEqual([])
+    expect(last(sizes)).toEqual({ cols: 78, rows: 25 })
+  })
+
   it('gives the session to a view that types, but not to one that only answers a query', async () => {
     const { userDataDir, endpoint } = fixture('nt-geo-typing-')
     const host = await fakeHost(endpoint)

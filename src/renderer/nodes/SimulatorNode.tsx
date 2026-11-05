@@ -680,7 +680,7 @@ function SimulatorViewLive({ streamId: id, config, onConfig, label, className, s
               key: 'payload',
               label: 'Payload (JSON)',
               multiline: true,
-              value: JSON.stringify({ aps: { alert: { title: 'Hello', body: 'From nodeterm' }, sound: 'default' } }, null, 2)
+              value: JSON.stringify({ aps: { alert: { title: 'Hello', body: 'From DisTerm' }, sound: 'default' } }, null, 2)
             }
           ],
           submitLabel: 'Send',

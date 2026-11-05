@@ -86,6 +86,7 @@ export type HostingOff =
   | { reason: 'no-host-key' }
   | { reason: 'host-key-unreadable'; detail: string }
   | { reason: 'stopped' }
+  | { reason: 'no-relay' }
 /** `status`'s answer: the service's own status, plus the reason when hosting is off. */
 export interface AdminStatusResult extends HostedStatus {
   off: HostingOff | null
@@ -300,7 +301,7 @@ const fail = (error: string, code?: string): AdminReply => (code ? { ok: false, 
 const address = (svc: HostedService, running: boolean): { info: HostedInfo | null; joinCode: string | null } =>
   running ? { info: svc.info(), joinCode: svc.joinCode() } : { info: null, joinCode: null }
 
-const SHUTTING_DOWN = 'The nodeterm server is shutting down.'
+const SHUTTING_DOWN = 'The DisTerm server is shutting down.'
 
 async function handle(
   relayDir: string,
@@ -346,7 +347,7 @@ async function handle(
     }
     case 'status': {
       const s = svc.status()
-      const result: AdminStatusResult = { ...s, off: s.enabled ? null : await offReason(relayDir) }
+      const result: AdminStatusResult = { ...s, off: s.enabled ? null : s.noRelay ? { reason: 'no-relay' } : await offReason(relayDir) }
       return ok(result)
     }
     case 'share':
@@ -430,7 +431,7 @@ async function clearStaleSocket(sock: string): Promise<void> {
   }
   if (verdict === 'live') {
     throw new AdminSocketBusyError(
-      `Another nodeterm server is already answering on ${sock} (two servers sharing one data directory?). Not replacing it.`
+      `Another DisTerm server is already answering on ${sock} (two servers sharing one data directory?). Not replacing it.`
     )
   }
   throw new AdminSocketBusyError(`Could not tell whether ${sock} is still in use (${verdict}); not replacing it.`)
@@ -484,7 +485,7 @@ export async function startTeamAdmin(
       // write team.json). Anything else stays the error it is.
       reject(
         err.code === 'EADDRINUSE'
-          ? new AdminSocketBusyError(`Another nodeterm server is already listening on ${sock} (two servers sharing one data directory?).`)
+          ? new AdminSocketBusyError(`Another DisTerm server is already listening on ${sock} (two servers sharing one data directory?).`)
           : err
       )
     }
@@ -520,15 +521,15 @@ export async function startTeamAdmin(
 function connectErrorMessage(err: NodeJS.ErrnoException, sock: string): string {
   if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') {
     return (
-      `The nodeterm server is not running (no admin socket at ${sock}). Start the service first. ` +
+      `The DisTerm server is not running (no admin socket at ${sock}). Start the service first. ` +
       `If it runs with a different data directory, pass --data-dir <dir> (or set NODETERM_DATA_DIR); ` +
       `a server from before this version has no admin socket and needs a restart after updating.`
     )
   }
   if (err.code === 'EACCES' || err.code === 'EPERM') {
-    return `Permission denied on ${sock}. Run \`team\` as the unix user the nodeterm server runs as.`
+    return `Permission denied on ${sock}. Run \`team\` as the unix user the DisTerm server runs as.`
   }
-  return `Could not reach the nodeterm server at ${sock}: ${err.code ?? err.message}.`
+  return `Could not reach the DisTerm server at ${sock}: ${err.code ?? err.message}.`
 }
 
 function parseReply(line: string): AdminReply {
@@ -542,7 +543,7 @@ function parseReply(line: string): AdminReply {
   } catch {
     // fall through
   }
-  return fail('The nodeterm server sent a reply this CLI does not understand (is the server a different version?).')
+  return fail('The DisTerm server sent a reply this CLI does not understand (is the server a different version?).')
 }
 
 export function callTeamAdmin(dataDir: string, req: AdminRequest, opts: { timeoutMs?: number } = {}): Promise<AdminReply> {
@@ -556,7 +557,7 @@ export function callTeamAdmin(dataDir: string, req: AdminRequest, opts: { timeou
     let buf = ''
     const c = net.connect(sock)
     const timer = setTimeout(
-      () => finish(fail(`The nodeterm server did not answer within ${timeoutMs / 1000} s (${sock}).`)),
+      () => finish(fail(`The DisTerm server did not answer within ${timeoutMs / 1000} s (${sock}).`)),
       timeoutMs
     )
     function finish(r: AdminReply): void {
@@ -575,7 +576,7 @@ export function callTeamAdmin(dataDir: string, req: AdminRequest, opts: { timeou
       else if (buf.length > ADMIN_REQUEST_MAX) finish(parseReply(''))
     })
     c.on('end', () =>
-      finish(buf.trim() ? parseReply(buf) : fail('The nodeterm server closed the connection without answering.'))
+      finish(buf.trim() ? parseReply(buf) : fail('The DisTerm server closed the connection without answering.'))
     )
     c.on('error', (err: NodeJS.ErrnoException) => finish(fail(connectErrorMessage(err, sock))))
   })

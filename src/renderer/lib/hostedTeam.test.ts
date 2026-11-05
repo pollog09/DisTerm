@@ -47,7 +47,7 @@ describe('hosted join failures (R35 / R39)', () => {
   })
 
   it('retries ONLY a network failure', () => {
-    expect(classifyJoinFailure(wrap('[E_JOIN_NETWORK] Could not reach the nodeterm service.'))).toMatchObject({ code: 'E_JOIN_NETWORK', retry: true, busy: false })
+    expect(classifyJoinFailure(wrap('[E_JOIN_NETWORK] Could not reach the DisTerm service.'))).toMatchObject({ code: 'E_JOIN_NETWORK', retry: true, busy: false })
     for (const code of ['E_JOIN_REVOKED', 'E_JOIN_REFUSED', 'E_JOIN_RATE', 'E_JOIN_BAD_CODE', 'E_JOIN_KEY_LOCKED', 'E_JOIN_BUSY']) {
       expect(classifyJoinFailure(wrap(`[${code}] x`)).retry, code).toBe(false)
     }
@@ -73,8 +73,8 @@ describe('hosted join failures (R35 / R39)', () => {
     expect(joinStopMessage(classifyJoinFailure(wrap('[E_JOIN_KEY_LOCKED] Unlock the keyring and reconnect.')), 'box')).toBe(
       "Could not load this device's identity to join box: Unlock the keyring and reconnect."
     )
-    expect(joinStopMessage(classifyJoinFailure(wrap('[E_JOIN_NETWORK] Could not reach the nodeterm service.')), 'box')).toBe(
-      'Could not reach box: Could not reach the nodeterm service.'
+    expect(joinStopMessage(classifyJoinFailure(wrap('[E_JOIN_NETWORK] Could not reach the DisTerm service.')), 'box')).toBe(
+      'Could not reach box: Could not reach the DisTerm service.'
     )
     expect(joinStopMessage(classifyJoinFailure('Remote access is unavailable in development builds.'), 'box')).toBe(
       'Could not join box: Remote access is unavailable in development builds.'
@@ -143,8 +143,8 @@ describe('R41: the per-network throttle', () => {
   })
   it('says a minute, never "tomorrow"', () => {
     expect(joinStopMessage(classifyJoinFailure(wrap('[E_JOIN_THROTTLED] x')), 'box')).toBe(
-      'The nodeterm service is limiting requests from this network. Try again in a minute.'
+      'The DisTerm service is limiting requests from this network. Try again in a minute.'
     )
-    expect(THROTTLED_NOTICE).toBe('The nodeterm service is limiting requests from this network — retrying in a minute.')
+    expect(THROTTLED_NOTICE).toBe('The DisTerm service is limiting requests from this network — retrying in a minute.')
   })
 })

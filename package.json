@@ -4,11 +4,13 @@
   "engines": {
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
-  "description": "node-based terminal manager — multiple draggable, zoomable terminals on a single canvas.",
+  "description": "Your terminals and agents on an infinite canvas.",
   "author": {
-    "name": "enes",
-    "email": "eneskirca@gmail.com"
+    "name": "Distriib",
+    "email": "support@distriib.com",
+    "url": "https://distriib.com"
   },
+  "homepage": "https://distriib.com",
   "license": "BUSL-1.1",
   "private": true,
   "main": "./out/main/index.js",
@@ -30,17 +32,17 @@
     "server:dev": "npm run build && npm run server:build && node out/server/main.cjs",
     "make-icon": "node scripts/make-icon.mjs",
     "make-social": "node scripts/make-social.mjs",
-    "dist": "npm run make-icon && npm run build && electron-builder --mac --arm64 --publish never -c.mac.identity=null -c.mac.notarize=false -c.extraMetadata.nodeTermUpdates=disabled",
-    "dist:mac:x64": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --x64 --publish never -c.mac.identity=null -c.mac.notarize=false -c.extraMetadata.nodeTermUpdates=disabled; s=$?; npm run rebuild; r=$?; if [ $s -ne 0 ]; then exit $s; fi; exit $r'",
-    "dist:linux": "npm run make-icon && npm run build && electron-builder --linux --publish never -c.extraMetadata.nodeTermUpdates=disabled",
-    "dist:win": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=disabled",
-    "dist:win:release": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never -c.extraMetadata.nodeTermUpdates=manual",
+    "dist": "npm run make-icon && npm run build && electron-builder --mac --arm64 --publish never -c.mac.identity=null -c.mac.notarize=false",
+    "dist:mac:x64": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --x64 --publish never -c.mac.identity=null -c.mac.notarize=false; s=$?; npm run rebuild; r=$?; if [ $s -ne 0 ]; then exit $s; fi; exit $r'",
+    "dist:linux": "npm run make-icon && npm run build && electron-builder --linux --publish never",
+    "dist:win": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never",
     "release": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --arm64 --x64 --publish never; s=$?; npm run rebuild; r=$?; [ \"$s\" -eq 0 ] || exit \"$s\"; [ \"$r\" -eq 0 ] && exit 0; echo \"release: the build is good, but restoring native modules failed; run npm run rebuild\" >&2; [ -n \"$CI\" ] && exit 0; exit \"$r\"'",
     "postinstall": "node scripts/patch-node-pty.mjs && node scripts/patch-smart-whisper.mjs && electron-rebuild -f -w node-pty,smart-whisper && node scripts/stage-conpty-dll.mjs"
   },
   "build": {
-    "appId": "com.nodeterm.app",
-    "productName": "nodeterm",
+    "appId": "com.distriib.disterm",
+    "productName": "DisTerm",
+    "copyright": "(c) 2026 Enes Kirca. DisTerm modifications by Distriib.",
     "protocols": [
       {
         "name": "nodeterm",
@@ -92,7 +94,7 @@
       ],
       "category": "Development",
       "icon": "build/icon.png",
-      "maintainer": "enes <eneskirca@gmail.com>"
+      "maintainer": "Distriib <support@distriib.com>"
     },
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -113,7 +115,7 @@
         }
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "nodeterm uses the microphone so you can dictate into your terminals.",
+        "NSMicrophoneUsageDescription": "DisTerm uses the microphone so you can dictate into your terminals.",
         "NSLocalNetworkUsageDescription": "Terminals and agents you run may connect to devices and servers on your local network."
       },
       "target": [
@@ -179,10 +181,7 @@
       "perMachine": false,
       "include": "build/installer.nsh"
     },
-    "publish": {
-      "provider": "generic",
-      "url": "https://nodeterm.dev/updates"
-    }
+    "publish": null
   },
   "dependencies": {
     "@xterm/addon-serialize": "^0.14.0",

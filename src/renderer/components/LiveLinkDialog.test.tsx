@@ -261,7 +261,7 @@ describe('LiveLinkDialog', () => {
       root = createRoot(host)
       mount({ remoteNode: remote })
       await flush()
-      if (shown) expect(note(), JSON.stringify(p)).toMatch(/only while it is open in nodeterm/)
+      if (shown) expect(note(), JSON.stringify(p)).toMatch(/only while it is open in DisTerm/)
       else expect(note(), JSON.stringify(p)).toBeNull()
     }
   })
@@ -338,7 +338,7 @@ describe('LiveLinkDialog', () => {
     click(btn('Create live link'))
     await flush()
     expect(document.querySelector('.live-dialog__error')!.textContent).toBe(
-      "Couldn't reach nodeterm's service. Nothing was shared."
+      "Couldn't reach DisTerm's service. Nothing was shared."
     )
   })
 

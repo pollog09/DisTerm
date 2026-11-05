@@ -10,8 +10,13 @@ import {
   releaseNotesText,
   shouldEnableUpdater,
   toUpdateAvailablePayload,
-  updateDelivery
+  updateDelivery,
+  validUpdateFeed
 } from './update-platform'
+
+const FEED = 'https://updates.example/disterm'
+const delivery = (o: Omit<Parameters<typeof updateDelivery>[0], 'feed'> & { feed?: unknown }) =>
+  updateDelivery({ feed: FEED, ...o })
 
 describe('isManualUpdatePlatform', () => {
   it('linux with APPIMAGE set → auto (self-installs)', () => {
@@ -34,13 +39,13 @@ describe('isManualUpdatePlatform', () => {
 
 describe('shouldEnableUpdater', () => {
   it('disables checks in development and in explicitly local packaged builds', () => {
-    expect(shouldEnableUpdater(false, undefined)).toBe(false)
-    expect(shouldEnableUpdater(true, 'disabled')).toBe(false)
+    expect(shouldEnableUpdater(false, undefined, FEED)).toBe(false)
+    expect(shouldEnableUpdater(true, 'disabled', FEED)).toBe(false)
   })
 
   it('keeps updater behavior unchanged for normal packaged releases', () => {
-    expect(shouldEnableUpdater(true, undefined)).toBe(true)
-    expect(shouldEnableUpdater(true, 'enabled')).toBe(true)
+    expect(shouldEnableUpdater(true, undefined, FEED)).toBe(true)
+    expect(shouldEnableUpdater(true, 'enabled', FEED)).toBe(true)
   })
 })
 
@@ -52,41 +57,33 @@ describe('shouldEnableUpdater', () => {
  * function can catch, so assert it against the real package.json — the same guard-test shape as
  * `src/core/no-electron.test.ts`.
  */
-describe('local dist scripts opt out of the production update feed', () => {
+describe('the feed is opt-in per build, and no script stamps one', () => {
   const pkg = JSON.parse(
     fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')
-  ) as { scripts: Record<string, string> }
-  const MARKER = '-c.extraMetadata.nodeTermUpdates=disabled'
-  const MANUAL = `-c.extraMetadata.nodeTermUpdates=${MANUAL_UPDATE_MODE}`
-  // The one dist-named script that is a RELEASE package: the unsigned Windows beta, which checks
-  // the feed but never self-installs. Everything else under `dist*` is a local package.
-  const WIN_RELEASE = 'dist:win:release'
+  ) as { scripts: Record<string, string>; build: Record<string, unknown> }
 
-  it('every local dist script carries the marker — not just the one whose 404 was noticed', () => {
-    const dist = Object.keys(pkg.scripts).filter(
-      (s) => (s === 'dist' || s.startsWith('dist:')) && s !== WIN_RELEASE
-    )
-    expect(dist.length).toBeGreaterThanOrEqual(3) // dist, dist:linux, dist:win
-    expect(dist.filter((s) => !pkg.scripts[s].includes(MARKER))).toEqual([])
+  it('package.json names no update feed: a package gets one only by asking', () => {
+    // null, not absent: absent makes electron-builder derive a feed from the git remote.
+    expect(pkg.build.publish).toBeNull()
+    for (const [name, cmd] of Object.entries(pkg.scripts)) {
+      expect(cmd, name).not.toContain('distermUpdateFeed')
+      expect(cmd, name).not.toContain('nodeTermUpdates')
+    }
   })
 
-  it('plain dist:win stays a local package that never polls', () => {
-    expect(pkg.scripts['dist:win']).toContain(MARKER)
-    expect(pkg.scripts['dist:win']).not.toContain(MANUAL)
+  it('no feed means no channel on every platform', () => {
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(delivery({ isPackaged: true, updateMode: undefined, platform, hasAppImage: true, feed: undefined })).toBe(
+        'no-channel'
+      )
+    }
   })
 
-  it('the Windows release package is stamped manual — feed check, never self-install', () => {
-    const cmd = pkg.scripts[WIN_RELEASE]
-    expect(cmd).toContain(MANUAL)
-    expect(cmd).not.toContain(MARKER)
-    expect(cmd).toContain('--win')
-    // It still never publishes from the build step; release.yml uploads the assets itself.
-    expect(cmd).toContain('--publish never')
-  })
-
-  it('release does NOT carry it — a promoted build must keep updating itself', () => {
-    expect(pkg.scripts.release).not.toContain(MARKER)
-    expect(pkg.scripts.release).not.toContain(MANUAL)
+  it('only an https url is a feed', () => {
+    expect(validUpdateFeed('https://updates.example/x')).toBe('https://updates.example/x')
+    for (const bad of ['http://updates.example/x', 'file:///x', 'updates.example', '', 7, null, undefined]) {
+      expect(validUpdateFeed(bad)).toBeNull()
+    }
   })
 })
 
@@ -150,7 +147,7 @@ describe('updateDelivery', () => {
   const pkgd = { isPackaged: true, updateMode: undefined as unknown, hasAppImage: false }
 
   it('a packaged build with updates switched off has NO CHANNEL — it is not up to date', () => {
-    expect(updateDelivery({ ...pkgd, updateMode: 'disabled', platform: 'win32' })).toBe('no-channel')
+    expect(delivery({ ...pkgd, updateMode: 'disabled', platform: 'win32' })).toBe('no-channel')
   })
 
   it('decides no-channel from the build marker, never from the platform name', () => {
@@ -158,47 +155,47 @@ describe('updateDelivery', () => {
     // day a Windows RELEASE ships with a feed it carries no marker and takes the ordinary path
     // below with nothing to edit here.
     for (const platform of ['win32', 'darwin', 'linux']) {
-      expect(updateDelivery({ ...pkgd, updateMode: 'disabled', platform })).toBe('no-channel')
+      expect(delivery({ ...pkgd, updateMode: 'disabled', platform })).toBe('no-channel')
     }
   })
 
   it('a future signed Windows release self-installs, by carrying no marker', () => {
-    expect(updateDelivery({ ...pkgd, platform: 'win32' })).toBe('self-install')
+    expect(delivery({ ...pkgd, platform: 'win32' })).toBe('self-install')
   })
 
   it('macOS is unchanged: a release self-installs', () => {
-    expect(updateDelivery({ ...pkgd, platform: 'darwin' })).toBe('self-install')
-    expect(updateDelivery({ ...pkgd, platform: 'darwin', hasAppImage: true })).toBe('self-install')
+    expect(delivery({ ...pkgd, platform: 'darwin' })).toBe('self-install')
+    expect(delivery({ ...pkgd, platform: 'darwin', hasAppImage: true })).toBe('self-install')
   })
 
   it('Linux is unchanged: .deb/.rpm stays manual, AppImage stays self-installing', () => {
-    expect(updateDelivery({ ...pkgd, platform: 'linux' })).toBe('manual-install')
-    expect(updateDelivery({ ...pkgd, platform: 'linux', hasAppImage: true })).toBe('self-install')
+    expect(delivery({ ...pkgd, platform: 'linux' })).toBe('manual-install')
+    expect(delivery({ ...pkgd, platform: 'linux', hasAppImage: true })).toBe('self-install')
   })
 
   it('dev stays its own state — quiet, not a no-channel card in every `npm run dev`', () => {
     for (const platform of ['win32', 'darwin', 'linux']) {
-      expect(updateDelivery({ isPackaged: false, updateMode: undefined, platform, hasAppImage: false })).toBe('dev')
+      expect(delivery({ isPackaged: false, updateMode: undefined, platform, hasAppImage: false })).toBe('dev')
       // Even with the marker a dist build would carry, an unpackaged run is dev first.
-      expect(updateDelivery({ isPackaged: false, updateMode: 'disabled', platform, hasAppImage: false })).toBe('dev')
+      expect(delivery({ isPackaged: false, updateMode: 'disabled', platform, hasAppImage: false })).toBe('dev')
     }
   })
 
   it('the manual marker is a feed check that never self-installs (the unsigned Windows beta)', () => {
-    expect(updateDelivery({ ...pkgd, updateMode: 'manual', platform: 'win32' })).toBe('manual-install')
-    expect(shouldEnableUpdater(true, 'manual')).toBe(true)
+    expect(delivery({ ...pkgd, updateMode: 'manual', platform: 'win32' })).toBe('manual-install')
+    expect(shouldEnableUpdater(true, 'manual', FEED)).toBe(true)
   })
 
   it('the manual marker wins over the platform — even where self-install would work', () => {
-    expect(updateDelivery({ ...pkgd, updateMode: 'manual', platform: 'darwin' })).toBe('manual-install')
+    expect(delivery({ ...pkgd, updateMode: 'manual', platform: 'darwin' })).toBe('manual-install')
     expect(
-      updateDelivery({ ...pkgd, updateMode: 'manual', platform: 'linux', hasAppImage: true })
+      delivery({ ...pkgd, updateMode: 'manual', platform: 'linux', hasAppImage: true })
     ).toBe('manual-install')
   })
 
   it('an unpackaged run with the manual marker is still dev', () => {
     expect(
-      updateDelivery({ isPackaged: false, updateMode: 'manual', platform: 'win32', hasAppImage: false })
+      delivery({ isPackaged: false, updateMode: 'manual', platform: 'win32', hasAppImage: false })
     ).toBe('dev')
   })
 
@@ -206,8 +203,8 @@ describe('updateDelivery', () => {
     for (const platform of ['win32', 'darwin', 'linux']) {
       for (const hasAppImage of [false, true]) {
         for (const updateMode of [undefined, 'enabled', 'disabled']) {
-          const d = updateDelivery({ isPackaged: true, updateMode, platform, hasAppImage })
-          expect(d === 'no-channel').toBe(!shouldEnableUpdater(true, updateMode))
+          const d = delivery({ isPackaged: true, updateMode, platform, hasAppImage })
+          expect(d === 'no-channel').toBe(!shouldEnableUpdater(true, updateMode, FEED))
           if (d !== 'no-channel') {
             expect(d === 'manual-install').toBe(isManualUpdatePlatform(platform, hasAppImage))
           }
@@ -226,7 +223,7 @@ describe('mayQuitAndInstall', () => {
   })
 
   it('the unsigned Windows beta can never install from the feed', () => {
-    const d = updateDelivery({ isPackaged: true, updateMode: 'manual', platform: 'win32', hasAppImage: false })
+    const d = delivery({ isPackaged: true, updateMode: 'manual', platform: 'win32', hasAppImage: false })
     expect(mayQuitAndInstall(d)).toBe(false)
   })
 })
@@ -238,18 +235,17 @@ describe('noSelfInstallCopy', () => {
   it('the Linux .deb sentence is byte-identical to the one that shipped', () => {
     expect(manual).toEqual({
       title: 'Update available',
-      body: 'nodeterm v0.3.8 is available. Download it to update.',
+      body: 'DisTerm v0.3.8 is available. Download it to update.',
       action: 'Download'
     })
   })
 
   it('the no-channel card names the reason and the remedy, and claims no version', () => {
-    expect(none.title).toBe('No update channel')
+    expect(none.title).toBe('Updates not configured')
     expect(none.body).toBe(
-      'This build has no update channel, so it cannot tell you when a new version is out. ' +
-        'Download the latest installer to update.'
+      'Updates are not configured for this build, so it cannot tell you when a new version is out. Rebuild DisTerm from source to update.'
     )
-    expect(none.action).toBe('Open download page')
+    expect(none.action).toBeUndefined()
   })
 
   it('never says "up to date", and never promises a self-install', () => {

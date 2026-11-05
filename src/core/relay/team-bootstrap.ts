@@ -10,6 +10,7 @@ import type { HostedService } from './hosted-service'
 import type { AdoptFolderResult } from '../workspace-store'
 import type { BootstrapResult } from '../../shared/share-team'
 import { codedError } from './admin-error'
+import { RELAY_UNAVAILABLE_REASON } from '../../shared/relay-availability'
 
 /** How long bootstrap waits for the relay's first verdict before answering 'starting'. */
 export const BOOTSTRAP_HOSTING_WAIT_MS = 15_000
@@ -30,8 +31,9 @@ export async function runBootstrap(
   const { created: team } = await svc.init()
   // The admin closes BEFORE the server stops hosting: a `start()` issued after that stop would bring
   // a scheduler up on a server that is going away (the same rule `team init` follows).
-  if (deps.closing()) throw codedError('E_HOSTING_OFF', 'The nodeterm server is shutting down. Hosting was not started.')
+  if (deps.closing()) throw codedError('E_HOSTING_OFF', 'The DisTerm server is shutting down. Hosting was not started.')
   const start = await svc.start()
+  if (start === 'no-relay') throw codedError('E_HOSTING_OFF', RELAY_UNAVAILABLE_REASON)
   if (start !== 'started') throw codedError('E_HOSTING_OFF', `Hosting did not start (${start}). See \`team status\`.`)
   const wait = await svc.waitForHosting(deps.hostingWaitMs ?? BOOTSTRAP_HOSTING_WAIT_MS)
   if (typeof wait === 'object') throw codedError('E_HOSTING_OFF', `Hosting could not start: ${wait.refused}`)

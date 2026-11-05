@@ -53,7 +53,7 @@ export const TRIGGER_STATE_LINES: Record<TriggerCardState, string> = {
 export function armConfirmMessage(spec: TriggerSpec, targetTitle: string): string {
   return (
     `Arm this trigger on this machine?\n\n` +
-    `While armed, nodeterm will automatically deliver the payload below into “${targetTitle}” ` +
+    `While armed, DisTerm will automatically deliver the payload below into “${targetTitle}” ` +
     `on the schedule shown — including while you are not looking, and (for a command target) it will run.\n\n` +
     `Arming applies to exactly this content: if the schedule, payload or target changes — by an ` +
     `edit here or a git pull — the trigger returns to disarmed until someone arms the new ` +

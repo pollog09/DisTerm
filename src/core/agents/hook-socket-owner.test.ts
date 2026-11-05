@@ -24,7 +24,7 @@ describe('hook endpoint advertisement ownership', () => {
     const contents = `NODETERM_HOOK_PORT='${address.port}'\nNODETERM_HOOK_TOKEN='old-owner'\n`
     fs.writeFileSync(file, contents)
     try {
-      await expect(assertHookEndpointAvailable(file)).rejects.toThrow('live nodeterm owner authenticated')
+      await expect(assertHookEndpointAvailable(file)).rejects.toThrow('live DisTerm owner authenticated')
       expect(fs.readFileSync(file, 'utf8')).toBe(contents)
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())) }
   })

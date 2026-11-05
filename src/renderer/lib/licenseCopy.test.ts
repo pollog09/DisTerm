@@ -70,7 +70,7 @@ describe('licenseSentence — sources that have no key and no device count', () 
   it('says an App Store subscription bridged Pro here, and prints no counts', () => {
     const s = licenseSentence({ key: null, used: 0, seats: 0, source: 'apple', error: null })
     expect(s).toBe(
-      'Pro on this computer comes from the App Store subscription on your paired phone, so there is no license key or device count to show here. That subscription is managed by Apple, not by nodeterm: to see when it renews or to cancel it, open the App Store on that phone and go to Subscriptions in your account.'
+      'Pro on this computer comes from the App Store subscription on your paired phone, so there is no license key or device count to show here. That subscription is managed by Apple, not by DisTerm: to see when it renews or to cancel it, open the App Store on that phone and go to Subscriptions in your account.'
     )
     // The zeros are "not applicable", not a measurement. Rendering them here is the exact
     // misdirection this branch exists to prevent.
@@ -83,7 +83,7 @@ describe('licenseSentence — sources that have no key and no device count', () 
   it('says a Google Play subscription bridged Pro here, mirroring the App Store sentence', () => {
     const s = licenseSentence({ key: null, used: 0, seats: 0, source: 'google', error: null })
     expect(s).toBe(
-      'Pro on this computer comes from the Google Play subscription on your paired phone, so there is no license key or device count to show here. That subscription is managed by Google, not by nodeterm: to see when it renews or to cancel it, open the Play Store on that phone and go to Payments & subscriptions → Subscriptions.'
+      'Pro on this computer comes from the Google Play subscription on your paired phone, so there is no license key or device count to show here. That subscription is managed by Google, not by DisTerm: to see when it renews or to cancel it, open the Play Store on that phone and go to Payments & subscriptions → Subscriptions.'
     )
     expect(s).not.toContain('0')
     expect(s).not.toContain('get in touch')

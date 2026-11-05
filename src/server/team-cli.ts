@@ -21,6 +21,7 @@ import {
 import { POP_REFUSED_MESSAGE } from '../core/relay/relay-pop'
 import { parseResumeSessions } from '../shared/share-team'
 import { SAS_COMPARE_HINT } from '../shared/remote/sas'
+import { RELAY_UNAVAILABLE_REASON } from '../shared/relay-availability'
 
 // One rule for what never reaches the admin's terminal: the same characters a label may not
 // contain (C0/C1 controls, DEL, and the text-direction controls). Server-supplied strings can carry
@@ -225,7 +226,8 @@ function addressLines(info: unknown, joinCode: unknown): string[] {
 const OFF_TEXT: Record<string, string> = {
   'no-team': 'there is no hosted team on this server. Run `team init` to create one.',
   'no-host-key': 'the team has no host key. Run `team init` to create one.',
-  stopped: 'hosting is not running. Run `team init` (or restart the service) to start it.'
+  stopped: 'hosting is not running. Run `team init` (or restart the service) to start it.',
+  'no-relay': RELAY_UNAVAILABLE_REASON
 }
 
 /**
@@ -255,13 +257,13 @@ export function describeStatus(result: AdminStatusResult): string[] {
     // The advice is a sentence of its own, and it is how hosting comes back: `team rotate-key`
     // restarts it in place, so "until the service restarts" would be wrong here.
     lines.push(
-      'Hosting: STOPPED — the nodeterm API refused to issue relay tokens.',
+      'Hosting: STOPPED — the DisTerm API refused to issue relay tokens.',
       `  ${POP_REFUSED_MESSAGE}`,
-      '  Hosting stays off until nodeterm is updated or the key is rotated.'
+      '  Hosting stays off until DisTerm is updated or the key is rotated.'
     )
   } else if (sched.state === 'backend-refused') {
     lines.push(
-      `Hosting: STOPPED — the nodeterm API refused to issue relay tokens${lastError ? ` (${lastError})` : ''}. ` +
+      `Hosting: STOPPED — the DisTerm API refused to issue relay tokens${lastError ? ` (${lastError})` : ''}. ` +
         'Hosting stays off until the service restarts.'
     )
   } else if (idle > 0) {
@@ -315,6 +317,8 @@ function render(req: AdminRequest, result: unknown, json: boolean): { lines: str
       const why =
         r.start === 'stopped'
           ? 'the service is shutting down'
+          : r.start === 'no-relay'
+            ? RELAY_UNAVAILABLE_REASON
           : r.start === 'host-key-unreadable'
             ? 'the host key could not be read (see `team status`)'
             : `start answered "${str(r.start, '?')}"`

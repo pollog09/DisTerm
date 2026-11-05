@@ -84,10 +84,12 @@ describe('how the fallback is wired (source pins)', () => {
 
   it('re-reads the pane and requires a SHELL before it writes anything', () => {
     // The CLI exits after printing, so a shell is what SHOULD own the pane. Anything else means
-    // we misread the situation, and `null` ("could not see the pane") is not evidence either.
+    // we misread the situation, and `null` ("could not see the pane") is not evidence either. The
+    // one exception is a pane in a WSL distribution, which only ever reads `wsl.exe`.
     expect(src).toMatch(
-      /resumeSessionMissing\(agentId, deadId, seen\)[\s\S]{0,900}?if \(!isShellCommand\(pane\)\) return/
+      /resumeSessionMissing\(agentId, deadId, seen\)[\s\S]{0,900}?if \(!isShellCommand\(pane\) && !wslPaneNow\) return/
     )
+    expect(src).toContain('const wslPaneNow = nodePaneRunsInWsl(data, owningProject ?? wslProjectId, session.source)')
   })
 
   it('relaunches with NO session id — a fresh start, and one that cannot re-arm the watcher', () => {

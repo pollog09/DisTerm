@@ -95,7 +95,7 @@ export async function moveProjectToFolder(projectId: string, deps: ProjectStorag
     return
   }
   if (where !== 'folder') {
-    deps.notice('error', 'The canvas was saved, but nodeterm could not confirm it is now in the folder.')
+    deps.notice('error', 'The canvas was saved, but DisTerm could not confirm it is now in the folder.')
     return
   }
   deps.notice('info', 'Canvas stored in the folder, in .nodeterm/project.json.')

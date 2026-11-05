@@ -11,6 +11,8 @@ import { Button } from '@renderer/ui/Button'
 import { CopyButton } from '@renderer/ui/CopyButton'
 import { Input } from '@renderer/ui/Input'
 import { Select } from '@renderer/ui/Select'
+import { useRelayConfigured } from '../state/relayAvailability'
+import { RELAY_UNAVAILABLE_REASON } from '@shared/relay-availability'
 
 /**
  * Remote access dialog — a self-contained popup reachable from the project (tab) caret menu, so
@@ -23,6 +25,8 @@ import { Select } from '@renderer/ui/Select'
  */
 export function RemoteAccessDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const isPremium = useEntitlement((s) => s.isPremium)
+  const relay = useRelayConfigured()
+  const relayOff = relay !== true
   const upgrade = useEntitlement((s) => s.upgrade)
   const projects = useProjects((s) => s.projects)
   const activeProjectId = useProjects((s) => s.activeProjectId)
@@ -103,6 +107,7 @@ export function RemoteAccessDialog({ onClose }: { onClose: () => void }): React.
           Open terminals that run on another machine you own — end-to-end encrypted over the relay.
           Hosting (sharing this machine) is Pro; connecting to a host is free.
         </p>
+        {relay === false ? <p className="remote-dialog__err">{RELAY_UNAVAILABLE_REASON}</p> : null}
 
         <h4 className="remote-dialog__head4">Allow remote access</h4>
         {isPremium ? (
@@ -155,7 +160,7 @@ export function RemoteAccessDialog({ onClose }: { onClose: () => void }): React.
                 {relayShareGrantCopy(sharedName || null, thisMachine())}
               </p>
               {shareRefusal ? <p className="remote-dialog__err">{shareRefusal}</p> : null}
-              <Button disabled={hostBusy || !!shareRefusal} onClick={() => void startHosting()}>
+              <Button disabled={hostBusy || !!shareRefusal || relayOff} onClick={() => void startHosting()}>
                 {hostBusy ? 'Starting…' : 'Allow remote access'}
               </Button>
             </div>
@@ -163,7 +168,7 @@ export function RemoteAccessDialog({ onClose }: { onClose: () => void }): React.
         ) : (
           <div className="remote-dialog__block">
             <p className="remote-dialog__hint">
-              Sharing this machine requires nodeterm Pro. Connecting to a host you were given a code
+              Sharing this machine requires DisTerm Pro. Connecting to a host you were given a code
               for is free.
             </p>
             <Button onClick={() => void upgrade()}>Upgrade to Pro — $10/mo</Button>
@@ -178,7 +183,7 @@ export function RemoteAccessDialog({ onClose }: { onClose: () => void }): React.
             value={clientCode}
             onChange={(e) => setClientCode(e.target.value)}
           />
-          <Button disabled={!clientCode.trim()} onClick={connect}>
+          <Button disabled={!clientCode.trim() || relayOff} onClick={connect}>
             Connect
           </Button>
         </div>

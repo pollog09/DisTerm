@@ -90,6 +90,8 @@ export const HOST_ONLY_CHANNEL_PREFIXES: readonly string[] = [
 export const HOST_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   // The host's installed WSL distributions: a machine fact, and running wsl.exe can boot one.
   IPC.ptyTerminalProfiles,
+  // The same for the Claude version inside one: asking can boot the distribution.
+  IPC.claudeWslCliCaps,
   // A WSL project's distro, keys and transport are the host user's alone: these can start a distro
   // and authorize a project to connect to it.
   IPC.wslProjectList,

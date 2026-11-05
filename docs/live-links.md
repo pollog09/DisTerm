@@ -10,6 +10,14 @@ was reached; where they and this file disagree, the code and this file win.
 scheduler), `docs/team-presence.md` (co-attach), `docs/remote-sessions.md` (the relay and its trust
 gate).
 
+**In DisTerm this is off by default.** The fork ships no relay, so the create dialog is disabled until
+the app is started with `NODETERM_RELAY_URL` and `NODETERM_API_BASE`. The second also redirects the
+license, check and project-limit calls (see the warning under "Off by default" in the
+[README](../README.md#off-by-default-anything-that-needs-a-relay), including `LICENSE` clause (b)). Even then the viewer URL still
+names `nodeterm.dev`: `WATCH_LINK_ORIGIN` lives in `src/shared/watch-link/`, which is unchanged because
+it is vendored byte for byte into nodeterm-web. This fork has no viewer site. The text below describes
+upstream's service.
+
 ## What it is
 
 A **live link** is a URL, `https://nodeterm.dev/s/<linkId>#1.<S>`, that shows ONE terminal or agent

@@ -36,14 +36,14 @@ describe('describeOs', () => {
 describe('envBlock', () => {
   it('includes version, surface, os and electron version on desktop', () => {
     const block = envBlock({ appVersion: '0.2.7', userAgent: ELECTRON_UA })
-    expect(block).toContain('nodeterm: v0.2.7')
+    expect(block).toContain('DisTerm: v0.2.7')
     expect(block).toContain('surface: desktop')
     expect(block).toContain('os: macOS')
     expect(block).toContain('electron: 28.2.6')
   })
   it('reports unknown version and omits electron on server', () => {
     const block = envBlock({ appVersion: null, userAgent: LINUX_BROWSER_UA })
-    expect(block).toContain('nodeterm: unknown')
+    expect(block).toContain('DisTerm: unknown')
     expect(block).toContain('surface: server')
     expect(block).not.toContain('electron:')
   })
@@ -61,7 +61,7 @@ describe('buildBugReportUrl', () => {
     expect(u.searchParams.get('labels')).toBe('bug')
     const body = u.searchParams.get('body')!
     expect(body).toContain('Steps here')
-    expect(body).toContain('nodeterm: v0.2.7')
+    expect(body).toContain('DisTerm: v0.2.7')
   })
 
   it('truncates an over-budget description with a marker', () => {
@@ -72,7 +72,7 @@ describe('buildBugReportUrl', () => {
     expect(body).toContain('… (truncated)')
     expect(body.length).toBeLessThanOrEqual(BODY_BUDGET)
     // env block must survive truncation
-    expect(body).toContain('nodeterm: v0.2.7')
+    expect(body).toContain('DisTerm: v0.2.7')
   })
 
   it('does not mark a short description as truncated', () => {
