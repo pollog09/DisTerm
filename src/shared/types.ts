@@ -4705,6 +4705,7 @@ export interface NodeTerminalApi {
   logs: LogApi
   githubIssues: import('./github-issues').GitHubIssuesApi
   githubControl: import('./github-issues').GitHubControlApi
+  disInvoice: import('./dis-invoice').DisInvoiceApi
   usage: UsageApi
   sessionMemory: SessionMemoryApi
   devPorts: import('./dev-ports').DevPortsApi

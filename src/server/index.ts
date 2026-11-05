@@ -21,6 +21,7 @@ import { registerAgentEnvIpc } from '../core/agent-env-ipc'
 import { PtyManager } from '../core/pty-manager'
 import { registerCoreHandlers } from './handlers'
 import { registerGitHubIntegration } from '../core/github/integration'
+import { DIS_INVOICE_SECRET_FILE, registerDisInvoice } from '../core/dis-invoice/service'
 import { registerBoardDispatchReportIpc } from '../core/board-dispatch-report'
 import { runGitHubCliCommand } from '../core/github/credentials'
 import {
@@ -442,6 +443,11 @@ export async function startServer(
     run: runGitHubCliCommand
   })
   registerServerGitHubControl(platform, github.controller)
+  registerDisInvoice({
+    platform,
+    secret: new ServerSecretStore(config.dataDir, DIS_INVOICE_SECRET_FILE),
+    git: gitService
+  })
   // A browser tab's board dispatch reports its queue here, for the `issues` control verb (display only).
   const boardDispatchReports = registerBoardDispatchReportIpc(platform)
 

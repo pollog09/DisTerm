@@ -576,6 +576,16 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.githubControlSelectProvider,
   IPC.githubControlSaveToken,
   IPC.githubControlClearToken,
+  // dis-invoice connector plane (host-only prefix): the key spans every client, not one project.
+  IPC.disInvoiceStatus,
+  IPC.disInvoiceSaveConfig,
+  IPC.disInvoiceClearKey,
+  IPC.disInvoiceFetch,
+  IPC.disInvoiceLinks,
+  IPC.disInvoiceSaveLink,
+  IPC.disInvoiceEnsureFolder,
+  IPC.disInvoiceClone,
+  IPC.disInvoiceInspectFolder,
   // A relay tab's seed is a local no-op (relay-api.ts); it writes the mirror's session identities.
   IPC.agentSeedIdentity,
   // Server→client events (a client cannot invoke them; what a scoped guest RECEIVES is decided by

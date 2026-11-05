@@ -45,6 +45,9 @@ import { IPC } from './ipc'
  */
 export const HOST_ONLY_CHANNEL_PREFIXES: readonly string[] = [
   'githubControl:',
+  // The dis-invoice connector key reads and writes every client's cards, and these channels also
+  // create folders and clone on the host. Sync is a person's action on their own machine.
+  'disInvoice:',
   // The host's credential and identity planes. None of these crosses the relay for a legitimate
   // tab (relay-api.ts keeps license/accounts/usage LOCAL), and each is something the invite never
   // granted: the license key and its seats, the managed Claude/Codex logins (a login node writes

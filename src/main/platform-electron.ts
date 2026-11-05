@@ -86,6 +86,9 @@ export function electronPlatform(): ElectronPlatform {
     get appPath() {
       return app.getAppPath()
     },
+    get documentsDir() {
+      return app.getPath('documents')
+    },
     // The ipcMain half of each registration is UNCHANGED — the local window's call is bit-identical
     // to what it was before the table existed (same event-stripping, same sender id).
     handle: (ch, fn) => {

@@ -576,6 +576,14 @@ export class GitService {
     return result.ok && url ? url : null
   }
 
+  /** Inside a work tree and `.nodeterm/` is not ignored there. Outside a repository, nothing is. */
+  async canvasExposedToGit(cwd: string): Promise<boolean> {
+    if (!cwd) return false
+    const inside = await git(cwd, ['rev-parse', '--is-inside-work-tree'])
+    if (!inside.ok || inside.out.trim() !== 'true') return false
+    return !(await git(cwd, ['check-ignore', '-q', '.nodeterm/project.json'])).ok
+  }
+
   /** Build a provider web URL for a commit from the origin remote; null if unsupported. */
   async remoteCommitUrl(cwd: string, sha: string): Promise<string | null> {
     if (!cwd || !/^[0-9a-fA-F]{7,64}$/.test(sha)) return null

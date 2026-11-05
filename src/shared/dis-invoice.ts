@@ -47,11 +47,11 @@ export type DisInvoiceFolderResult =
 
 export type DisInvoiceCloneResult = { ok: true; folder: string } | { ok: false; message: string }
 
-/** What a folder says about itself: its GitHub origin as `owner/repo`, and whether git ignores the
- *  `.nodeterm/` canvas a folder-backed project would write there. */
+/** What a folder says about itself: its GitHub origin as `owner/repo`, and whether a folder-backed
+ *  project's `.nodeterm/` canvas, client task text included, would be visible to git there. */
 export interface DisInvoiceFolderFacts {
   originRepo: string | null
-  canvasIgnored: boolean
+  canvasExposed: boolean
 }
 
 export interface DisInvoiceApi {

@@ -474,6 +474,17 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.githubControlSelectProvider,
   IPC.githubControlSaveToken,
   IPC.githubControlClearToken,
+  // Refused to every peer by the host-only prefix before this table is consulted; a relay tab keeps
+  // the local preload's (relay-api.ts). Listed so the guard sees a decision, not a gap.
+  IPC.disInvoiceStatus,
+  IPC.disInvoiceSaveConfig,
+  IPC.disInvoiceClearKey,
+  IPC.disInvoiceFetch,
+  IPC.disInvoiceLinks,
+  IPC.disInvoiceSaveLink,
+  IPC.disInvoiceEnsureFolder,
+  IPC.disInvoiceClone,
+  IPC.disInvoiceInspectFolder,
   IPC.agentHibernated,
   IPC.agentAnswerPermission,
   IPC.agentAckDone,
