@@ -64,7 +64,7 @@ export function makeColumnId(): string {
 }
 
 /** FNV-1a 32-bit — a stable, dependency-free hash (no crypto: this is identity, not security). */
-function fnv1a32(s: string): number {
+export function fnv1a32(s: string): number {
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
