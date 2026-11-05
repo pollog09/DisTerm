@@ -1,0 +1,91 @@
+// The dis-invoice connector's data, after the core boundary has parsed it. Pure types and helpers,
+// imported by core (which talks to the connector) and by the renderer (which mirrors the result).
+
+export type DisInvoicePriority = 'BAJA' | 'MEDIA' | 'ALTA' | 'URGENTE'
+
+export interface DisInvoiceColumn {
+  id: number
+  nombre: string
+  orden: number
+  alFacturar: boolean
+  terminada: boolean
+}
+
+export interface DisInvoiceTask {
+  id: number
+  titulo: string
+  descripcion: string | null
+  prioridad: DisInvoicePriority
+  fechaLimite: string | null
+  columnaId: number
+  proyecto: { id: number; nombre: string; githubRepo: string | null } | null
+  cliente: { id: number; nombre: string }
+}
+
+export type DisInvoiceFailureReason = 'no-key' | 'unauthorized' | 'network' | 'server' | 'contract'
+
+export type DisInvoiceFetchResult =
+  | { ok: true; columns: DisInvoiceColumn[]; tasks: DisInvoiceTask[] }
+  | { ok: false; reason: DisInvoiceFailureReason; message: string }
+
+/** Machine-local, in `userData/dis-invoice-links.json`. A null `projectId` is a folder reserved for
+ *  a dis-invoice project that has no DisTerm project yet (a refused open, a failed clone). */
+export type DisInvoiceLinks = Record<number, { projectId: string | null; folder: string }>
+
+export interface DisInvoiceStatus {
+  hasKey: boolean
+  storage: 'encrypted' | 'restricted-file' | 'unavailable'
+}
+
+export type DisInvoiceSaveResult =
+  | { ok: true }
+  | { ok: false; reason: Exclude<DisInvoiceFailureReason, 'no-key'> | 'invalid' | 'storage'; message: string }
+
+export type DisInvoiceFolderResult =
+  | { ok: true; folder: string; created: boolean; empty: boolean; isRepo: boolean }
+  | { ok: false; message: string }
+
+export type DisInvoiceCloneResult = { ok: true; folder: string } | { ok: false; message: string }
+
+/** What a folder says about itself: its GitHub origin as `owner/repo`, and whether git ignores the
+ *  `.nodeterm/` canvas a folder-backed project would write there. */
+export interface DisInvoiceFolderFacts {
+  originRepo: string | null
+  canvasIgnored: boolean
+}
+
+export interface DisInvoiceApi {
+  status(): Promise<DisInvoiceStatus>
+  /** Checks the key against the connector, and stores it only if the connector accepted it. */
+  saveConfig(key: string): Promise<DisInvoiceSaveResult>
+  clearKey(): Promise<void>
+  fetch(): Promise<DisInvoiceFetchResult>
+  links(): Promise<DisInvoiceLinks>
+  saveLink(proyectoId: number, projectId: string, folder: string): Promise<boolean>
+  /** Name and repo come from the last fetched snapshot, never from the caller. */
+  ensureFolder(proyectoId: number): Promise<DisInvoiceFolderResult>
+  clone(proyectoId: number): Promise<DisInvoiceCloneResult>
+  inspectFolder(cwd: string): Promise<DisInvoiceFolderFacts>
+}
+
+/** GitHub's slug alphabet, which also keeps a value from dis-invoice out of git's option space. */
+const OWNER_REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/
+
+/** `owner/repo` lower-cased for comparison, or null when `value` is not one. */
+export function normalizeOwnerRepo(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const slug = value.trim().replace(/\.git$/i, '')
+  if (!OWNER_REPO.test(slug)) return null
+  const repo = slug.split('/')[1]
+  return repo === '.' || repo === '..' ? null : slug.toLowerCase()
+}
+
+/** `owner/repo` of a GitHub remote URL in any form git accepts (HTTPS, SSH, scp-style). Another
+ *  host's URL is null: `gitlab.com/a/b` is not the repository `github.com/a/b`. */
+export function githubRepoOfRemote(url: string | null | undefined): string | null {
+  if (!url) return null
+  const match = url
+    .trim()
+    .match(/^(?:https?:\/\/(?:[^@/]+@)?(?:www\.)?github\.com\/|ssh:\/\/git@github\.com(?::\d+)?\/|git@github\.com:)([^?#]+?)\/*$/i)
+  return match ? normalizeOwnerRepo(match[1]) : null
+}
