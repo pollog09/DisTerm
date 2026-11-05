@@ -14955,6 +14955,7 @@ button.pull-checks__name {
 }
 .kanban-sync__line {
   margin: 0;
+  white-space: normal;
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-strong);
