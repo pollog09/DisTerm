@@ -42,10 +42,10 @@ export type DisInvoiceSaveResult =
   | { ok: false; reason: Exclude<DisInvoiceFailureReason, 'no-key'> | 'invalid' | 'storage'; message: string }
 
 export type DisInvoiceFolderResult =
-  | { ok: true; folder: string; created: boolean; empty: boolean; isRepo: boolean }
+  | { ok: true; folder: string; empty: boolean; isRepo: boolean }
   | { ok: false; message: string }
 
-export type DisInvoiceCloneResult = { ok: true; folder: string } | { ok: false; message: string }
+export type DisInvoiceCloneResult = { ok: true } | { ok: false; message: string }
 
 /** What a folder says about itself: its GitHub origin as `owner/repo`, and whether a folder-backed
  *  project's `.nodeterm/` canvas, client task text included, would be visible to git there. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { promises as fs, writeFileSync } from 'node:fs'
+import { existsSync, promises as fs, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { disInvoiceBaseDir, disInvoiceFolderName, ensureDisInvoiceFolder } from './folders'
+import { disInvoiceBaseDir, disInvoiceFolderName, readDisInvoiceFolder } from './folders'
 import { testTmpDir } from '../test-tmp'
 
 describe('disInvoiceFolderName', () => {
@@ -44,25 +44,31 @@ describe('disInvoiceBaseDir', () => {
   })
 })
 
-describe('ensureDisInvoiceFolder', () => {
+describe('readDisInvoiceFolder', () => {
   it('creates missing parents and reports an empty new folder', async () => {
     const folder = path.join(testTmpDir('dis-folder-'), 'Documents', 'Distriib', 'Web')
-    expect(await ensureDisInvoiceFolder(folder)).toEqual({ ok: true, folder, created: true, empty: true, isRepo: false })
+    expect(await readDisInvoiceFolder(folder, { create: true })).toEqual({ ok: true, folder, empty: true, isRepo: false })
   })
 
   it('leaves an existing folder alone and says what is in it', async () => {
     const folder = testTmpDir('dis-folder-')
     writeFileSync(path.join(folder, 'notes.md'), 'keep me')
-    expect(await ensureDisInvoiceFolder(folder)).toEqual({ ok: true, folder, created: false, empty: false, isRepo: false })
+    expect(await readDisInvoiceFolder(folder, { create: true })).toEqual({ ok: true, folder, empty: false, isRepo: false })
     expect(await fs.readFile(path.join(folder, 'notes.md'), 'utf8')).toBe('keep me')
     await fs.mkdir(path.join(folder, '.git'))
-    expect(await ensureDisInvoiceFolder(folder)).toEqual({ ok: true, folder, created: false, empty: false, isRepo: true })
+    expect(await readDisInvoiceFolder(folder, { create: true })).toEqual({ ok: true, folder, empty: false, isRepo: true })
   })
 
   it('refuses when a file already holds the name', async () => {
     const dir = testTmpDir('dis-folder-')
     const folder = path.join(dir, 'Web')
     writeFileSync(folder, 'a file')
-    expect(await ensureDisInvoiceFolder(folder)).toEqual({ ok: false, message: `Could not create ${folder} (EEXIST).` })
+    expect(await readDisInvoiceFolder(folder, { create: true })).toEqual({ ok: false, message: `Could not create ${folder} (EEXIST).` })
+  })
+
+  it('reads a missing folder as an error and creates nothing when told not to', async () => {
+    const folder = path.join(testTmpDir('dis-folder-'), 'Web')
+    expect(await readDisInvoiceFolder(folder, { create: false })).toEqual({ ok: false, message: `Could not read ${folder} (ENOENT).` })
+    expect(existsSync(folder)).toBe(false)
   })
 })

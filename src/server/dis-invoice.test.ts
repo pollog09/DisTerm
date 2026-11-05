@@ -156,17 +156,16 @@ describe('folders and clones', () => {
   it('names folders from the snapshot and keeps them across a rename upstream', async () => {
     await call(IPC.disInvoiceFetch)
     const folder = path.join(base(), 'Web')
-    expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: true, folder, created: true, empty: true, isRepo: false })
+    expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: true, folder, empty: true, isRepo: false })
     expect(await call(IPC.disInvoiceEnsureFolder, 8)).toEqual({
       ok: true,
       folder: path.join(base(), 'web (2)'),
-      created: true,
       empty: true,
       isRepo: false
     })
     fake.seed({ cards: [fakeCard(1, { proyecto: { id: 7, nombre: 'Renamed', github_repo: null } })] })
     await call(IPC.disInvoiceFetch)
-    expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: true, folder, created: false, empty: true, isRepo: false })
+    expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: true, folder, empty: true, isRepo: false })
     expect(await call(IPC.disInvoiceLinks)).toEqual({
       7: { projectId: null, folder },
       8: { projectId: null, folder: path.join(base(), 'web (2)') }
@@ -177,7 +176,7 @@ describe('folders and clones', () => {
     await call(IPC.disInvoiceFetch)
     await call(IPC.disInvoiceEnsureFolder, 7)
     const folder = path.join(base(), 'Web')
-    expect(await call(IPC.disInvoiceClone, 7)).toEqual({ ok: true, folder })
+    expect(await call(IPC.disInvoiceClone, 7)).toEqual({ ok: true })
     expect(clones).toEqual([{ parent: base(), url: 'owner/web', dirName: 'Web' }])
     expect(existsSync(folder)).toBe(false)
   })
@@ -190,6 +189,44 @@ describe('folders and clones', () => {
     cloneAnswer = { ok: false, message: 'Destination already exists' }
     expect(await call(IPC.disInvoiceClone, 7)).toEqual({ ok: false, message: 'Destination already exists' })
     expect(existsSync(kept)).toBe(true)
+  })
+
+  describe('a saved link outside the base folder', () => {
+    const outside = (): string => path.join(testTmpDir('dis-elsewhere-'), 'project')
+
+    it('is not created when it is missing', async () => {
+      await call(IPC.disInvoiceFetch)
+      const folder = outside()
+      await call(IPC.disInvoiceSaveLink, 7, 'p-1', folder)
+      expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: false, message: `Could not read ${folder} (ENOENT).` })
+      expect(existsSync(folder)).toBe(false)
+    })
+
+    it('is read as it is when it exists', async () => {
+      await call(IPC.disInvoiceFetch)
+      const folder = outside()
+      await fs.mkdir(folder)
+      await call(IPC.disInvoiceSaveLink, 7, 'p-1', folder)
+      expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: true, folder, empty: true, isRepo: false })
+    })
+
+    it('is never removed or cloned into, even when empty', async () => {
+      await call(IPC.disInvoiceFetch)
+      const folder = outside()
+      await fs.mkdir(folder)
+      await call(IPC.disInvoiceSaveLink, 7, 'p-1', folder)
+      expect(await call(IPC.disInvoiceClone, 7)).toEqual({ ok: false, message: `${folder} is outside ${base()}, so nothing was cloned.` })
+      expect(existsSync(folder)).toBe(true)
+      expect(clones).toEqual([])
+    })
+
+    it('a path that climbs out of the base folder counts as outside', async () => {
+      await call(IPC.disInvoiceFetch)
+      const folder = path.join(base(), '..', 'climbed')
+      await call(IPC.disInvoiceSaveLink, 7, 'p-1', folder)
+      expect(await call(IPC.disInvoiceEnsureFolder, 7)).toEqual({ ok: false, message: `Could not read ${folder} (ENOENT).` })
+      expect(existsSync(path.join(documentsDir, 'climbed'))).toBe(false)
+    })
   })
 
   it('refuses a clone for a project with no repository', async () => {

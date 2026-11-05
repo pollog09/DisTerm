@@ -24,14 +24,15 @@ export function disInvoiceFolderName(nombre: string, proyectoId: number, taken: 
   return uniqueChildName(clamped || fallback, taken, 'win32')
 }
 
-/** Creates `folder` and its parents when missing, and says what is there. Never touches contents. */
-export async function ensureDisInvoiceFolder(folder: string): Promise<DisInvoiceFolderResult> {
+/** Says what is in `folder`, first creating it and its parents when `create` is set. Never touches
+ *  contents. */
+export async function readDisInvoiceFolder(folder: string, { create }: { create: boolean }): Promise<DisInvoiceFolderResult> {
   try {
-    const created = (await fs.mkdir(folder, { recursive: true })) !== undefined
+    if (create) await fs.mkdir(folder, { recursive: true })
     const entries = await fs.readdir(folder)
-    return { ok: true, folder, created, empty: entries.length === 0, isRepo: entries.includes('.git') }
+    return { ok: true, folder, empty: entries.length === 0, isRepo: entries.includes('.git') }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'unknown error'
-    return { ok: false, message: `Could not create ${folder} (${code}).` }
+    return { ok: false, message: `Could not ${create ? 'create' : 'read'} ${folder} (${code}).` }
   }
 }

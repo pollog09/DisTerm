@@ -47,8 +47,8 @@ function harness(result: DisInvoiceFetchResult, links: DisInvoiceLinks, projects
       log.push(`saveLink ${id} ${projectId}`)
       return true
     },
-    ensureFolder: async (id) => ({ ok: true, folder: `/docs/${id}`, created: true, empty: true, isRepo: false }),
-    clone: async (id) => ({ ok: true, folder: `/docs/${id}` }),
+    ensureFolder: async (id) => ({ ok: true, folder: `/docs/${id}`, empty: true, isRepo: false }),
+    clone: async () => ({ ok: true }),
     inspectFolder: async () => ({ originRepo: null, canvasExposed: false })
   }
   const deps: DisInvoiceSyncDeps = {
@@ -258,7 +258,7 @@ describe('runDisInvoiceSync resolving a project', () => {
     deps.disInvoice.clone = async (id) => {
       cloned.push(id)
       log.push(`clone ${id}`)
-      return { ok: true, folder: `/docs/${id}` }
+      return { ok: true }
     }
     const report = await runDisInvoiceSync(deps)
     expect(log).toEqual(['fetch', 'gate', 'clone 7', 'add P7 /docs/7', 'saveLink 7 new-P7', 'nodes new-P7 sticky-dis-7-7', 'board new-P7', 'persist'])
@@ -327,7 +327,7 @@ describe('runDisInvoiceSync resolving a project', () => {
 
   it('a folder that is not a repository keeps its files: no clone, and the tasks still sync', async () => {
     const { deps, log } = creating([withRepo(1, 'o/r')])
-    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', created: false, empty: false, isRepo: false })
+    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', empty: false, isRepo: false })
     const report = await runDisInvoiceSync(deps)
     expect(log).toContain('add P1 /docs/1')
     expect(log.join()).not.toContain('clone')
@@ -337,7 +337,7 @@ describe('runDisInvoiceSync resolving a project', () => {
 
   it('an existing repository is used as it is: never cloned over', async () => {
     const { deps, log } = creating([withRepo(1, 'o/r')])
-    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', created: false, empty: false, isRepo: true })
+    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', empty: false, isRepo: true })
     const report = await runDisInvoiceSync(deps)
     expect(log.join()).not.toContain('clone')
     expect(report.projects[0].cloneSkipped).toBe(false)

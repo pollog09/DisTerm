@@ -16,7 +16,7 @@ import type { GitService } from '../git-service'
 import type { CorePlatform } from '../platform'
 import type { SecretStore } from '../secret-store'
 import { DIS_INVOICE_CONNECTOR_URL, DisInvoiceClient, connectorBaseUrl } from './client'
-import { disInvoiceBaseDir, disInvoiceFolderName, ensureDisInvoiceFolder } from './folders'
+import { disInvoiceBaseDir, disInvoiceFolderName, readDisInvoiceFolder } from './folders'
 
 export const DIS_INVOICE_SECRET_FILE = 'dis-invoice-connector-key.json'
 const LINKS_FILE = 'dis-invoice-links.json'
@@ -91,8 +91,11 @@ export function registerDisInvoice({ platform, secret, git, client: injected }: 
   const client = injected ?? new DisInvoiceClient()
   const links = new DisInvoiceLinkStore(platform.userDataDir)
   const baseDir = disInvoiceBaseDir(disInvoiceTestDocumentsDir(process.env) ?? platform.documentsDir)
-  /** From the last good fetch. Folder and clone calls name a project by id, so a caller can never
-   *  supply the path to create or the URL to clone. */
+  /** Sync names these folders. A saved link can hold any folder a reused project already lives in,
+   *  and saveLink takes it from the renderer, so nothing outside the base is created or removed. */
+  const insideBase = (folder: string): boolean => path.dirname(path.resolve(folder)) === path.resolve(baseDir)
+  /** From the last good fetch. Folder and clone calls name a project by id, so a caller never
+   *  supplies the URL to clone or the name of a new folder. */
   let snapshot = new Map<number, { nombre: string; githubRepo: string | null }>()
 
   const fetchSnapshot = async (): Promise<DisInvoiceFetchResult> => {
@@ -161,17 +164,19 @@ export function registerDisInvoice({ platform, secret, git, client: injected }: 
   platform.handle(IPC.disInvoiceEnsureFolder, async (proyectoId: unknown): Promise<DisInvoiceFolderResult> => {
     const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
     if (!proyecto) return { ok: false, message: 'That project is not in the last sync.' }
-    return ensureDisInvoiceFolder(await reserveFolder(proyectoId as number, proyecto.nombre))
+    const folder = await reserveFolder(proyectoId as number, proyecto.nombre)
+    return readDisInvoiceFolder(folder, { create: insideBase(folder) })
   })
 
   platform.handle(IPC.disInvoiceClone, async (proyectoId: unknown): Promise<DisInvoiceCloneResult> => {
     const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
     if (!proyecto?.githubRepo) return { ok: false, message: 'That project has no repository to clone.' }
     const folder = await reserveFolder(proyectoId as number, proyecto.nombre)
+    if (!insideBase(folder)) return { ok: false, message: `${folder} is outside ${baseDir}, so nothing was cloned.` }
     // ensure-folder may have made it. rmdir only succeeds on an empty one, and clone claims it again.
     await fs.rmdir(folder).catch(() => undefined)
     const result = await git.clone(path.dirname(folder), proyecto.githubRepo, { dirName: path.basename(folder) })
-    return result.ok ? { ok: true, folder } : { ok: false, message: result.message }
+    return result.ok ? { ok: true } : { ok: false, message: result.message }
   })
 
   platform.handle(IPC.disInvoiceInspectFolder, async (cwd: unknown): Promise<DisInvoiceFolderFacts> => {
