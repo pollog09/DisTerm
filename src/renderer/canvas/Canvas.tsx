@@ -292,9 +292,9 @@ import {
 } from '../lib/projectLimitGate'
 import { countOpenProjects, decideOpen } from '@shared/project-limit'
 import { opensProject, type OpenAction } from '../lib/projectOpens'
+import { disInvoiceCanvas } from '../lib/disInvoiceCanvas'
 import {
   disInvoiceStickyFactory,
-  mergeUpsertsIntoFlow,
   registerDisInvoiceProject,
   runDisInvoiceSync,
   type DisInvoiceProjectAdd,
@@ -6466,39 +6466,19 @@ export function Canvas() {
     [commitActiveToStore, writeDisk]
   )
 
-  /**
-   * React Flow holds this project and it is the active one, so `persist()` will commit `nodesRef`
-   * over the store: a store-only write here would be erased. That includes the settle window after a
-   * load (`loadingRef` set, epoch already installed). In the gap before a switch's load runs, the
-   * refs are still the outgoing project's, whose commit already happened, so the store is the truth.
-   */
-  const disInvoiceCanvasIsLive = useCallback(
-    (projectId: string): boolean =>
-      nodesProjectIdRef.current === projectId && useProjects.getState().activeProjectId === projectId,
-    [nodesProjectIdRef]
-  )
-
-  const applyDisInvoiceNodes = useCallback(
-    (projectId: string, upserts: CanvasNodeState[]): void => {
-      if (!disInvoiceCanvasIsLive(projectId)) {
-        useProjects.getState().applyOwnNodeMutations(projectId, upserts.map((node) => ({ op: 'upsert', node })))
-        return
-      }
-      const { next, added } = mergeUpsertsIntoFlow(nodesRef.current, upserts)
-      nodesRef.current = next
-      setNodes(next)
-      for (const node of added) castNewNodeNow(projectId, node)
-      markDirty()
-    },
-    [disInvoiceCanvasIsLive, nodesRef, setNodes, castNewNodeNow, markDirty]
-  )
-
-  const applyDisInvoiceBoard = useCallback(
-    (projectId: string, board: ProjectKanban): void => {
-      useProjects.getState().setProjectKanban(projectId, board)
-      markDirty()
-    },
-    [markDirty]
+  const disInvoiceCanvasWrites = useMemo(
+    () =>
+      disInvoiceCanvas({
+        flowProjectId: () => nodesProjectIdRef.current,
+        flowNodes: () => nodesRef.current,
+        setFlowNodes: (next) => {
+          nodesRef.current = next
+          setNodes(next)
+        },
+        castNewNode: castNewNodeNow,
+        markDirty
+      }),
+    [nodesProjectIdRef, nodesRef, setNodes, castNewNodeNow, markDirty]
   )
 
   const disInvoiceSyncRef = useRef<Promise<DisInvoiceSyncReport> | null>(null)
@@ -6534,14 +6514,8 @@ export function Canvas() {
       const run = runDisInvoiceSync({
         disInvoice: api.disInvoice,
         projects: () => useProjects.getState().projects,
-        nodesOf: (projectId) =>
-          disInvoiceCanvasIsLive(projectId)
-            ? flowToNodeStates(nodesRef.current)
-            : useProjects.getState().getProject(projectId)?.nodes ?? [],
-        boardOf: (projectId) => useProjects.getState().getProject(projectId)?.kanban,
+        ...disInvoiceCanvasWrites,
         stickyFactory: disInvoiceStickyFactory,
-        applyNodes: applyDisInvoiceNodes,
-        applyBoard: applyDisInvoiceBoard,
         persist,
         gateNewProject: gateDisInvoiceProject,
         addProject: addDisInvoiceProject
@@ -6551,7 +6525,7 @@ export function Canvas() {
       disInvoiceSyncRef.current = run
       return run
     },
-    [disInvoiceCanvasIsLive, nodesRef, applyDisInvoiceNodes, applyDisInvoiceBoard, persist, gateDisInvoiceProject, addDisInvoiceProject]
+    [disInvoiceCanvasWrites, persist, gateDisInvoiceProject, addDisInvoiceProject]
   )
 
   const disInvoiceSyncControl = useMemo(
@@ -12577,7 +12551,7 @@ export function Canvas() {
     (projectId: string, nodeId: string, how: { agentId: AgentId; accountId?: string | null } | null): void => {
       const refuse = (text: string): void => setNotice({ kind: 'error', text })
       const start = async (): Promise<void> => {
-        if (!disInvoiceCanvasIsLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        if (!disInvoiceCanvasWrites.isLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
         const node = nodesRef.current.find((n) => n.id === nodeId)
         const ref = normalizeDisInvoiceRef(node?.data.disInvoiceRef)
         const project = useProjects.getState().getProject(projectId)
@@ -12599,7 +12573,7 @@ export function Canvas() {
           }
         )
         if (!brief.ok) return refuse(brief.notice)
-        if (!disInvoiceCanvasIsLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        if (!disInvoiceCanvasWrites.isLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
         const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile: brief.path, title })
         if (created) fileIssueSession(columnId, null, created, how.agentId)
       }
@@ -12611,7 +12585,7 @@ export function Canvas() {
       switchProject(projectId)
       setTimeout(() => void start(), 50)
     },
-    [disInvoiceCanvasIsLive, nodesRef, createNodeInColumn, addAgentNode, fileIssueSession, switchProject]
+    [disInvoiceCanvasWrites, nodesRef, createNodeInColumn, addAgentNode, fileIssueSession, switchProject]
   )
 
   disInvoiceStartItemsRef.current = (projectId, nodeId) =>

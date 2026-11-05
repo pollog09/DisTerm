@@ -30,9 +30,11 @@ const BOARD_WRITERS: Record<string, string[]> = {
     'the `assign` control verb — a session moving its OWN card (the issue-bound contract)',
     'autoMoveCardFromPulls — the merge-driven move: a person switched it on for this machine in ' +
       'Settings, and it fires only on a pull request MERGE this machine observed after that (never on ' +
-      'agent status), after winning the host\'s one-time claim; session cards only',
-    'applyDisInvoiceBoard — a person pressing Sync, mirroring dis-invoice\'s columns and tasks. Never ' +
-      'polled, and agent status has no path to it'
+      'agent status), after winning the host\'s one-time claim; session cards only'
+  ],
+  'lib/disInvoiceCanvas.ts': [
+    'applyBoard — a person pressing Sync, mirroring dis-invoice\'s columns and tasks. Never polled, and ' +
+      'agent status has no path to it'
   ],
   'components/kanban/GlobalKanbanView.tsx': ['onChangeBoard — the Omni board committing a person\'s drag/edit'],
   'components/kanban/NodeLabels.tsx': ['a person editing a node\'s labels'],

@@ -9,8 +9,10 @@ import {
   registerDisInvoiceProject,
   runDisInvoiceSync,
   summarizeDisInvoiceSync,
-  type DisInvoiceSyncDeps
+  type DisInvoiceSyncDeps,
+  type DisInvoiceSyncReport
 } from './disInvoiceSync'
+import type { ReconcileReport } from '@shared/dis-invoice-reconcile'
 
 const COLUMNS: DisInvoiceColumn[] = [
   { id: 1, nombre: 'Por hacer', orden: 1, alFacturar: false, terminada: false },
@@ -304,7 +306,7 @@ describe('runDisInvoiceSync resolving a project', () => {
     const report = await runDisInvoiceSync(deps)
     expect(log).toEqual(['fetch', 'gate', 'ensure 7', 'clone 7', 'add P7 /docs/7', 'saveLink 7 new-P7', 'nodes new-P7 sticky-dis-7-7', 'board new-P7', 'persist'])
     expect(report.projects[0].created).toBe(true)
-    expect(summarizeDisInvoiceSync(report)[0]).toEqual({ tone: 'ok', text: '1 project added, 1 task added.' })
+    expect(summarizeDisInvoiceSync(report)[0]).toEqual({ tone: 'ok', text: '1 project added, 1 repository cloned, 3 columns added, 1 task added.' })
   })
 
   it('creates without a repository: no clone', async () => {
@@ -549,6 +551,57 @@ describe('runDisInvoiceSync resolving a project', () => {
     const { deps, log } = creating([withRepo(7, null)], { 7: { projectId: 'deleted', folder: '/docs/7' } })
     await runDisInvoiceSync(deps)
     expect(log).toContain('add P7 /docs/7')
+  })
+})
+
+describe('summarizeDisInvoiceSync', () => {
+  const outcome = (over: Partial<DisInvoiceSyncReport['projects'][number]>, reconcile: Partial<ReconcileReport> = {}) => ({
+    proyectoId: 7,
+    nombre: 'P7',
+    projectId: 'a',
+    created: false,
+    cloned: false,
+    cloneSkipped: false,
+    cloneFailed: null,
+    canvasExposed: false,
+    reconcile: {
+      created: [],
+      textUpdated: [],
+      moved: [],
+      metaUpdated: [],
+      finished: [],
+      noFinishedColumn: [],
+      reassigned: [],
+      unplaced: [],
+      columnsAdded: 0,
+      duplicatesCleared: 0,
+      ...reconcile
+    },
+    ...over
+  })
+  const report = (project: ReturnType<typeof outcome>): DisInvoiceSyncReport => ({
+    noColumns: false,
+    projects: [project],
+    withoutProject: 0,
+    stopped: [],
+    failed: [],
+    skippedRemote: [],
+    unavailable: []
+  })
+  const first = (project: ReturnType<typeof outcome>): string => summarizeDisInvoiceSync(report(project))[0].text
+
+  it.each([
+    [outcome({}, { columnsAdded: 2 }), '2 columns added.'],
+    [outcome({}, { columnsAdded: 1 }), '1 column added.'],
+    [outcome({}, { duplicatesCleared: 1 }), '1 duplicate note unlinked.'],
+    [outcome({}, { duplicatesCleared: 2 }), '2 duplicate notes unlinked.'],
+    [outcome({ cloned: true }), '1 repository cloned.']
+  ])('names a change instead of saying it is up to date: %#', (project, text) => {
+    expect(first(project)).toBe(text)
+  })
+
+  it('still says up to date when nothing changed', () => {
+    expect(first(outcome({}))).toBe('Already up to date across 1 project.')
   })
 })
 

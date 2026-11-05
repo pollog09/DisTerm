@@ -356,13 +356,19 @@ export function summarizeDisInvoiceSync(report: DisInvoiceSyncReport): DisInvoic
   const moved = sum((r) => r.moved)
   const finished = sum((r) => r.finished)
   const details = sum((r) => r.metaUpdated)
+  const cloned = report.projects.filter((p) => p.cloned).length
+  const columns = report.projects.reduce((total, p) => total + p.reconcile.columnsAdded, 0)
+  const duplicates = report.projects.reduce((total, p) => total + p.reconcile.duplicatesCleared, 0)
   const parts = [
     added && plural(added, 'project') + ' added',
+    cloned && plural(cloned, 'repository', 'repositories') + ' cloned',
+    columns && plural(columns, 'column') + ' added',
     created && plural(created, 'task') + ' added',
     updated && plural(updated, 'task') + ' updated',
     moved && plural(moved, 'task') + ' moved',
     finished && plural(finished, 'task') + ' finished',
-    details && plural(details, 'due date or priority', 'due dates or priorities') + ' updated'
+    details && plural(details, 'due date or priority', 'due dates or priorities') + ' updated',
+    duplicates && plural(duplicates, 'duplicate note') + ' unlinked'
   ].filter(Boolean)
   lines.push({
     tone: 'ok',
