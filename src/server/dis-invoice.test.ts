@@ -5,7 +5,7 @@ import { IPC } from '../shared/ipc'
 import { isHostOnlyChannel } from '../shared/host-control'
 import { ServerPlatform } from './platform-server'
 import { ServerSecretStore } from './github-control'
-import { DIS_INVOICE_SECRET_FILE, registerDisInvoice } from '../core/dis-invoice/service'
+import { DIS_INVOICE_SECRET_FILE, disInvoiceTestDocumentsDir, registerDisInvoice } from '../core/dis-invoice/service'
 import { DisInvoiceClient } from '../core/dis-invoice/client'
 import { FAKE_CONNECTOR_KEY, fakeCard, startFakeConnector, type FakeConnector } from '../core/dis-invoice/fake-connector'
 import { EDITOR_ONLY, VIEW, COMMENT } from '../core/relay/access-policy'
@@ -224,6 +224,19 @@ describe('folders and clones', () => {
   it('inspects a folder through the GitHub-only origin parser', async () => {
     expect(await call(IPC.disInvoiceInspectFolder, documentsDir)).toEqual({ originRepo: 'owner/web', canvasExposed: true })
     expect(await call(IPC.disInvoiceInspectFolder, '')).toEqual({ originRepo: null, canvasExposed: false })
+  })
+})
+
+describe('disInvoiceTestDocumentsDir', () => {
+  const env = (url?: string): NodeJS.ProcessEnv => ({
+    DISTERM_DIS_INVOICE_DOCUMENTS: '/sandbox',
+    ...(url ? { DISTERM_DIS_INVOICE_URL: url } : {})
+  })
+
+  it('moves the base folder only for the loopback connector', () => {
+    expect(disInvoiceTestDocumentsDir(env('http://127.0.0.1:8799/api/connector'))).toBe('/sandbox')
+    expect(disInvoiceTestDocumentsDir(env())).toBeUndefined()
+    expect(disInvoiceTestDocumentsDir(env('https://evil.example/api/connector'))).toBeUndefined()
   })
 })
 

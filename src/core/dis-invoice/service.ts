@@ -15,12 +15,18 @@ import { writeFileAtomic } from '../fs-atomic'
 import type { GitService } from '../git-service'
 import type { CorePlatform } from '../platform'
 import type { SecretStore } from '../secret-store'
-import { DisInvoiceClient } from './client'
+import { DIS_INVOICE_CONNECTOR_URL, DisInvoiceClient, connectorBaseUrl } from './client'
 import { disInvoiceBaseDir, disInvoiceFolderName, ensureDisInvoiceFolder } from './folders'
 
 export const DIS_INVOICE_SECRET_FILE = 'dis-invoice-connector-key.json'
 const LINKS_FILE = 'dis-invoice-links.json'
 const MAX_KEY_LENGTH = 512
+
+/** Keeps a run against the fake connector out of the real Documents folder. Honoured only with the
+ *  loopback connector, so the base folder stays fixed for real use. */
+export function disInvoiceTestDocumentsDir(env: NodeJS.ProcessEnv): string | undefined {
+  return connectorBaseUrl(env) === DIS_INVOICE_CONNECTOR_URL ? undefined : env.DISTERM_DIS_INVOICE_DOCUMENTS
+}
 
 const isProyectoId = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) > 0
@@ -84,7 +90,7 @@ type Dependencies = {
 export function registerDisInvoice({ platform, secret, git, client: injected }: Dependencies): void {
   const client = injected ?? new DisInvoiceClient()
   const links = new DisInvoiceLinkStore(platform.userDataDir)
-  const baseDir = disInvoiceBaseDir(platform.documentsDir)
+  const baseDir = disInvoiceBaseDir(disInvoiceTestDocumentsDir(process.env) ?? platform.documentsDir)
   /** From the last good fetch. Folder and clone calls name a project by id, so a caller can never
    *  supply the path to create or the URL to clone. */
   let snapshot = new Map<number, { nombre: string; githubRepo: string | null }>()
