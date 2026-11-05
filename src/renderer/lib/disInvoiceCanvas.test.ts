@@ -3,8 +3,8 @@ import path from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { CanvasNodeState, Project, ProjectKanban } from '@shared/types'
 import { useProjects } from '../state/projects'
-import { flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
-import { disInvoiceCanvas } from './disInvoiceCanvas'
+import { createStickyNode, flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
+import { disInvoiceCanvas, mergeUpsertsIntoFlow } from './disInvoiceCanvas'
 import { disInvoiceStickyFactory } from './disInvoiceSync'
 
 const REF = { taskId: 1, columnaId: 1, textHash: 'abc' }
@@ -48,6 +48,22 @@ function harness(flowProjectId: string) {
 }
 
 const textOf = (nodes: CanvasNode[], id: string): unknown => nodes.find((n) => n.id === id)?.data.text
+
+describe('mergeUpsertsIntoFlow', () => {
+  it('keeps live-only state on an existing node and adds new ones', () => {
+    const live = { ...createStickyNode(0), id: 'sticky-1', selected: true, measured: { width: 300, height: 200 } }
+    live.data = { ...live.data, text: 'old', title: 'mine' }
+    const [saved] = flowToNodeStates([live])
+    const fresh = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-2', text: 'new card', ref: REF })
+    const { next, added } = mergeUpsertsIntoFlow([live], [{ ...saved, text: 'upstream', disInvoiceRef: REF }, fresh])
+    expect(next.map((n) => n.id)).toEqual(['sticky-1', 'sticky-dis-7-2'])
+    expect(next[0].selected).toBe(true)
+    expect(next[0].measured).toEqual({ width: 300, height: 200 })
+    expect(next[0].data).toMatchObject({ text: 'upstream', title: 'mine', disInvoiceRef: REF })
+    expect(added.map((n) => n.id)).toEqual(['sticky-dis-7-2'])
+    expect(added[0].data.text).toBe('new card')
+  })
+})
 
 describe('disInvoiceCanvas', () => {
   beforeEach(() => {

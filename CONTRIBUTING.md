@@ -1644,8 +1644,8 @@ running session's own skills and hooks (#744). A test that needs one sets it its
 out/server/main.cjs` merges managed hooks and skills into `~/.codex`, `~/.gemini`, `~/.grok`,
 `~/.copilot`, `~/.cursor` and `~/.claude/skills`, and points `~/.nodeterm/agent-hooks/*.sh` at that
 run's `--data-dir`. A scratch `--data-dir` does not contain it. For a throwaway run use an entry
-point that passes `installHooks: false`, such as `npm run server:dis-invoice-proof`, or a scratch
-`HOME`.
+point that passes `installHooks: false`, such as `npm run server:dis-invoice-proof` (it exits unless
+`DISTERM_DIS_INVOICE_URL` is loopback and `DISTERM_DIS_INVOICE_DOCUMENTS` is set), or a scratch `HOME`.
 
 **Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
 pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not

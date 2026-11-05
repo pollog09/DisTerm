@@ -168,7 +168,7 @@ if (g !== true && !(await g)) return
   CLOSED project at the limit starts the session but does not unhide the project (the existing
   "reopen it from the welcome screen" reply).
 - **dis-invoice Sync** is a person pressing a button, so it meets the gate like any other human open.
-  It asks once before a project's folder work, so a refusal does not cost a clone, and again as the
+  It asks once before a project's folder work, so a refusal costs no folder, link or clone, and again as the
   last await before the store write, which is the deciding ask. It calls the gate strictly one project
   at a time, because a request made while another is deciding is refused rather than queued. A refusal,
   or a gate that is busy, stops further creation and the report names what was left. Projects the sync

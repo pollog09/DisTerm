@@ -8,7 +8,7 @@ import {
 } from '@shared/dis-invoice-reconcile'
 
 import { registeredCwd, type useProjects } from '../state/projects'
-import { createStickyNode, defaultNodeSize, flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
+import { createStickyNode, defaultNodeSize, flowToNodeStates } from '../state/workspace'
 
 type Proyecto = NonNullable<DisInvoiceTask['proyecto']>
 
@@ -123,25 +123,34 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
 
   let refused = false
 
-  /** A project first synced before dis-invoice named its repository has a folder and no clone yet.
-   *  Only an empty folder is cloned into, so an existing working tree is never touched. */
+  /** Only an empty folder is cloned into, so an existing working tree is never touched. */
+  const cloneInto = async (proyecto: Proyecto, folder: { isRepo: boolean; empty: boolean }): Promise<CloneFacts> => {
+    if (!proyecto.githubRepo || folder.isRepo) return NOTHING_CLONED
+    if (!folder.empty) return { ...NOTHING_CLONED, cloneSkipped: true }
+    const clone = await disInvoice.clone(proyecto.id)
+    return clone.ok ? { ...NOTHING_CLONED, cloned: true } : { ...NOTHING_CLONED, cloneFailed: clone.message }
+  }
+
+  /** A project first synced before dis-invoice named its repository has a folder and no clone yet. */
   const cloneIntoExisting = async (proyecto: Proyecto, project: Project): Promise<CloneFacts> => {
     if (!proyecto.githubRepo || !project.cwd) return NOTHING_CLONED
     if ((await originRepo(project.cwd)) === proyecto.githubRepo) return NOTHING_CLONED
     // "Set folder…" can move a project away from the folder its link recorded.
     if ((await disInvoice.plannedFolder(proyecto.id)) !== project.cwd) return NOTHING_CLONED
     const folder = await disInvoice.ensureFolder(proyecto.id)
-    if (!folder.ok) return { ...NOTHING_CLONED, cloneFailed: folder.message }
-    if (folder.isRepo) return NOTHING_CLONED
-    if (!folder.empty) return { ...NOTHING_CLONED, cloneSkipped: true }
-    const clone = await disInvoice.clone(proyecto.id)
-    return clone.ok ? { ...NOTHING_CLONED, cloned: true } : { ...NOTHING_CLONED, cloneFailed: clone.message }
+    return folder.ok ? cloneInto(proyecto, folder) : { ...NOTHING_CLONED, cloneFailed: folder.message }
   }
 
   const useExisting = async (proyecto: Proyecto, project: Project): Promise<Resolution> => {
     if (!isLocal(project)) return { kind: 'foreign' }
     if (project.unavailable) return { kind: 'unavailable' }
     return { kind: 'ready', project, created: false, ...(await cloneIntoExisting(proyecto, project)) }
+  }
+
+  const linkExisting = async (proyecto: Proyecto, project: Project, folder: string): Promise<Resolution> => {
+    const resolved = await useExisting(proyecto, project)
+    if (resolved.kind === 'ready') await disInvoice.saveLink(proyecto.id, project.id, folder)
+    return resolved
   }
 
   const createProject = async (proyecto: Proyecto): Promise<Resolution> => {
@@ -151,16 +160,8 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     }
     const folder = await disInvoice.ensureFolder(proyecto.id)
     if (!folder.ok) return { kind: 'failed', message: folder.message }
-
-    let clone = NOTHING_CLONED
-    if (proyecto.githubRepo && !folder.isRepo) {
-      if (!folder.empty) clone = { ...NOTHING_CLONED, cloneSkipped: true }
-      else {
-        const cloned = await disInvoice.clone(proyecto.id)
-        if (!cloned.ok) return { kind: 'failed', message: cloned.message }
-        clone = { ...NOTHING_CLONED, cloned: true }
-      }
-    }
+    const clone = await cloneInto(proyecto, folder)
+    if (clone.cloneFailed) return { kind: 'failed', message: clone.cloneFailed }
 
     const added = await deps.addProject(proyecto.nombre, folder.folder)
     if (added.kind === 'foreign') return { kind: 'foreign' }
@@ -178,17 +179,13 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     if (proyecto.githubRepo) {
       for (const project of deps.projects()) {
         if (project.closed || !isLocal(project) || !project.cwd) continue
-        if ((await originRepo(project.cwd)) !== proyecto.githubRepo) continue
-        await disInvoice.saveLink(proyecto.id, project.id, project.cwd)
-        return useExisting(proyecto, project)
+        if ((await originRepo(project.cwd)) === proyecto.githubRepo) return linkExisting(proyecto, project, project.cwd)
       }
     }
     const target = await disInvoice.plannedFolder(proyecto.id)
     if (!target) return { kind: 'failed', message: 'That project is not in the last sync.' }
     const atTarget = deps.projects().find((p) => p.cwd === target)
-    if (!atTarget) return createProject(proyecto)
-    if (isLocal(atTarget) && !atTarget.unavailable) await disInvoice.saveLink(proyecto.id, atTarget.id, target)
-    return useExisting(proyecto, atTarget)
+    return atTarget ? linkExisting(proyecto, atTarget, target) : createProject(proyecto)
   }
 
   type Target = { proyectoId: number; nombre: string; project: Project; created: boolean } & CloneFacts
@@ -312,24 +309,6 @@ export function disInvoiceStickyFactory(nodes: readonly CanvasNodeState[]): NewD
     const made = createStickyNode(0, { x: x + width / 2, y: y + height / 2 })
     return flowToNodeStates([{ ...made, id, data: { ...made.data, text, disInvoiceRef: ref } }])[0]
   }
-}
-
-/** Upserts onto the live canvas. An existing node keeps what only the live canvas knows (measured
- *  size, selection): sync owns nothing on it but its text and its reference. */
-export function mergeUpsertsIntoFlow(
-  nodes: readonly CanvasNode[],
-  upserts: readonly CanvasNodeState[]
-): { next: CanvasNode[]; added: CanvasNode[] } {
-  const byId = new Map(upserts.map((upsert) => [upsert.id, upsert]))
-  const merged = nodes.map((node) => {
-    const upsert = byId.get(node.id)
-    if (!upsert) return node
-    byId.delete(node.id)
-    const { text, textUpdatedAt, textUpdatedBy, disInvoiceRef } = upsert
-    return { ...node, data: { ...node.data, text, textUpdatedAt, textUpdatedBy, disInvoiceRef } }
-  })
-  const added = nodeStatesToFlow([...byId.values()])
-  return { next: [...merged, ...added], added }
 }
 
 export interface DisInvoiceReportLine {

@@ -9,6 +9,7 @@ import type {
   DisInvoiceLinks,
   DisInvoiceSaveResult,
   DisInvoiceStatus,
+  DisInvoiceTask,
   DisInvoiceWslPathResult
 } from '../../shared/dis-invoice'
 import { githubRepoOfRemote } from '../../shared/dis-invoice'
@@ -106,7 +107,8 @@ export function registerDisInvoice({
   const insideBase = (folder: string): boolean => path.dirname(path.resolve(folder)) === path.resolve(baseDir)
   /** From the last good fetch. Folder and clone calls name a project by id, so a caller never
    *  supplies the URL to clone or the name of a new folder. */
-  let snapshot = new Map<number, { nombre: string; githubRepo: string | null }>()
+  let snapshot = new Map<number, NonNullable<DisInvoiceTask['proyecto']>>()
+  const inSnapshot = (proyectoId: unknown) => (isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined)
 
   const fetchSnapshot = async (): Promise<DisInvoiceFetchResult> => {
     const key = await secret.readForHost()
@@ -176,23 +178,23 @@ export function registerDisInvoice({
   })
 
   platform.handle(IPC.disInvoicePlannedFolder, async (proyectoId: unknown): Promise<string | null> => {
-    const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
+    const proyecto = inSnapshot(proyectoId)
     if (!proyecto) return null
     const current = await links.read()
-    return current[proyectoId as number]?.folder ?? nameFolder(current, proyectoId as number, proyecto.nombre)
+    return current[proyecto.id]?.folder ?? nameFolder(current, proyecto.id, proyecto.nombre)
   })
 
   platform.handle(IPC.disInvoiceEnsureFolder, async (proyectoId: unknown): Promise<DisInvoiceFolderResult> => {
-    const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
+    const proyecto = inSnapshot(proyectoId)
     if (!proyecto) return { ok: false, message: 'That project is not in the last sync.' }
-    const folder = await reserveFolder(proyectoId as number, proyecto.nombre)
+    const folder = await reserveFolder(proyecto.id, proyecto.nombre)
     return readDisInvoiceFolder(folder, { create: insideBase(folder) })
   })
 
   platform.handle(IPC.disInvoiceClone, async (proyectoId: unknown): Promise<DisInvoiceCloneResult> => {
-    const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
+    const proyecto = inSnapshot(proyectoId)
     if (!proyecto?.githubRepo) return { ok: false, message: 'That project has no repository to clone.' }
-    const folder = await reserveFolder(proyectoId as number, proyecto.nombre)
+    const folder = await reserveFolder(proyecto.id, proyecto.nombre)
     if (!insideBase(folder)) return { ok: false, message: `${folder} is outside ${baseDir}, so nothing was cloned.` }
     // ensure-folder may have made it. rmdir only succeeds on an empty one, and clone claims it again.
     await fs.rmdir(folder).catch(() => undefined)

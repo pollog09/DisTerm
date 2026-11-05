@@ -1,11 +1,9 @@
 import type { CanvasNodeState, ProjectKanban } from '@shared/types'
 import { useProjects } from '../state/projects'
-import { flowToNodeStates, type CanvasNode } from '../state/workspace'
-import { mergeUpsertsIntoFlow, type DisInvoiceSyncDeps } from './disInvoiceSync'
+import { flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
+import type { DisInvoiceSyncDeps } from './disInvoiceSync'
 
-/** What Sync needs from the mounted canvas. Canvas passes its refs and setters and nothing else. */
 export interface DisInvoiceCanvasDeps {
-  /** The project React Flow holds. */
   flowProjectId(): string | null | undefined
   flowNodes(): CanvasNode[]
   setFlowNodes(next: CanvasNode[]): void
@@ -15,6 +13,24 @@ export interface DisInvoiceCanvasDeps {
 
 export type DisInvoiceCanvas = Pick<DisInvoiceSyncDeps, 'nodesOf' | 'boardOf' | 'applyNodes' | 'applyBoard'> & {
   isLive(projectId: string): boolean
+}
+
+/** Upserts onto the live canvas. An existing node keeps what only the live canvas knows (measured
+ *  size, selection): sync owns nothing on it but its text and its reference. */
+export function mergeUpsertsIntoFlow(
+  nodes: readonly CanvasNode[],
+  upserts: readonly CanvasNodeState[]
+): { next: CanvasNode[]; added: CanvasNode[] } {
+  const byId = new Map(upserts.map((upsert) => [upsert.id, upsert]))
+  const merged = nodes.map((node) => {
+    const upsert = byId.get(node.id)
+    if (!upsert) return node
+    byId.delete(node.id)
+    const { text, textUpdatedAt, textUpdatedBy, disInvoiceRef } = upsert
+    return { ...node, data: { ...node.data, text, textUpdatedAt, textUpdatedBy, disInvoiceRef } }
+  })
+  const added = nodeStatesToFlow([...byId.values()])
+  return { next: [...merged, ...added], added }
 }
 
 export function disInvoiceCanvas(deps: DisInvoiceCanvasDeps): DisInvoiceCanvas {
