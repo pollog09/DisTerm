@@ -47,6 +47,8 @@ export type DisInvoiceFolderResult =
 
 export type DisInvoiceCloneResult = { ok: true } | { ok: false; message: string }
 
+export type DisInvoiceWslPathResult = { ok: true; path: string } | { ok: false; message: string }
+
 /** What a folder says about itself: its GitHub origin as `owner/repo`, and whether a folder-backed
  *  project's `.nodeterm/` canvas, client task text included, would be visible to git there. */
 export interface DisInvoiceFolderFacts {
@@ -69,6 +71,8 @@ export interface DisInvoiceApi {
   ensureFolder(proyectoId: number): Promise<DisInvoiceFolderResult>
   clone(proyectoId: number): Promise<DisInvoiceCloneResult>
   inspectFolder(cwd: string): Promise<DisInvoiceFolderFacts>
+  /** A saved launch prompt, as a pane in that `wsl:` distribution reads it. */
+  briefPathInWsl(shell: string, file: string): Promise<DisInvoiceWslPathResult>
 }
 
 /** On a sticky node mirroring a dis-invoice task. `textHash` is of the text sync last wrote, and

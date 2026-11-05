@@ -638,7 +638,7 @@ import { OpenLinkSheet } from '../components/OpenLinkSheet'
 import { NEW_PROJECT_KEY, nextSheetAction, type LinkPermissionView } from '../lib/openLinkSheet'
 import { withPermissionMode } from '@shared/agents/approval-mode'
 import { promptFilePathError } from '@shared/agents/launch'
-import { encodeUtf8Base64, launchPromptFor, writePromptFile } from '../lib/promptSpill'
+import { encodeUtf8Base64, launchPromptFor } from '../lib/promptSpill'
 import { parseTeamSpec } from '../lib/teamSpec'
 import { relativeTime } from '../lib/relativeTime'
 import { AgentIcon } from '../lib/agentIcons'
@@ -850,7 +850,8 @@ import type {
 } from '@shared/types'
 import type { KanbanCreateChoice, KanbanSession } from '../components/kanban/KanbanView'
 import { assignNode, columnForNode, defaultKanban, labelsForCard, migrateProjectTags, resolveColumnRef } from '../lib/kanban'
-import { disInvoiceBrief, normalizeDisInvoiceRef } from '@shared/dis-invoice'
+import { normalizeDisInvoiceRef } from '@shared/dis-invoice'
+import { disInvoiceBriefFile } from '../lib/disInvoiceBrief'
 import { registerWorkspaceDirty } from '../state/workspaceDirty'
 import { snapNodeToGrid } from '../lib/nodeSizing'
 import { snapResizeChanges } from '../lib/resizeSnap'
@@ -12567,11 +12568,8 @@ export function Canvas() {
     [agentCreationEntries, startIssueAgent]
   )
 
-  /**
-   * Start an agent or a plain terminal on a dis-invoice task, in the project's folder, filed under
-   * the sticky's current column. An agent's brief goes in a prompt file. Only its path is typed, and
-   * a pane cannot read a file on this machine over SSH, so there is no inline fallback to fall to.
-   */
+  /** Start an agent or a plain terminal on a dis-invoice task, in the project's folder, filed under
+   *  the sticky's current column. An agent's brief goes in a prompt file, and only its path is typed. */
   const startDisInvoiceWork = useCallback(
     (projectId: string, nodeId: string, how: { agentId: AgentId; accountId?: string | null } | null): void => {
       const refuse = (text: string): void => setNotice({ kind: 'error', text })
@@ -12584,14 +12582,22 @@ export function Canvas() {
         const columnId = columnForNode(project.kanban, nodeId)?.id ?? null
         const title = toKanbanSession(node)?.title
         if (!how) return createNodeInColumn({ kind: 'terminal', title }, columnId)
-        if (project.ssh) return refuse('An agent on an SSH project cannot read the brief, because it stays on this machine.')
-        const promptFile = await writePromptFile(disInvoiceBrief((node.data.text as string) ?? '', ref.taskId), {
-          saveUpload: (name, data) => api.files.saveUpload(name, data),
-          encodeBase64: encodeUtf8Base64
-        })
-        if (!promptFile) return refuse('Could not write the task brief, so no agent was started.')
+        const brief = await disInvoiceBriefFile(
+          {
+            text: (node.data.text as string) ?? '',
+            taskId: ref.taskId,
+            ssh: !!project.ssh,
+            paneShell: trustedProjectShell(projectId) || useSettings.getState().settings.defaultShell
+          },
+          {
+            saveUpload: (name, data) => api.files.saveUpload(name, data),
+            encodeBase64: encodeUtf8Base64,
+            briefPathInWsl: api.disInvoice.briefPathInWsl
+          }
+        )
+        if (!brief.ok) return refuse(brief.notice)
         if (!disInvoiceCanvasIsLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
-        const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile, title })
+        const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile: brief.path, title })
         if (created) fileIssueSession(columnId, null, created, how.agentId)
       }
       if (projectId === useProjects.getState().activeProjectId) {

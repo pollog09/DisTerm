@@ -54,7 +54,8 @@ function harness(result: DisInvoiceFetchResult, links: DisInvoiceLinks, projects
       return { ok: true, folder: links[id]?.folder ?? `/docs/${id}`, empty: true, isRepo: false }
     },
     clone: async () => ({ ok: true }),
-    inspectFolder: async () => ({ originRepo: null, canvasExposed: false })
+    inspectFolder: async () => ({ originRepo: null, canvasExposed: false }),
+    briefPathInWsl: async () => ({ ok: false, message: 'this test starts no agent' })
   }
   const deps: DisInvoiceSyncDeps = {
     disInvoice,

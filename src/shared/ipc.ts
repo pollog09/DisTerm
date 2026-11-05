@@ -609,6 +609,7 @@ export const IPC = {
   disInvoiceEnsureFolder: 'disInvoice:ensure-folder',
   disInvoiceClone: 'disInvoice:clone',
   disInvoiceInspectFolder: 'disInvoice:inspect-folder',
+  disInvoiceBriefPathInWsl: 'disInvoice:brief-path-in-wsl',
   dialogSelectFolder: 'dialog:select-folder',
   dialogSelectFile: 'dialog:select-file',
   shellReveal: 'shell:reveal',

@@ -11,6 +11,7 @@ import { FAKE_CONNECTOR_KEY, fakeCard, startFakeConnector, type FakeConnector } 
 import { EDITOR_ONLY, VIEW, COMMENT } from '../core/relay/access-policy'
 import { SCOPED, SCOPED_REFUSED } from '../core/relay/scoped-guest-policy'
 import { testTmpDir } from '../core/test-tmp'
+import { saveUpload } from '../core/uploads'
 
 const CHANNELS = [
   IPC.disInvoiceStatus,
@@ -22,7 +23,8 @@ const CHANNELS = [
   IPC.disInvoicePlannedFolder,
   IPC.disInvoiceEnsureFolder,
   IPC.disInvoiceClone,
-  IPC.disInvoiceInspectFolder
+  IPC.disInvoiceInspectFolder,
+  IPC.disInvoiceBriefPathInWsl
 ]
 
 let userDataDir: string
@@ -31,6 +33,7 @@ let fake: FakeConnector
 let platform: ServerPlatform
 let clones: Array<{ parent: string; url: string; dirName?: string }>
 let cloneAnswer: { ok: boolean; message: string }
+let wslCalls: string[][]
 
 class TestPlatform extends ServerPlatform {
   readonly documentsDir: string
@@ -62,12 +65,17 @@ beforeEach(async () => {
     }
   })
   clones = []
+  wslCalls = []
   cloneAnswer = { ok: true, message: '' }
   platform = new TestPlatform(userDataDir, documentsDir)
   registerDisInvoice({
     platform,
     secret: new ServerSecretStore(userDataDir, DIS_INVOICE_SECRET_FILE),
     client: new DisInvoiceClient({ baseUrl: fake.url }),
+    wslExec: async (_file, args) => {
+      wslCalls.push(args)
+      return { code: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }
+    },
     git: {
       clone: async (parent: string, url: string, unattended?: { dirName: string }) => {
         clones.push({ parent, url, dirName: unattended?.dirName })
@@ -274,6 +282,21 @@ describe('folders and clones', () => {
   it('inspects a folder through the GitHub-only origin parser', async () => {
     expect(await call(IPC.disInvoiceInspectFolder, documentsDir)).toEqual({ originRepo: 'owner/web', canvasExposed: true })
     expect(await call(IPC.disInvoiceInspectFolder, '')).toEqual({ originRepo: null, canvasExposed: false })
+  })
+})
+
+describe('a brief in a distribution', () => {
+  it('translates only a saved brief, never another file on the machine', async () => {
+    const saved = await saveUpload(userDataDir, 'nodeterm-prompt-1.txt', Buffer.from('brief').toString('base64'))
+    expect(await call(IPC.disInvoiceBriefPathInWsl, 'wsl:Ubuntu', saved)).toEqual({ ok: true, path: saved })
+    expect(wslCalls).toEqual([['-d', 'Ubuntu', '--exec', 'test', '-r', saved]])
+
+    wslCalls.length = 0
+    const refused = { ok: false, message: 'That is not a saved task brief.' }
+    expect(await call(IPC.disInvoiceBriefPathInWsl, 'wsl:Ubuntu', '/etc/shadow')).toEqual(refused)
+    expect(await call(IPC.disInvoiceBriefPathInWsl, 'wsl:Ubuntu', path.join(userDataDir, 'dis-invoice-connector-key.json'))).toEqual(refused)
+    expect(await call(IPC.disInvoiceBriefPathInWsl, 'wsl:Ubuntu', 7)).toEqual(refused)
+    expect(wslCalls).toEqual([])
   })
 })
 

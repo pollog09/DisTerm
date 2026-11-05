@@ -8,15 +8,20 @@ import type {
   DisInvoiceFolderResult,
   DisInvoiceLinks,
   DisInvoiceSaveResult,
-  DisInvoiceStatus
+  DisInvoiceStatus,
+  DisInvoiceWslPathResult
 } from '../../shared/dis-invoice'
 import { githubRepoOfRemote } from '../../shared/dis-invoice'
 import { writeFileAtomic } from '../fs-atomic'
 import type { GitService } from '../git-service'
 import type { CorePlatform } from '../platform'
+import { wslProfileExec } from '../remote-ssh/native/wsl-endpoint'
 import type { SecretStore } from '../secret-store'
+import type { ProfileExec } from '../terminal-profiles'
+import { launchPromptsRoot } from '../uploads'
 import { DIS_INVOICE_CONNECTOR_URL, DisInvoiceClient, connectorBaseUrl } from './client'
 import { disInvoiceBaseDir, disInvoiceFolderName, readDisInvoiceFolder } from './folders'
+import { briefPathInWsl } from './wsl-brief'
 
 export const DIS_INVOICE_SECRET_FILE = 'dis-invoice-connector-key.json'
 const LINKS_FILE = 'dis-invoice-links.json'
@@ -83,11 +88,12 @@ type Dependencies = {
   secret: SecretStore
   git: Pick<GitService, 'clone' | 'originUrl' | 'canvasExposedToGit'>
   client?: DisInvoiceClient
+  wslExec?: ProfileExec
 }
 
 /** Host-only (shared/host-control.ts): the key can read and write every client's cards. It enters
  *  through save-config, leaves only as a request header, and no channel returns it. */
-export function registerDisInvoice({ platform, secret, git, client: injected }: Dependencies): void {
+export function registerDisInvoice({ platform, secret, git, client: injected, wslExec = wslProfileExec }: Dependencies): void {
   const client = injected ?? new DisInvoiceClient()
   const links = new DisInvoiceLinkStore(platform.userDataDir)
   const baseDir = disInvoiceBaseDir(disInvoiceTestDocumentsDir(process.env) ?? platform.documentsDir)
@@ -194,5 +200,11 @@ export function registerDisInvoice({ platform, secret, git, client: injected }: 
     if (typeof cwd !== 'string' || !cwd) return { originRepo: null, canvasExposed: false }
     const [origin, canvasExposed] = await Promise.all([git.originUrl(cwd), git.canvasExposedToGit(cwd)])
     return { originRepo: githubRepoOfRemote(origin), canvasExposed }
+  })
+
+  // Only a saved brief, so this cannot be asked about any other file on the machine.
+  platform.handle(IPC.disInvoiceBriefPathInWsl, async (shell: unknown, file: unknown): Promise<DisInvoiceWslPathResult> => {
+    const isBrief = typeof file === 'string' && path.dirname(path.dirname(file)) === launchPromptsRoot(platform.userDataDir)
+    return isBrief ? briefPathInWsl(shell, file, wslExec) : { ok: false, message: 'That is not a saved task brief.' }
   })
 }

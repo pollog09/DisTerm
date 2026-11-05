@@ -304,7 +304,8 @@ const api: NodeTerminalApi = {
     plannedFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoicePlannedFolder, proyectoId),
     ensureFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceEnsureFolder, proyectoId),
     clone: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceClone, proyectoId),
-    inspectFolder: (cwd) => ipcRenderer.invoke(IPC.disInvoiceInspectFolder, cwd)
+    inspectFolder: (cwd) => ipcRenderer.invoke(IPC.disInvoiceInspectFolder, cwd),
+    briefPathInWsl: (shell, file) => ipcRenderer.invoke(IPC.disInvoiceBriefPathInWsl, shell, file)
   },
   speech: {
     // IPC carries the raw Float32 samples as an ArrayBuffer (structured clone; decodePcmPayload's

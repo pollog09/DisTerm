@@ -486,6 +486,7 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.disInvoiceEnsureFolder,
   IPC.disInvoiceClone,
   IPC.disInvoiceInspectFolder,
+  IPC.disInvoiceBriefPathInWsl,
   IPC.agentHibernated,
   IPC.agentAnswerPermission,
   IPC.agentAckDone,

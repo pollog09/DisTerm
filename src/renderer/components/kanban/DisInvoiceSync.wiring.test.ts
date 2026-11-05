@@ -21,6 +21,13 @@ describe('the dis-invoice Sync button', () => {
     expect(read('components/kanban/GlobalKanbanView.tsx').split(button)).toHaveLength(3)
   })
 
+  it('starts an agent on the brief path its pane reads, asking about the shell the spawn will use', () => {
+    const start = canvas.slice(canvas.indexOf('const startDisInvoiceWork = useCallback('), canvas.indexOf('disInvoiceStartItemsRef.current = '))
+    expect(start).toContain('paneShell: trustedProjectShell(projectId) || useSettings.getState().settings.defaultShell')
+    expect(start).toContain('briefPathInWsl: api.disInvoice.briefPathInWsl')
+    expect(start).toContain('{ promptFile: brief.path, title }')
+  })
+
   it('only a person pressing it runs a sync: nothing else calls the orchestrator', () => {
     expect(canvas.match(/\brunDisInvoiceSync\(/g)).toHaveLength(1)
     expect(canvas.match(/\bsyncDisInvoice\b/g)).toHaveLength(3)
