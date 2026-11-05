@@ -17,8 +17,9 @@ build/icon.icns
 
 .playwright-mcp/
 
-# concurrent-session worktrees / local agent state
-.claude/
+# concurrent-session worktrees / local agent state; the path-scoped doc pointers are shared
+.claude/*
+!.claude/rules/
 .worktrees/
 
 # backend lives in its own repo

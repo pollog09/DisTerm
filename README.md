@@ -271,8 +271,8 @@ on macOS** and applies to both canvas and kanban terminals.
 - **Two surfaces** — the desktop app and the browser **Server Edition** ride the same core +
   transport seams.
 
-See [`docs/architecture/`](./docs/architecture/README.md) for runtime diagrams and a code map
-generated from the imports, [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the
+See [`docs/architecture/`](./docs/architecture/README.md) for runtime diagrams, a task-oriented
+code map and a graph generated from the imports, [`docs/SERVER.md`](./docs/SERVER.md) for the Server Edition, and the
 design docs under [`docs/`](./docs) for deeper notes.
 
 ## 🤝 Contributing
@@ -282,8 +282,8 @@ Contributions meant for the upstream project should go to
 [eneskirca/nodeterm](https://github.com/eneskirca/nodeterm).
 
 If you do work on this code, **start with [CONTRIBUTING.md](./CONTRIBUTING.md)** — setup, the
-process-boundary rules, and the house rules. [CLAUDE.md](./CLAUDE.md) is the deep reference behind
-them (and is loaded automatically if you work with an AI coding agent). DisTerm is licensed under the
+process-boundary rules, and the house rules. [docs/reference](./docs/reference) is the deep reference behind
+them, and [CLAUDE.md](./CLAUDE.md) is the short version loaded automatically if you work with an AI coding agent. DisTerm is licensed under the
 [Business Source License 1.1](https://mariadb.com/bsl11/) — you can use, modify,
 and redistribute it, including in production, except offering it as a competing
 product or service or running a copy whose license or usage-limit checks were removed

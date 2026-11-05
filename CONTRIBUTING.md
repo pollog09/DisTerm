@@ -2,8 +2,9 @@
 
 Thanks for looking. This file is the short door: enough to get running, plus the house rules that
 actually get a pull request sent back. The long version — every subsystem and the reasoning behind
-its invariants — lives in `CLAUDE.md` at the repo root, which is also loaded automatically if you
-work with an AI coding agent.
+its invariants — lives in `docs/reference/`. `CLAUDE.md` at the repo root holds the short rules and
+the list of those files, and is loaded automatically if you work with an AI coding agent. Below, "CLAUDE.md"
+plus a section name means that section in `docs/reference/`: `git grep -n '<name>' docs/reference`.
 
 DisTerm is a personal fork of nodeterm, so issues and pull requests here may not be actively
 maintained. Contributions meant for the upstream project go to
@@ -92,6 +93,10 @@ and `npm run arch:graph -- --check` exits non-zero if they are stale. Nothing ru
 and line counts are part of the output, so any edit under `src/` makes the map stale until someone
 regenerates it. The check does not fail on a forbidden boundary crossing either: `GRAPH.md` only
 lists those, and it does not replace the tests above.
+
+To find where a kind of change starts, use [`docs/architecture/CODEMAP.md`](docs/architecture/CODEMAP.md).
+If you add a `##` or `###` heading to `CLAUDE.md` or `docs/reference/`, add it to that map's index too, or
+`scripts/codemap.test.ts` fails.
 
 **Put new service logic in `src/core` behind `CorePlatform`, not inline in `src/main`.** That is the
 seam the Server Edition boots from; logic left in `src/main` silently does not exist there, and the
@@ -1761,10 +1766,14 @@ fails there. The full measurement table and the reasoning are in CLAUDE.md § Id
 
 ## Documentation
 
-Two files, two audiences:
+Three layers:
 
 - **`CONTRIBUTING.md`** (this file) — what another human needs before touching the code.
-- **`CLAUDE.md`** — the deep invariants, per subsystem, with the reasoning and the measurements.
+- **`CLAUDE.md`** — the rules every change needs. Loaded into every agent session, so `scripts/codemap.test.ts`
+  fails it above 200 lines.
+- **`docs/reference/`** — the deep invariants, per subsystem, with the reasoning and the measurements. A new
+  subsystem file goes in the table in `CLAUDE.md`, and `.claude/rules/` holds the pointers that name each file
+  when an agent touches matching code.
 
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone

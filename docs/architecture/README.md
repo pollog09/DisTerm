@@ -1,14 +1,15 @@
 # Architecture map
 
-Two halves:
+Three parts:
 
+- **[CODEMAP.md](CODEMAP.md)** is the hand-written, task-oriented index: "I need to change X: where do I start?"
 - **[GRAPH.md](GRAPH.md)** and **[graph.json](graph.json)** are generated from the imports under
   `src/`: contexts, subsystems, sizes, fan-in, forbidden boundary crossings. Do not edit them. After
   a code change run `npm run arch:graph`; `npm run arch:graph -- --check` exits non-zero if they are
   stale.
 - **This file** is hand-written and covers what imports cannot show: which process talks to which,
   over what. It was checked against the code when written, but nothing regenerates it. The deep
-  reasoning behind each rule is in the root `CLAUDE.md`.
+  reasoning behind each rule is in `docs/reference/`.
 
 ## Runtime
 
