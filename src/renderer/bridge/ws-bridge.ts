@@ -538,7 +538,7 @@ export function buildDisInvoiceApi(client: RpcClient): Pick<NodeTerminalApi, 'di
       ensureFolder: (proyectoId) => client.request(IPC.disInvoiceEnsureFolder, proyectoId) as ReturnType<Api['ensureFolder']>,
       clone: (proyectoId) => client.request(IPC.disInvoiceClone, proyectoId) as ReturnType<Api['clone']>,
       inspectFolder: (cwd) => client.request(IPC.disInvoiceInspectFolder, cwd) as ReturnType<Api['inspectFolder']>,
-      briefPathInWsl: (shell, file) => client.request(IPC.disInvoiceBriefPathInWsl, shell, file) as ReturnType<Api['briefPathInWsl']>
+      readableBriefPathInWsl: (shell, file) => client.request(IPC.disInvoiceBriefPathInWsl, shell, file) as ReturnType<Api['readableBriefPathInWsl']>
     }
   }
 }

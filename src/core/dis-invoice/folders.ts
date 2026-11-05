@@ -16,16 +16,12 @@ export function disInvoiceBaseDir(documentsDir: string | undefined): string {
  * compared case-insensitively for the same reason. A name with nothing usable in it is `proyecto-<id>`.
  */
 export function disInvoiceFolderName(nombre: string, proyectoId: number, taken: Set<string>): string {
-  const trimmed = nombre.trim()
-  const fallback = `proyecto-${proyectoId}`
-  // localChildName answers 'download' for a name made only of dots and spaces.
-  const safe = /^[. ]*$/.test(trimmed) ? null : localChildName(trimmed, 'win32')
+  const withoutTrailingDots = nombre.trim().replace(/[. ]+$/, '')
+  const safe = withoutTrailingDots ? localChildName(withoutTrailingDots, 'win32') : null
   const clamped = safe?.slice(0, MAX_NAME_LENGTH).replace(/[. ]+$/, '')
-  return uniqueChildName(clamped || fallback, taken, 'win32')
+  return uniqueChildName(clamped || `proyecto-${proyectoId}`, taken, 'win32')
 }
 
-/** Says what is in `folder`, first creating it and its parents when `create` is set. Never touches
- *  contents. */
 export async function readDisInvoiceFolder(folder: string, { create }: { create: boolean }): Promise<DisInvoiceFolderResult> {
   try {
     if (create) await fs.mkdir(folder, { recursive: true })

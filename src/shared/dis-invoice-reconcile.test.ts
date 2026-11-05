@@ -46,7 +46,6 @@ const newSticky: NewDisInvoiceSticky = ({ id, text, ref }) => sticky(id, text, r
 
 const snapshot = (tasks: DisInvoiceTask[], columns = COLUMNS): DisInvoiceSnapshot => ({ columns, tasks })
 
-/** A sticky already mirroring `t`, as a previous sync would have left it. */
 function mirrorOf(t: DisInvoiceTask, ref: Partial<DisInvoiceRef> = {}, id = `sticky-dis-7-${t.id}`): CanvasNodeState {
   const text = renderDisInvoiceTask(t)
   return sticky(id, text, { taskId: t.id, columnaId: t.columnaId, textHash: disInvoiceTextHash(text), ...ref })
@@ -66,14 +65,12 @@ const seededBoard = (assignments: ProjectKanban['assignments'] = [], meta: Proje
 const columnOf = (board: ProjectKanban | undefined, nodeId: string): string | undefined =>
   board?.assignments.find((a) => a.nodeId === nodeId)?.columnId
 
-/** Applies a result the way the orchestrator does, so a second run sees what the first one wrote. */
 function applied(nodes: CanvasNodeState[], upserts: CanvasNodeState[]): CanvasNodeState[] {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   for (const upsert of upserts) byId.set(upsert.id, upsert)
   return [...byId.values()]
 }
 
-/** Every case ends here: a second run on the first run's output changes nothing at all. */
 function runTwice(
   nodes: CanvasNodeState[],
   board: ProjectKanban | undefined,
@@ -214,7 +211,7 @@ describe('reconcileProject', () => {
 
   it('pending again after finishing, in its old column: moves back and clears finished', () => {
     const t = task(1)
-    const before = mirrorOf(t, { finished: true })
+    const before = mirrorOf(t, { movedToFinished: true })
     const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:3' }], [{ nodeId: before.id, priority: 'medium' }])
     const { upserts, board: next, report } = runTwice([before], board, snapshot([t]))
     expect(columnOf(next, before.id)).toBe('dis-invoice:1')
@@ -251,12 +248,12 @@ describe('reconcileProject', () => {
     const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
     const { upserts, board: next, report } = runTwice([before], board, snapshot([task(2)]))
     expect(columnOf(next, before.id)).toBe('dis-invoice:3')
-    expect(upserts.find((n) => n.id === before.id)?.disInvoiceRef?.finished).toBe(true)
+    expect(upserts.find((n) => n.id === before.id)?.disInvoiceRef?.movedToFinished).toBe(true)
     expect(report.finished).toEqual([1])
   })
 
   it('finished once: a card dragged back is left alone by later syncs, and never deleted', () => {
-    const before = mirrorOf(task(1), { finished: true })
+    const before = mirrorOf(task(1), { movedToFinished: true })
     const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
     const { upserts, board: next, nodes } = runTwice([before], board, snapshot([]))
     expect(upserts).toEqual([])
@@ -277,7 +274,7 @@ describe('reconcileProject', () => {
 
     const landed = runTwice(stranded.nodes, stranded.board, snapshot([], COLUMNS))
     expect(columnOf(landed.board, before.id)).toBe('dis-invoice:3')
-    expect(landed.upserts[0].disInvoiceRef?.finished).toBe(true)
+    expect(landed.upserts[0].disInvoiceRef?.movedToFinished).toBe(true)
     expect(landed.report.finished).toEqual([1])
     expect(landed.report.noFinishedColumn).toEqual([])
   })

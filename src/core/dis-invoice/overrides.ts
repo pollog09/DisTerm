@@ -4,7 +4,6 @@ import { DIS_INVOICE_CONNECTOR_URL, connectorBaseUrl } from './client'
 export const DIS_INVOICE_URL_ENV = 'DISTERM_DIS_INVOICE_URL'
 export const DIS_INVOICE_DOCUMENTS_ENV = 'DISTERM_DIS_INVOICE_DOCUMENTS'
 
-/** Where a run against the fake connector points, instead of production and the real Documents. */
 export interface DisInvoiceOverrides {
   url?: string
   documentsDir?: string

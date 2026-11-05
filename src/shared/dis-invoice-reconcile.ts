@@ -1,5 +1,3 @@
-// Every rule for mirroring dis-invoice onto one DisTerm project, in one pure reducer. Canvas and the
-// sync orchestrator only apply its output. docs/reference/kanban.md holds the reasoning.
 import type { CanvasNodeState, KanbanColumn, KanbanColumnCategory, KanbanPriority, ProjectKanban } from './types'
 import type { DisInvoiceColumn, DisInvoicePriority, DisInvoiceRef, DisInvoiceTask } from './dis-invoice'
 import { normalizeDisInvoiceRef } from './dis-invoice'
@@ -13,18 +11,14 @@ export interface DisInvoiceSnapshot {
   tasks: DisInvoiceTask[]
 }
 
-/** Task ids per outcome. All empty means the project already matched the snapshot. */
 export interface ReconcileReport {
   created: number[]
   textUpdated: number[]
   moved: number[]
   metaUpdated: number[]
   finished: number[]
-  /** Left the pending list, but no finished column exists to move the card to. Moved once one does. */
   noFinishedColumn: number[]
-  /** Pending in another DisTerm project now. This sticky stays, and that project gets its own. */
   reassigned: number[]
-  /** In a column the snapshot does not list, so its card has no column to go to. */
   unplaced: number[]
   columnsAdded: number
   /** Stickies that claimed a task another sticky already holds (an undo can revive one). */
@@ -32,9 +26,8 @@ export interface ReconcileReport {
 }
 
 export interface ReconcileResult {
-  /** Whole node states to write. Empty on a second run. */
   upserts: CanvasNodeState[]
-  /** The same reference as the input when nothing changed. */
+  /** The same reference as the input when nothing changed, which callers compare by identity. */
   board: ProjectKanban | undefined
   report: ReconcileReport
 }
@@ -68,7 +61,6 @@ function freeStickyId(proyectoId: number, taskId: number, taken: Set<string>): s
   return id
 }
 
-/** The first line is the title, because a card's title is the text's first line. */
 export function renderDisInvoiceTask(task: DisInvoiceTask): string {
   const title = task.titulo.replace(/\s*[\r\n]+\s*/g, ' ').trim()
   const description = task.descripcion?.trim()
@@ -86,7 +78,7 @@ const PRIORITY: Record<DisInvoicePriority, KanbanPriority> = {
 
 /** The end of the due day where this machine is. Midnight UTC would read as overdue on the day, and
  *  as the day before anywhere west of Greenwich. */
-function dueAtOf(fecha: string | null): number | undefined {
+function endOfLocalDay(fecha: string | null): number | undefined {
   if (!fecha) return undefined
   const [year, month, day] = fecha.split('-').map(Number)
   return new Date(year, month - 1, day, 23, 59).getTime()
@@ -168,7 +160,7 @@ export function reconcileProject(
     if (!board) return false
     const current = cardMeta(board, nodeId)
     const priority = PRIORITY[task.prioridad]
-    const dueAt = dueAtOf(task.fechaLimite)
+    const dueAt = endOfLocalDay(task.fechaLimite)
     if (current?.priority === priority && current?.dueAt === dueAt) return false
     board = withCardMeta(board, nodeId, {
       assignees: current?.assignees,
@@ -205,10 +197,10 @@ export function reconcileProject(
       report.textUpdated.push(task.id)
     }
 
-    if (ref.finished || ref.columnaId !== task.columnaId) {
+    if (ref.movedToFinished || ref.columnaId !== task.columnaId) {
       if (hasColumn(task.columnaId)) {
         place(node.id, task.columnaId, 'top')
-        const { finished: _cleared, ...open } = nextRef
+        const { movedToFinished: _cleared, ...open } = nextRef
         nextRef = { ...open, columnaId: task.columnaId }
         report.moved.push(task.id)
       } else {
@@ -231,13 +223,13 @@ export function reconcileProject(
       continue
     }
     // Moved once. Dragging it back afterwards is the person's call, and later syncs respect it.
-    if (ref.finished) continue
+    if (ref.movedToFinished) continue
     if (!finishedColumn) {
       report.noFinishedColumn.push(taskId)
       continue
     }
     place(node.id, finishedColumn.id, 'top')
-    upserts.push({ ...node, disInvoiceRef: { ...ref, finished: true } })
+    upserts.push({ ...node, disInvoiceRef: { ...ref, movedToFinished: true } })
     report.finished.push(taskId)
   }
 

@@ -6483,9 +6483,9 @@ export function Canvas() {
 
   const disInvoiceSyncRef = useRef<Promise<DisInvoiceSyncReport> | null>(null)
 
-  /** Asked before a project's folder work, so a refusal costs no folder or clone. Not the deciding ask:
-   *  `addDisInvoiceProject` asks again, last, because its own awaits come after this one. */
-  const gateDisInvoiceProject = useCallback(
+  /** Not the deciding ask: `addDisInvoiceProject` asks again, last, because its own awaits come after
+   *  this one. */
+  const precheckDisInvoiceProject = useCallback(
     async (): Promise<boolean> => {
       const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
       if (g !== true && !(await g)) return false
@@ -6494,8 +6494,7 @@ export function Canvas() {
     []
   )
 
-  /** `onRepoCloned`'s probe, gate and commit, without its tab switch: Sync adds projects in the
-   *  background. */
+  /** `onRepoCloned` without its tab switch: Sync adds projects in the background. */
   const addDisInvoiceProject = useCallback(
     async (name: string, folder: string): Promise<DisInvoiceProjectAdd> => {
       const probed = await api.workspace.probeFolder(folder).catch(() => null)
@@ -6517,7 +6516,7 @@ export function Canvas() {
         ...disInvoiceCanvasWrites,
         stickyFactory: disInvoiceStickyFactory,
         persist,
-        gateNewProject: gateDisInvoiceProject,
+        gateNewProject: precheckDisInvoiceProject,
         addProject: addDisInvoiceProject
       }).finally(() => {
         disInvoiceSyncRef.current = null
@@ -6525,7 +6524,7 @@ export function Canvas() {
       disInvoiceSyncRef.current = run
       return run
     },
-    [disInvoiceCanvasWrites, persist, gateDisInvoiceProject, addDisInvoiceProject]
+    [disInvoiceCanvasWrites, persist, precheckDisInvoiceProject, addDisInvoiceProject]
   )
 
   const disInvoiceSyncControl = useMemo(
@@ -11548,8 +11547,8 @@ export function Canvas() {
       pick?: {
         onPick: (agentId: AgentId, accountId?: string | null) => void
         label?: (agentLabel: string) => string
-        // The project the rows start in, when that is not the active one (an Omni lane's card).
-        // Its accounts are the ones to offer: another machine's would be dropped at the launch.
+        // An Omni lane's card starts in a project that need not be the active one, and only that
+        // project's accounts survive the launch.
         projectId?: string
       }
     ): AgentAddEntry[] => {
@@ -12443,22 +12442,16 @@ export function Canvas() {
 
   // ---- GitHub issue → agent session ("Start with agent ▸") ----
   /**
-   * What every issue start does once its agent node exists: file the new session card under the
-   * issue card's column (board metadata only — the same unpruned direct write `createNodeInColumn`
-   * uses, for the same reason: the fresh node is not in the derived session list yet), log its
-   * `card-created`, and record `run-started` on the issue card's history. ONE place for both
-   * "Start with agent" and "Start with agent in a new worktree", so the two cannot file a run
-   * differently.
+   * File a new agent session card under a board column (board metadata only — the same unpruned
+   * direct write `createNodeInColumn` uses, for the same reason: the fresh node is not in the derived
+   * session list yet) and log its `card-created`. Returns the card's title.
    */
-  const fileIssueSession = useCallback(
+  const fileAgentSession = useCallback(
     (
       columnId: string | null,
-      // Null: a session filed under a card that is not an issue (a dis-invoice task), so no issue
-      // history gets a `run-started`.
-      ref: IssueRef | null,
       created: { node: CanvasNode; placed: CanvasNode; projectId: string },
       agentId: AgentId
-    ) => {
+    ): string => {
       const { node, projectId: targetProjectId } = created
       const nodeId = node.id
       // The project addAgentNode charged the node to (its guarded, live read) — not a second read.
@@ -12481,18 +12474,36 @@ export function Canvas() {
         nodeId,
         event: { type: 'card-created', to: column?.title ?? 'Ungrouped', title }
       })
-      if (!ref) return
+      return title
+    },
+    [markDirty, castNewNodeNow]
+  )
+
+  /**
+   * What every issue start does once its agent node exists: `fileAgentSession` under the issue
+   * card's column, then `run-started` on the issue card's history. ONE place for both "Start with
+   * agent" and "Start with agent in a new worktree", so the two cannot file a run differently.
+   */
+  const fileIssueSession = useCallback(
+    (
+      columnId: string | null,
+      ref: IssueRef,
+      created: { node: CanvasNode; placed: CanvasNode; projectId: string },
+      agentId: AgentId
+    ) => {
+      const title = fileAgentSession(columnId, created, agentId)
+      const { node, projectId: targetProjectId } = created
       // …and the issue card's history records the run (with the session id nodeterm minted, when
       // the agent's CLI takes one — otherwise none, never a guess).
       const started = runStartedEntry(ref, {
-        id: nodeId,
+        id: node.id,
         title,
         agentId,
         agentSessionId: node.data.agentSessionId as string | undefined
       })
       if (started) useBoardLog.getState().append(sessionForProject(targetProjectId).api, targetProjectId, started)
     },
-    [markDirty, castNewNodeNow]
+    [fileAgentSession]
   )
 
   /** The reference + first prompt of an issue start, or a notice saying why nothing started. The
@@ -12545,13 +12556,12 @@ export function Canvas() {
     [agentCreationEntries, startIssueAgent]
   )
 
-  /** Start an agent or a plain terminal on a dis-invoice task, in the project's folder, filed under
-   *  the sticky's current column. An agent's brief goes in a prompt file, and only its path is typed. */
+  /** An agent's brief goes in a prompt file, and only its path is typed: the task is client text. */
   const startDisInvoiceWork = useCallback(
     (projectId: string, nodeId: string, how: { agentId: AgentId; accountId?: string | null } | null): void => {
       const refuse = (text: string): void => setNotice({ kind: 'error', text })
       const start = async (): Promise<void> => {
-        if (!disInvoiceCanvasWrites.isLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        if (!disInvoiceCanvasWrites.flowOwnsProject(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
         const node = nodesRef.current.find((n) => n.id === nodeId)
         const ref = normalizeDisInvoiceRef(node?.data.disInvoiceRef)
         const project = useProjects.getState().getProject(projectId)
@@ -12569,13 +12579,13 @@ export function Canvas() {
           {
             saveUpload: (name, data) => api.files.saveUpload(name, data),
             encodeBase64: encodeUtf8Base64,
-            briefPathInWsl: api.disInvoice.briefPathInWsl
+            readableBriefPathInWsl: api.disInvoice.readableBriefPathInWsl
           }
         )
         if (!brief.ok) return refuse(brief.notice)
-        if (!disInvoiceCanvasWrites.isLive(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        if (!disInvoiceCanvasWrites.flowOwnsProject(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
         const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile: brief.path, title })
-        if (created) fileIssueSession(columnId, null, created, how.agentId)
+        if (created) fileAgentSession(columnId, created, how.agentId)
       }
       if (projectId === useProjects.getState().activeProjectId) {
         void start()
@@ -12585,7 +12595,7 @@ export function Canvas() {
       switchProject(projectId)
       setTimeout(() => void start(), 50)
     },
-    [disInvoiceCanvasWrites, nodesRef, createNodeInColumn, addAgentNode, fileIssueSession, switchProject]
+    [disInvoiceCanvasWrites, nodesRef, createNodeInColumn, addAgentNode, fileAgentSession, switchProject]
   )
 
   disInvoiceStartItemsRef.current = (projectId, nodeId) =>

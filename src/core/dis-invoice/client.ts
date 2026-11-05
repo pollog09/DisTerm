@@ -126,7 +126,8 @@ function parseTask(value: unknown): DisInvoiceTask | null {
   }
 }
 
-/** Read access only: this module has no way to send a write. */
+/** Read access only, because a person decides when work is billable: this module has no way to
+ *  send a write. */
 export class DisInvoiceClient {
   private readonly fetchImpl: typeof fetch
   private readonly baseUrl: string

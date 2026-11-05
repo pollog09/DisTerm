@@ -99,7 +99,7 @@ describe('project-limit gate placement in Canvas', () => {
     expectCommitAfterGate(body, gate, 'registerDisInvoiceProject(useProjects.getState()')
     expect(body).not.toMatch(/setActive|adoptProject|reopenProject|switchProject/)
     // The early ask spares a clone. It is not a store write, so it is not the deciding one.
-    const early = between('const gateDisInvoiceProject = useCallback(', CALLBACK_END)
+    const early = between('const precheckDisInvoiceProject = useCallback(', CALLBACK_END)
     expect(early).toContain(gateFor("{ kind: 'new' }"))
     expect(early).toContain(`${AWAIT_GATE} false`)
     expect(early).not.toMatch(/useProjects\.getState\(\)\.(registerProject|addProject)/)
@@ -115,7 +115,7 @@ describe('project-limit gate placement in Canvas', () => {
       between('const createSshProject = useCallback(', CALLBACK_END),
       between('const openOrAdoptFolder = useCallback(', CALLBACK_END),
       between('const reopenProject = useCallback(', CALLBACK_END),
-      between('const gateDisInvoiceProject = useCallback(', CALLBACK_END),
+      between('const precheckDisInvoiceProject = useCallback(', CALLBACK_END),
       between('const addDisInvoiceProject = useCallback(', CALLBACK_END)
     ].reduce((n, body) => n + (body.match(/gateProjectOpen\(\)/g) ?? []).length, 0)
     expect(inPaths).toBe(calls.length)

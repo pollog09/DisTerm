@@ -11,7 +11,7 @@ function harness(over: { saved?: string | null; inWsl?: { ok: true; path: string
       return over.saved === undefined ? WINDOWS : over.saved
     },
     encodeBase64: (text: string) => btoa(text),
-    briefPathInWsl: async (shell: string, file: string) => {
+    readableBriefPathInWsl: async (shell: string, file: string) => {
       log.push(`translate ${shell} ${file}`)
       return over.inWsl ?? { ok: true as const, path: '/mnt/c/Users/me/AppData/launch-prompts/t/nodeterm-prompt-1.txt' }
     }

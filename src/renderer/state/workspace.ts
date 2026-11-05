@@ -242,7 +242,6 @@ export interface NodeData {
   /** The GitHub issue this agent session was started on (see `CanvasNodeState.issueRef`).
    *  Display + run history only — never read back into a launch line. */
   issueRef?: IssueRef
-  /** The dis-invoice task this sticky mirrors (see `CanvasNodeState.disInvoiceRef`). */
   disInvoiceRef?: DisInvoiceRef
   /** The agent that opened this node through a canvas-control open verb (see
    *  `CanvasNodeState.openedBy`). Who is told when this station stops — never read as authority. */

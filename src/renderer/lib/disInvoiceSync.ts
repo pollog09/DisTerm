@@ -16,36 +16,27 @@ export interface DisInvoiceProjectOutcome {
   proyectoId: number
   nombre: string
   projectId: string
-  /** A DisTerm project this sync added. */
   created: boolean
   reconcile: ReconcileReport
-  /** The repository landed in this project's folder during this sync. */
   cloned: boolean
-  /** The folder holds other files and is not a repository, so the repository was not cloned. */
   cloneSkipped: boolean
-  /** The project already existed, so its tasks synced, but its repository could not be cloned. */
+  /** Only on a project that already existed: a new project whose clone fails is not added. */
   cloneFailed: string | null
-  /** Client text in a `.nodeterm/` canvas that git can see in this folder. */
   canvasExposed: boolean
 }
 
 export interface DisInvoiceSyncReport {
   failure?: { reason: DisInvoiceFailureReason; message: string }
-  /** dis-invoice answered with no columns, so nothing was changed. */
   noColumns: boolean
   projects: DisInvoiceProjectOutcome[]
-  /** Tasks with no dis-invoice project: there is no folder to map them to. */
   withoutProject: number
-  /** Left without a DisTerm project because the limit gate did not let the sync add one. */
   stopped: string[]
   failed: Array<{ nombre: string; message: string }>
-  /** On a relay or SSH project, which runs on another machine. */
   skippedRemote: string[]
   /** On a project whose folder was missing at load: a save never writes a placeholder's nodes. */
   unavailable: string[]
 }
 
-/** `foreign`: a relay or SSH project already holds that folder. */
 export type DisInvoiceProjectAdd = { kind: 'added'; project: Project } | { kind: 'refused' } | { kind: 'foreign' }
 
 export interface DisInvoiceSyncDeps {
@@ -54,14 +45,13 @@ export interface DisInvoiceSyncDeps {
   nodesOf(projectId: string): CanvasNodeState[]
   boardOf(projectId: string): ProjectKanban | undefined
   stickyFactory(nodes: readonly CanvasNodeState[]): NewDisInvoiceSticky
-  /** Called strictly before `applyBoard` for a project, because the board publisher prunes cards
-   *  against live node ids. Both are synchronous: nothing may run between a read and its write. */
-  applyNodes(projectId: string, upserts: CanvasNodeState[]): void
-  applyBoard(projectId: string, board: ProjectKanban): void
+  /** One call per project, nodes before board, because the board publisher prunes cards against live
+   *  node ids. Synchronous: nothing may run between a read and its write. */
+  applyProject(projectId: string, upserts: CanvasNodeState[], board: ProjectKanban | undefined): void
   persist(): Promise<unknown>
   /** Asked before any folder work, so a refusal costs neither a folder nor a clone. */
   gateNewProject(): Promise<boolean>
-  /** Adds a project without switching tabs, asking the limit gate one last time. */
+  /** Asks the limit gate one last time: this is the deciding ask. */
   addProject(name: string, folder: string): Promise<DisInvoiceProjectAdd>
 }
 
@@ -84,7 +74,65 @@ type Resolution =
   | { kind: 'stopped' | 'foreign' | 'unavailable' }
   | { kind: 'failed'; message: string }
 
+type Target = { proyectoId: number; nombre: string; project: Project; created: boolean } & CloneFacts
+
 const isLocal = (project: Project): boolean => !project.remote && !project.ssh
+
+// One at a time: the gate refuses a request while another is deciding, rather than queueing it.
+async function resolveProjectsOneAtATime(
+  proyectos: Proyecto[],
+  resolve: (proyecto: Proyecto) => Promise<Resolution>,
+  report: DisInvoiceSyncReport
+): Promise<Target[]> {
+  const targets: Target[] = []
+  for (const proyecto of proyectos) {
+    const resolved = await resolve(proyecto)
+    if (resolved.kind === 'ready') targets.push({ ...resolved, proyectoId: proyecto.id, nombre: proyecto.nombre })
+    else if (resolved.kind === 'failed') report.failed.push({ nombre: proyecto.nombre, message: resolved.message })
+    else if (resolved.kind === 'stopped') report.stopped.push(proyecto.nombre)
+    else (resolved.kind === 'foreign' ? report.skippedRemote : report.unavailable).push(proyecto.nombre)
+  }
+  return targets
+}
+
+/** Synchronous, so a read of a project's nodes and the write built from it cannot be split. */
+function reconcileAndApply(
+  deps: Pick<DisInvoiceSyncDeps, 'nodesOf' | 'boardOf' | 'stickyFactory' | 'applyProject'>,
+  targets: readonly Target[],
+  snapshot: DisInvoiceSnapshot,
+  exposedBy: ReadonlyMap<string, boolean>,
+  report: DisInvoiceSyncReport
+): boolean {
+  const proyectosOf = new Map<string, Set<number>>()
+  for (const { project, proyectoId } of targets) {
+    proyectosOf.set(project.id, (proyectosOf.get(project.id) ?? new Set<number>()).add(proyectoId))
+  }
+
+  let changed = false
+  for (const target of targets) {
+    const projectId = target.project.id
+    const nodes = deps.nodesOf(projectId)
+    const board = deps.boardOf(projectId)
+    const result = reconcileProject(nodes, board, snapshot, target.proyectoId, deps.stickyFactory(nodes), proyectosOf.get(projectId))
+    const nextBoard = result.board && result.board !== board ? result.board : undefined
+    if (result.upserts.length > 0 || nextBoard) {
+      deps.applyProject(projectId, result.upserts, nextBoard)
+      changed = true
+    }
+    report.projects.push({
+      proyectoId: target.proyectoId,
+      nombre: target.nombre,
+      projectId,
+      created: target.created,
+      reconcile: result.report,
+      cloned: target.cloned,
+      cloneSkipped: target.cloneSkipped,
+      cloneFailed: target.cloneFailed,
+      canvasExposed: exposedBy.get(projectId) ?? false
+    })
+  }
+  return changed
+}
 
 /** One sync of every dis-invoice project. Nothing is written until the whole snapshot is in hand. */
 export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisInvoiceSyncReport> {
@@ -188,17 +236,8 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     return atTarget ? linkExisting(proyecto, atTarget, target) : createProject(proyecto)
   }
 
-  type Target = { proyectoId: number; nombre: string; project: Project; created: boolean } & CloneFacts
-  const targets: Target[] = []
-
-  // One at a time: the gate refuses a request while another is deciding, rather than queueing it.
-  for (const proyecto of [...proyectos.values()].sort((a, b) => a.id - b.id)) {
-    const resolved = await resolve(proyecto)
-    if (resolved.kind === 'ready') targets.push({ ...resolved, proyectoId: proyecto.id, nombre: proyecto.nombre })
-    else if (resolved.kind === 'failed') report.failed.push({ nombre: proyecto.nombre, message: resolved.message })
-    else if (resolved.kind === 'stopped') report.stopped.push(proyecto.nombre)
-    else (resolved.kind === 'foreign' ? report.skippedRemote : report.unavailable).push(proyecto.nombre)
-  }
+  const sorted = [...proyectos.values()].sort((a, b) => a.id - b.id)
+  const targets = await resolveProjectsOneAtATime(sorted, resolve, report)
 
   // A linked project with nothing pending any more still has stickies to finish.
   for (const key of Object.keys(links)) {
@@ -216,39 +255,8 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     exposedBy.set(project.id, (await disInvoice.inspectFolder(project.cwd)).canvasExposed)
   }
 
-  const proyectosOf = new Map<string, Set<number>>()
-  for (const { project, proyectoId } of targets) {
-    proyectosOf.set(project.id, (proyectosOf.get(project.id) ?? new Set<number>()).add(proyectoId))
-  }
-
-  let changed = targets.some((target) => target.created)
-  // One tick, no await: a read of a project's nodes and the write built from it cannot be split.
-  for (const target of targets) {
-    const projectId = target.project.id
-    const nodes = deps.nodesOf(projectId)
-    const board = deps.boardOf(projectId)
-    const result = reconcileProject(nodes, board, snapshot, target.proyectoId, deps.stickyFactory(nodes), proyectosOf.get(projectId))
-    if (result.upserts.length > 0) {
-      deps.applyNodes(projectId, result.upserts)
-      changed = true
-    }
-    if (result.board && result.board !== board) {
-      deps.applyBoard(projectId, result.board)
-      changed = true
-    }
-    report.projects.push({
-      proyectoId: target.proyectoId,
-      nombre: target.nombre,
-      projectId,
-      created: target.created,
-      reconcile: result.report,
-      cloned: target.cloned,
-      cloneSkipped: target.cloneSkipped,
-      cloneFailed: target.cloneFailed,
-      canvasExposed: exposedBy.get(projectId) ?? false
-    })
-  }
-
+  const applied = reconcileAndApply(deps, targets, snapshot, exposedBy, report)
+  const changed = applied || targets.some((target) => target.created)
   if (changed) await deps.persist()
   return report
 }
@@ -282,8 +290,7 @@ const GRID_COLUMNS = 4
 const GRID_GAP = 32
 
 /** Lays mirrored stickies in a grid below whatever else is on the canvas, each in the first slot no
- *  mirror covers, because deleting one frees a slot while later ones stay put. The rest of the node
- *  comes from the ordinary sticky factory. */
+ *  mirror covers, because deleting one frees a slot while later ones stay put. */
 export function disInvoiceStickyFactory(nodes: readonly CanvasNodeState[]): NewDisInvoiceSticky {
   const bottom = nodes
     .filter((node) => !node.disInvoiceRef)
@@ -318,7 +325,6 @@ export interface DisInvoiceReportLine {
 
 const plural = (count: number, one: string, many = `${one}s`): string => `${count} ${count === 1 ? one : many}`
 
-/** The whole report in sentences, so nothing that was skipped goes unsaid. */
 export function summarizeDisInvoiceSync(report: DisInvoiceSyncReport): DisInvoiceReportLine[] {
   if (report.failure) return [{ tone: 'error', text: report.failure.message }]
   if (report.noColumns) {

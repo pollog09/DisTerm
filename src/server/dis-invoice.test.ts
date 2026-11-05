@@ -319,7 +319,6 @@ describe('the connector and folder a build talks to', () => {
     vi.unstubAllGlobals()
   })
 
-  /** Registers on a bare platform and reports where its key would go and where its folders land. */
   async function probe(isPackaged: boolean, overrides?: DisInvoiceOverrides): Promise<{ url: string; folder: unknown }> {
     vi.stubEnv('DISTERM_DIS_INVOICE_URL', LOOPBACK)
     vi.stubEnv('DISTERM_DIS_INVOICE_DOCUMENTS', '/from-env')

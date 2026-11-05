@@ -23,17 +23,18 @@ const BOARD_WRITERS: Record<string, string[]> = {
   'canvas/Canvas.tsx': [
     'onKanbanChange — the per-project board committing a person\'s drag/edit',
     'createNodeInColumn — a person\'s "+ New" in a column',
-    'fileIssueSession — a person\'s "Start with agent" or "Start with agent in a new worktree" filing ' +
+    'fileAgentSession — a person\'s "Start with agent" or "Start with agent in a new worktree" filing ' +
       'the new session under the issue card\'s column; also board dispatch, whose only trigger is a ' +
       'person moving the issue card into the dispatch column they switched on for this machine ' +
-      '(lib/board-dispatch.guard.test pins that)',
+      '(lib/board-dispatch.guard.test pins that); also a person\'s "Start with agent" on a dis-invoice ' +
+      'task\'s sticky',
     'the `assign` control verb — a session moving its OWN card (the issue-bound contract)',
     'autoMoveCardFromPulls — the merge-driven move: a person switched it on for this machine in ' +
       'Settings, and it fires only on a pull request MERGE this machine observed after that (never on ' +
       'agent status), after winning the host\'s one-time claim; session cards only'
   ],
   'lib/disInvoiceCanvas.ts': [
-    'applyBoard — a person pressing Sync, mirroring dis-invoice\'s columns and tasks. Never polled, and ' +
+    'applyProject — a person pressing Sync, mirroring dis-invoice\'s columns and tasks. Never polled, and ' +
       'agent status has no path to it'
   ],
   'components/kanban/GlobalKanbanView.tsx': ['onChangeBoard — the Omni board committing a person\'s drag/edit'],

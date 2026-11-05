@@ -23,7 +23,7 @@ import { launchPromptsRoot } from '../uploads'
 import { DisInvoiceClient, connectorBaseUrl } from './client'
 import { disInvoiceBaseDir, disInvoiceFolderName, readDisInvoiceFolder } from './folders'
 import { disInvoiceDevOverrides, type DisInvoiceOverrides } from './overrides'
-import { briefPathInWsl } from './wsl-brief'
+import { readableBriefPathInWsl } from './wsl-brief'
 
 export const DIS_INVOICE_SECRET_FILE = 'dis-invoice-connector-key.json'
 const LINKS_FILE = 'dis-invoice-links.json'
@@ -46,7 +46,6 @@ function parseLinks(raw: string): DisInvoiceLinks {
   return links
 }
 
-/** Machine-local: which DisTerm project and folder each dis-invoice project landed on. */
 export class DisInvoiceLinkStore {
   /** FIFO, so two sync steps cannot lose each other's entry between the read and the write. */
   private chain: Promise<unknown> = Promise.resolve()
@@ -85,7 +84,6 @@ type Dependencies = {
   git: Pick<GitService, 'clone' | 'originUrl' | 'canvasExposedToGit'>
   client?: DisInvoiceClient
   wslExec?: ProfileExec
-  /** The proof entry point's own. Everything else reads a development build's environment. */
   overrides?: DisInvoiceOverrides
 }
 
@@ -126,6 +124,19 @@ export function registerDisInvoice({
   const nameFolder = (current: DisInvoiceLinks, proyectoId: number, nombre: string): string => {
     const taken = new Set(Object.values(current).map((link) => path.basename(link.folder).toLowerCase()))
     return path.join(baseDir, disInvoiceFolderName(nombre, proyectoId, taken))
+  }
+
+  const cloneIntoReservedFolder = async (folder: string, githubRepo: string): Promise<DisInvoiceCloneResult> => {
+    // ensure-folder may have made it. rmdir only succeeds on an empty one, and clone claims it again.
+    const removed = await fs.rmdir(folder).then(
+      () => true,
+      () => false
+    )
+    const result = await git.clone(path.dirname(folder), githubRepo, { dirName: path.basename(folder) })
+    if (result.ok) return { ok: true }
+    // A linked project still points at this path, and its terminals need it until a retry succeeds.
+    if (removed) await fs.mkdir(folder, { recursive: true }).catch(() => undefined)
+    return { ok: false, message: result.message }
   }
 
   const reserveFolder = async (proyectoId: number, nombre: string): Promise<string> => {
@@ -196,16 +207,7 @@ export function registerDisInvoice({
     if (!proyecto?.githubRepo) return { ok: false, message: 'That project has no repository to clone.' }
     const folder = await reserveFolder(proyecto.id, proyecto.nombre)
     if (!insideBase(folder)) return { ok: false, message: `${folder} is outside ${baseDir}, so nothing was cloned.` }
-    // ensure-folder may have made it. rmdir only succeeds on an empty one, and clone claims it again.
-    const removed = await fs.rmdir(folder).then(
-      () => true,
-      () => false
-    )
-    const result = await git.clone(path.dirname(folder), proyecto.githubRepo, { dirName: path.basename(folder) })
-    if (result.ok) return { ok: true }
-    // A linked project still points at this path, and its terminals need it until a retry succeeds.
-    if (removed) await fs.mkdir(folder, { recursive: true }).catch(() => undefined)
-    return { ok: false, message: result.message }
+    return cloneIntoReservedFolder(folder, proyecto.githubRepo)
   })
 
   platform.handle(IPC.disInvoiceInspectFolder, async (cwd: unknown): Promise<DisInvoiceFolderFacts> => {
@@ -217,6 +219,6 @@ export function registerDisInvoice({
   // Only a saved brief, so this cannot be asked about any other file on the machine.
   platform.handle(IPC.disInvoiceBriefPathInWsl, async (shell: unknown, file: unknown): Promise<DisInvoiceWslPathResult> => {
     const isBrief = typeof file === 'string' && path.dirname(path.dirname(file)) === launchPromptsRoot(platform.userDataDir)
-    return isBrief ? briefPathInWsl(shell, file, wslExec) : { ok: false, message: 'That is not a saved task brief.' }
+    return isBrief ? readableBriefPathInWsl(shell, file, wslExec) : { ok: false, message: 'That is not a saved task brief.' }
   })
 }

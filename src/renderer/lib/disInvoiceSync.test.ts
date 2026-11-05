@@ -56,7 +56,7 @@ function harness(result: DisInvoiceFetchResult, links: DisInvoiceLinks, projects
     },
     clone: async () => ({ ok: true }),
     inspectFolder: async () => ({ originRepo: null, canvasExposed: false }),
-    briefPathInWsl: async () => ({ ok: false, message: 'this test starts no agent' })
+    readableBriefPathInWsl: async () => ({ ok: false, message: 'this test starts no agent' })
   }
   const deps: DisInvoiceSyncDeps = {
     disInvoice,
@@ -64,15 +64,17 @@ function harness(result: DisInvoiceFetchResult, links: DisInvoiceLinks, projects
     nodesOf: (id) => nodes.get(id) ?? [],
     boardOf: (id) => boards.get(id),
     stickyFactory: disInvoiceStickyFactory,
-    applyNodes: (id, upserts) => {
-      log.push(`nodes ${id} ${upserts.map((n) => n.id).join(',')}`)
-      const merged = new Map((nodes.get(id) ?? []).map((n) => [n.id, n]))
-      for (const upsert of upserts) merged.set(upsert.id, upsert)
-      nodes.set(id, [...merged.values()])
-    },
-    applyBoard: (id, board) => {
-      log.push(`board ${id}`)
-      boards.set(id, board)
+    applyProject: (id, upserts, board) => {
+      if (upserts.length > 0) {
+        log.push(`nodes ${id} ${upserts.map((n) => n.id).join(',')}`)
+        const merged = new Map((nodes.get(id) ?? []).map((n) => [n.id, n]))
+        for (const upsert of upserts) merged.set(upsert.id, upsert)
+        nodes.set(id, [...merged.values()])
+      }
+      if (board) {
+        log.push(`board ${id}`)
+        boards.set(id, board)
+      }
     },
     persist: async () => {
       log.push('persist')
@@ -123,11 +125,11 @@ describe('runDisInvoiceSync over linked projects', () => {
       [project('a'), project('b')]
     )
     const events: string[] = []
-    const applyNodes = deps.applyNodes
-    deps.applyNodes = (id, upserts) => {
+    const applyProject = deps.applyProject
+    deps.applyProject = (id, upserts, board) => {
       events.push(`apply ${id}`)
       void Promise.resolve().then(() => events.push('microtask ran'))
-      applyNodes(id, upserts)
+      applyProject(id, upserts, board)
     }
     await runDisInvoiceSync(deps)
     expect(events.slice(0, 2)).toEqual(['apply a', 'apply b'])
@@ -172,7 +174,7 @@ describe('runDisInvoiceSync over linked projects', () => {
     })()
     expect(report.projects[0].reconcile.finished).toEqual([1])
     expect(boards.get('a')?.assignments).toEqual([expect.objectContaining({ nodeId: 'sticky-dis-7-1', columnId: 'dis-invoice:3' })])
-    expect(nodes.get('a')?.[0].disInvoiceRef?.finished).toBe(true)
+    expect(nodes.get('a')?.[0].disInvoiceRef?.movedToFinished).toBe(true)
   })
 
   it('two dis-invoice projects on one DisTerm project do not warn about each other, or twice about one task', async () => {
@@ -202,7 +204,7 @@ describe('runDisInvoiceSync over linked projects', () => {
       { tone: 'ok', text: 'Already up to date across 1 project.' },
       { tone: 'warn', text: '1 task left the pending list, but dis-invoice lists no finished column, so no card was moved. They move once it has one.' }
     ])
-    expect(nodes.get('a')?.[0].disInvoiceRef?.finished).toBeUndefined()
+    expect(nodes.get('a')?.[0].disInvoiceRef?.movedToFinished).toBeUndefined()
 
     deps.disInvoice.fetch = async () => ok([])
     const landed = await runDisInvoiceSync(deps)
@@ -710,7 +712,6 @@ describe('open questions, answered against the real store', () => {
     const inLoad = nodeStatesToFlow([sticky('loaded')])
     useProjects.getState().applyOwnNodeMutations('open', [{ op: 'upsert', node: sticky('from-sync') }])
     expect(useProjects.getState().getProject('open')!.nodes.map((n) => n.id)).toEqual(['from-sync'])
-    // What `persist()` does while the load's settle timer still has loadingRef set.
     useProjects.getState().commitCanvas('open', flowToNodeStates(inLoad), { x: 0, y: 0, zoom: 1 })
     expect(useProjects.getState().getProject('open')!.nodes.map((n) => n.id)).toEqual(['loaded'])
   })

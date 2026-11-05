@@ -1,4 +1,3 @@
-// Run the fake dis-invoice connector on loopback: npm run fake:dis-invoice -- --port 8799 [--page-size 2]
 import { FAKE_CONNECTOR_KEY, FAKE_DEMO_SEED, startFakeConnector } from '../src/core/dis-invoice/fake-connector'
 
 function arg(name: string): number | undefined {

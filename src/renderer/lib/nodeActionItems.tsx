@@ -218,7 +218,6 @@ export interface NodeActionCtx {
   toggleMarkdown: (ids: string[]) => void
   reloadTerminals: (ids: string[]) => void
   liveLinkMenuItems: (nodeId: string) => MenuItem[]
-  /** "Start with agent" and "Open terminal" on a sticky mirroring a dis-invoice task. */
   disInvoiceStartItems: (nodeId: string) => MenuItem[]
   branchClaude: (nodeId: string, opts?: { at?: { x: number; y: number } }) => Promise<unknown>
   transferConversation: TransferConversationHandler

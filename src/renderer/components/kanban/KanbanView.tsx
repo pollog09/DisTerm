@@ -73,7 +73,6 @@ export interface KanbanSession {
   color: string
   kind: 'terminal' | 'sticky' | 'browser'
   agentId?: string
-  /** Sticky mirroring a dis-invoice task: the card and its modal offer to start work on it. */
   disInvoiceRef?: DisInvoiceRef
   /** Sticky note body — shown in the expanded detail row. */
   text?: string

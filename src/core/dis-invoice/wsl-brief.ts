@@ -9,7 +9,7 @@ const READ_CHECK_TIMEOUT_MS = 30_000
  * `"$(cat <path>)"`, and a `cat` that fails starts the agent on an empty prompt with no word, so the
  * file is read-checked in there too: automount can be off, or the folder out of its reach.
  */
-export async function briefPathInWsl(shell: unknown, file: string, exec: ProfileExec): Promise<DisInvoiceWslPathResult> {
+export async function readableBriefPathInWsl(shell: unknown, file: string, exec: ProfileExec): Promise<DisInvoiceWslPathResult> {
   const distro = typeof shell === 'string' ? parseWslShell(shell) : null
   if (!distro) return { ok: false, message: 'That is not a WSL distribution.' }
   try {

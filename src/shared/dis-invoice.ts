@@ -1,6 +1,3 @@
-// The dis-invoice connector's data, after the core boundary has parsed it. Pure types and helpers,
-// imported by core (which talks to the connector) and by the renderer (which mirrors the result).
-
 export type DisInvoicePriority = 'BAJA' | 'MEDIA' | 'ALTA' | 'URGENTE'
 
 export interface DisInvoiceColumn {
@@ -28,8 +25,8 @@ export type DisInvoiceFetchResult =
   | { ok: true; columns: DisInvoiceColumn[]; tasks: DisInvoiceTask[] }
   | { ok: false; reason: DisInvoiceFailureReason; message: string }
 
-/** Machine-local, in `userData/dis-invoice-links.json`. A null `projectId` is a folder reserved for
- *  a dis-invoice project that has no DisTerm project yet (a refused open, a failed clone). */
+/** A null `projectId` is a folder reserved for a dis-invoice project that has no DisTerm project yet
+ *  (a refused open, a failed clone). */
 export type DisInvoiceLinks = Record<number, { projectId: string | null; folder: string }>
 
 export interface DisInvoiceStatus {
@@ -49,8 +46,6 @@ export type DisInvoiceCloneResult = { ok: true } | { ok: false; message: string 
 
 export type DisInvoiceWslPathResult = { ok: true; path: string } | { ok: false; message: string }
 
-/** What a folder says about itself: its GitHub origin as `owner/repo`, and whether a folder-backed
- *  project's `.nodeterm/` canvas, client task text included, would be visible to git there. */
 export interface DisInvoiceFolderFacts {
   originRepo: string | null
   canvasExposed: boolean
@@ -58,31 +53,28 @@ export interface DisInvoiceFolderFacts {
 
 export interface DisInvoiceApi {
   status(): Promise<DisInvoiceStatus>
-  /** Checks the key against the connector, and stores it only if the connector accepted it. */
   saveConfig(key: string): Promise<DisInvoiceSaveResult>
   clearKey(): Promise<void>
   fetch(): Promise<DisInvoiceFetchResult>
   links(): Promise<DisInvoiceLinks>
   saveLink(proyectoId: number, projectId: string, folder: string): Promise<boolean>
-  /** The folder this project has or would get, with nothing created or reserved. Null when it is not
-   *  in the last snapshot. */
+  /** Nothing is created or reserved. */
   plannedFolder(proyectoId: number): Promise<string | null>
   /** Name and repo come from the last fetched snapshot, never from the caller. */
   ensureFolder(proyectoId: number): Promise<DisInvoiceFolderResult>
   clone(proyectoId: number): Promise<DisInvoiceCloneResult>
   inspectFolder(cwd: string): Promise<DisInvoiceFolderFacts>
-  /** A saved launch prompt, as a pane in that `wsl:` distribution reads it. */
-  briefPathInWsl(shell: string, file: string): Promise<DisInvoiceWslPathResult>
+  readableBriefPathInWsl(shell: string, file: string): Promise<DisInvoiceWslPathResult>
 }
 
-/** On a sticky node mirroring a dis-invoice task. `textHash` is of the text sync last wrote, and
- *  `columnaId` the column it last saw upstream, so a local edit or drag survives until upstream moves.
- *  `finished` means the task left the pending list, so its return moves the card back. */
+/** `textHash` is of the text sync last wrote, and `columnaId` the column it last saw upstream, so a
+ *  local edit or drag survives until upstream moves. `movedToFinished`: the task left the pending
+ *  list and sync moved its card once, so a later drag stays and the task's return moves it back. */
 export interface DisInvoiceRef {
   taskId: number
   columnaId: number
   textHash: string
-  finished?: true
+  movedToFinished?: true
 }
 
 const isPositiveId = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0
@@ -92,10 +84,12 @@ const isPositiveId = (value: unknown): value is number => Number.isSafeInteger(v
  *  The result is rebuilt field by field, so nothing else in the value survives. */
 export function normalizeDisInvoiceRef(value: unknown): DisInvoiceRef | undefined {
   if (typeof value !== 'object' || value === null) return undefined
-  const { taskId, columnaId, textHash, finished } = value as Record<string, unknown>
+  const { taskId, columnaId, textHash, movedToFinished, finished } = value as Record<string, unknown>
   if (!isPositiveId(taskId) || !isPositiveId(columnaId)) return undefined
   if (typeof textHash !== 'string' || !/^[0-9a-f]{1,32}$/.test(textHash)) return undefined
-  return { taskId, columnaId, textHash, ...(finished === true ? { finished: true as const } : {}) }
+  // `finished` is what stickies synced before the rename carry.
+  const moved = movedToFinished === true || finished === true
+  return { taskId, columnaId, textHash, ...(moved ? { movedToFinished: true as const } : {}) }
 }
 
 const BRIEF_END = '</client-task>'
@@ -130,13 +124,12 @@ export function disInvoiceBrief(stickyText: string, taskId: number): string {
 }
 
 /** GitHub's slug alphabet, which also keeps a value from dis-invoice out of git's option space. */
-const OWNER_REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/
+const GITHUB_SLUG = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/
 
-/** `owner/repo` lower-cased for comparison, or null when `value` is not one. */
 export function normalizeOwnerRepo(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const slug = value.trim().replace(/\.git$/i, '')
-  if (!OWNER_REPO.test(slug)) return null
+  if (!GITHUB_SLUG.test(slug)) return null
   const repo = slug.split('/')[1]
   return repo === '.' || repo === '..' ? null : slug.toLowerCase()
 }

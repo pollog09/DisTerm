@@ -76,7 +76,7 @@ describe('disInvoiceCanvas', () => {
   describe('the project on screen', () => {
     it('reads the live canvas, not the store', () => {
       const { canvas } = harness('open')
-      expect(canvas.isLive('open')).toBe(true)
+      expect(canvas.flowOwnsProject('open')).toBe(true)
       expect(canvas.nodesOf('open').map((n) => n.id)).toEqual(['live-note'])
     })
 
@@ -84,7 +84,7 @@ describe('disInvoiceCanvas', () => {
       const { canvas, log, flow } = harness('open')
       const fresh = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'tarea', ref: REF })
       const updated = { ...sticky('live-note', 'from upstream'), disInvoiceRef: REF }
-      canvas.applyNodes('open', [updated, fresh])
+      canvas.applyProject('open', [updated, fresh], undefined)
       expect(log).toEqual(['flow live-note,sticky-dis-7-1', 'cast open sticky-dis-7-1', 'dirty'])
       expect(textOf(flow(), 'live-note')).toBe('from upstream')
       expect(textOf(flow(), 'sticky-dis-7-1')).toBe('tarea')
@@ -93,7 +93,7 @@ describe('disInvoiceCanvas', () => {
 
     it('survives the commit persist makes, which a store-only write would not', () => {
       const { canvas, flow } = harness('open')
-      canvas.applyNodes('open', [disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'tarea', ref: REF })])
+      canvas.applyProject('open', [disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'tarea', ref: REF })], undefined)
       useProjects.getState().commitCanvas('open', flowToNodeStates(flow()), { x: 0, y: 0, zoom: 1 })
       expect(useProjects.getState().getProject('open')?.nodes.map((n) => n.id)).toEqual(['live-note', 'sticky-dis-7-1'])
     })
@@ -102,9 +102,9 @@ describe('disInvoiceCanvas', () => {
   describe('a project that is not on screen', () => {
     it('reads and writes the store, and leaves the canvas alone', () => {
       const { canvas, log, flow } = harness('open')
-      expect(canvas.isLive('other')).toBe(false)
+      expect(canvas.flowOwnsProject('other')).toBe(false)
       expect(canvas.nodesOf('other').map((n) => n.id)).toEqual(['other-note'])
-      canvas.applyNodes('other', [sticky('sticky-dis-8-2')])
+      canvas.applyProject('other', [sticky('sticky-dis-8-2')], undefined)
       expect(useProjects.getState().getProject('other')?.nodes.map((n) => n.id)).toEqual(['other-note', 'sticky-dis-8-2'])
       expect(flow().map((n) => n.id)).toEqual(['live-note'])
       expect(log).toEqual([])
@@ -114,18 +114,27 @@ describe('disInvoiceCanvas', () => {
   it('in the gap before a switch loads, the refs are the outgoing project’s, so both read as stored', () => {
     useProjects.setState({ activeProjectId: 'other' })
     const { canvas, log } = harness('open')
-    expect(canvas.isLive('open')).toBe(false)
-    expect(canvas.isLive('other')).toBe(false)
-    canvas.applyNodes('open', [sticky('sticky-dis-7-1')])
+    expect(canvas.flowOwnsProject('open')).toBe(false)
+    expect(canvas.flowOwnsProject('other')).toBe(false)
+    canvas.applyProject('open', [sticky('sticky-dis-7-1')], undefined)
     expect(useProjects.getState().getProject('open')?.nodes.map((n) => n.id)).toEqual(['stale-store-note', 'sticky-dis-7-1'])
     expect(log).toEqual([])
   })
 
   it('a board goes to the store either way, and marks the canvas dirty', () => {
     const { canvas, log } = harness('open')
-    canvas.applyBoard('other', BOARD)
+    canvas.applyProject('other', [], BOARD)
     expect(canvas.boardOf('other')).toEqual(BOARD)
     expect(log).toEqual(['dirty'])
+  })
+
+  it('one call writes a project’s nodes before its board', () => {
+    const { canvas, log } = harness('open')
+    const unsubscribe = useProjects.subscribe(() => log.push('board'))
+    canvas.applyProject('open', [disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'tarea', ref: REF })], BOARD)
+    unsubscribe()
+    expect(log).toEqual(['flow live-note,sticky-dis-7-1', 'cast open sticky-dis-7-1', 'dirty', 'board', 'dirty'])
+    expect(canvas.boardOf('open')).toEqual(BOARD)
   })
 
   it('Canvas hands Sync this adapter, with its real refs', () => {
@@ -134,6 +143,6 @@ describe('disInvoiceCanvas', () => {
     expect(source).toContain('flowNodes: () => nodesRef.current,')
     expect(source).toContain('nodesRef.current = next\n          setNodes(next)')
     expect(source).toContain('...disInvoiceCanvasWrites,')
-    expect(source.match(/disInvoiceCanvasWrites\.isLive\(projectId\)/g)).toHaveLength(2)
+    expect(source.match(/disInvoiceCanvasWrites\.flowOwnsProject\(projectId\)/g)).toHaveLength(2)
   })
 })

@@ -141,7 +141,7 @@ DO_NOT_TRACK the gate turns one `block` per open into a claim first (The limit m
 Every way a person opens a project goes through `gateProjectOpen`
 (`src/renderer/lib/projectLimitGate.ts`), in seven Canvas call sites: `addProject`,
 `openOrAdoptFolder`, `createSshProject`, `onRepoCloned`, `reopenProject`, and for dis-invoice Sync
-`gateDisInvoiceProject` and `addDisInvoiceProject`. The rule:
+`precheckDisInvoiceProject` and `addDisInvoiceProject`. The rule:
 
 ```ts
 const g = opensProject(useProjects.getState().projects, action) ? gateProjectOpen() : true

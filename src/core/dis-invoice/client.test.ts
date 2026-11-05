@@ -15,7 +15,6 @@ async function start(cards = [fakeCard(1)], pageSize?: number): Promise<DisInvoi
   return new DisInvoiceClient({ baseUrl: fake.url })
 }
 
-/** A client whose connector answers every request with this one body. */
 const answering = (body: string, status = 200): DisInvoiceClient =>
   new DisInvoiceClient({
     baseUrl: 'http://127.0.0.1:1',

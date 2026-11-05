@@ -7,7 +7,7 @@ import { WorkspaceStore } from './workspace-store'
 import { testTmpDir } from './test-tmp'
 import type { Project, Workspace } from '../shared/types'
 
-const REF = { taskId: 101, columnaId: 2, textHash: 'a1b2c3', finished: true as const }
+const REF = { taskId: 101, columnaId: 2, textHash: 'a1b2c3', movedToFinished: true as const }
 
 const sticky = {
   id: 'sticky-1',

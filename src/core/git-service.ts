@@ -576,7 +576,6 @@ export class GitService {
     return result.ok && url ? url : null
   }
 
-  /** Inside a work tree and `.nodeterm/` is not ignored there. Outside a repository, nothing is. */
   async canvasExposedToGit(cwd: string): Promise<boolean> {
     if (!cwd) return false
     const inside = await git(cwd, ['rev-parse', '--is-inside-work-tree'])
@@ -682,9 +681,8 @@ export class GitService {
    * The target dir is claimed with a non-recursive mkdir: EEXIST is a friendly error,
    * and on failure/abort we only ever delete the directory WE created this run.
    *
-   * `unattended` is a clone nobody is watching (dis-invoice sync). It names its folder, creates the
-   * parent, never asks for credentials, stays off the clone dialog's progress channel and gives up
-   * after `timeoutMs`. Deliberately not reachable from IPC.gitClone.
+   * `unattended` (dis-invoice sync) is a clone nobody is watching, so it never asks for credentials
+   * and gives up after `timeoutMs`. Deliberately not reachable from IPC.gitClone.
    */
   async clone(
     parentDir: string,

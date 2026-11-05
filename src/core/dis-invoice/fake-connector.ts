@@ -1,6 +1,3 @@
-// A stand-in for dis-invoice's connector, for tests and for driving the real app on loopback. It
-// answers with the production routes' rules (src/app/api/connector in Distriib/dis-invoice) and adds
-// a /__control surface so a test or a person can change its data between syncs.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 

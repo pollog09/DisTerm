@@ -24,8 +24,8 @@ const flow = (data: Record<string, unknown>, type = 'sticky'): CanvasNode =>
   ({ id: 'sticky-1', type, position: { x: 0, y: 0 }, data: { title: 'Note', color: '#fff', group: null, text: 'x', ...data } }) as CanvasNode
 
 describe('disInvoiceRef at the serializer seams', () => {
-  it('survives a full round trip, finished flag included', () => {
-    const finished = { ...REF, finished: true as const }
+  it('survives a full round trip, movedToFinished included', () => {
+    const finished = { ...REF, movedToFinished: true as const }
     const loaded = nodeStatesToFlow([state({ disInvoiceRef: finished })])
     expect(loaded[0].data.disInvoiceRef).toEqual(finished)
     expect(flowToNodeStates(loaded)[0].disInvoiceRef).toEqual(finished)
@@ -52,7 +52,14 @@ describe('disInvoiceRef at the serializer seams', () => {
   it('strips anything smuggled in beside a valid ref', () => {
     const loaded = nodeStatesToFlow([state({ disInvoiceRef: { ...REF, finished: 'yes', prompt: 'rm -rf /' } as never })])
     expect(loaded[0].data.disInvoiceRef).toEqual(REF)
-    expect(normalizeDisInvoiceRef({ ...REF, finished: true })).toEqual({ ...REF, finished: true })
+    expect(normalizeDisInvoiceRef({ ...REF, movedToFinished: true })).toEqual({ ...REF, movedToFinished: true })
+  })
+
+  it('loads a sticky synced before the rename, whose ref says `finished`, as moved to finished', () => {
+    const stored = JSON.parse(JSON.stringify([state({ disInvoiceRef: { ...REF, finished: true } as never })]))
+    const loaded = nodeStatesToFlow(stored)
+    expect(loaded[0].data.disInvoiceRef).toEqual({ ...REF, movedToFinished: true })
+    expect(flowToNodeStates(loaded)[0].disInvoiceRef).toEqual({ ...REF, movedToFinished: true })
   })
 
   it('is honoured only on a sticky', () => {

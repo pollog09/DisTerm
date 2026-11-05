@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { assembleLaunchCommand } from '../../shared/agents/launch'
 import { disInvoiceBrief } from '../../shared/dis-invoice'
 import type { ProfileExec } from '../terminal-profiles'
-import { briefPathInWsl } from './wsl-brief'
+import { readableBriefPathInWsl } from './wsl-brief'
 
 const WINDOWS_FILE = "C:\\Users\\Jane Doe\\it's\\launch-prompts\\t1\\nodeterm-prompt-1.txt"
 
@@ -57,7 +57,7 @@ describe.skipIf(process.platform === 'win32')('a dis-invoice brief reaching a pa
   it('the translated path hands the agent the whole brief as one argument', async () => {
     const brief = disInvoiceBrief('Migrar el DNS\n\nClient: Exotic', 101)
     const linuxPath = writeBrief(brief)
-    const answer = await briefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(DRVFS))
+    const answer = await readableBriefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(DRVFS))
     expect(answer).toEqual({ ok: true, path: linuxPath })
     expect(calls).toEqual([
       ['-d', 'Ubuntu', '--exec', 'wslpath', '-a', '-u', WINDOWS_FILE],
@@ -70,19 +70,19 @@ describe.skipIf(process.platform === 'win32')('a dis-invoice brief reaching a pa
     const custom = path.join(root, 'windows/c/nodeterm-prompt-1.txt')
     mkdirSync(path.dirname(custom), { recursive: true })
     writeFileSync(custom, 'brief')
-    const answer = await briefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(`printf '%s' '${custom}'`))
+    const answer = await readableBriefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(`printf '%s' '${custom}'`))
     expect(answer).toEqual({ ok: true, path: custom })
   })
 
   it('refuses a path wslpath cannot translate, such as a network share, with its reason', async () => {
     const share = '\\\\server\\share\\nodeterm-prompt-1.txt'
-    const answer = await briefPathInWsl('wsl:Ubuntu', share, fakeWsl(`echo 'wslpath: not a drive' >&2; exit 1`))
+    const answer = await readableBriefPathInWsl('wsl:Ubuntu', share, fakeWsl(`echo 'wslpath: not a drive' >&2; exit 1`))
     expect(answer).toEqual({ ok: false, message: `WSL could not open "${share}" in Ubuntu: wslpath: not a drive` })
   })
 
   it('refuses a translated path the distribution cannot read, rather than start on an empty prompt', async () => {
     const linuxPath = path.join(root, 'mnt/c/Users/Jane Doe/it\'s/launch-prompts/t1/nodeterm-prompt-1.txt')
-    const answer = await briefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(DRVFS))
+    const answer = await readableBriefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, fakeWsl(DRVFS))
     expect(answer).toEqual({ ok: false, message: `Ubuntu cannot read ${linuxPath}.` })
   })
 
@@ -90,14 +90,14 @@ describe.skipIf(process.platform === 'win32')('a dis-invoice brief reaching a pa
     const exec: ProfileExec = async () => {
       throw new Error('must not run')
     }
-    expect(await briefPathInWsl('pwsh', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'That is not a WSL distribution.' })
-    expect(await briefPathInWsl('wsl:-rf', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'That is not a WSL distribution.' })
+    expect(await readableBriefPathInWsl('pwsh', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'That is not a WSL distribution.' })
+    expect(await readableBriefPathInWsl('wsl:-rf', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'That is not a WSL distribution.' })
   })
 
   it('answers a wsl.exe that cannot run with its reason, not a throw', async () => {
     const exec: ProfileExec = async () => {
       throw new Error('wsl.exe did not answer')
     }
-    expect(await briefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'wsl.exe did not answer' })
+    expect(await readableBriefPathInWsl('wsl:Ubuntu', WINDOWS_FILE, exec)).toEqual({ ok: false, message: 'wsl.exe did not answer' })
   })
 })
