@@ -8,7 +8,7 @@ import {
 } from '@shared/dis-invoice-reconcile'
 
 import { registeredCwd, type useProjects } from '../state/projects'
-import { createStickyNode, flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
+import { createStickyNode, defaultNodeSize, flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
 
 type Proyecto = NonNullable<DisInvoiceTask['proyecto']>
 
@@ -219,13 +219,18 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     exposedBy.set(project.id, (await disInvoice.inspectFolder(project.cwd)).canvasExposed)
   }
 
+  const proyectosOf = new Map<string, Set<number>>()
+  for (const { project, proyectoId } of targets) {
+    proyectosOf.set(project.id, (proyectosOf.get(project.id) ?? new Set<number>()).add(proyectoId))
+  }
+
   let changed = targets.some((target) => target.created)
   // One tick, no await: a read of a project's nodes and the write built from it cannot be split.
   for (const target of targets) {
     const projectId = target.project.id
     const nodes = deps.nodesOf(projectId)
     const board = deps.boardOf(projectId)
-    const result = reconcileProject(nodes, board, snapshot, target.proyectoId, deps.stickyFactory(nodes))
+    const result = reconcileProject(nodes, board, snapshot, target.proyectoId, deps.stickyFactory(nodes), proyectosOf.get(projectId))
     if (result.upserts.length > 0) {
       deps.applyNodes(projectId, result.upserts)
       changed = true
@@ -279,21 +284,32 @@ export function registerDisInvoiceProject(
 const GRID_COLUMNS = 4
 const GRID_GAP = 32
 
-/** Lays mirrored stickies in a grid below whatever else is on the canvas. The rest of the node comes
- *  from the ordinary sticky factory. The id is deterministic, so undo cannot mint a second mirror. */
+/** Lays mirrored stickies in a grid below whatever else is on the canvas, each in the first slot no
+ *  mirror covers, because deleting one frees a slot while later ones stay put. The rest of the node
+ *  comes from the ordinary sticky factory. */
 export function disInvoiceStickyFactory(nodes: readonly CanvasNodeState[]): NewDisInvoiceSticky {
   const bottom = nodes
     .filter((node) => !node.disInvoiceRef)
     .reduce((lowest, node) => Math.max(lowest, node.position.y + node.size.height), 0)
   const top = bottom ? bottom + GRID_GAP : GRID_GAP
-  return ({ id, text, ref, index }) => {
-    const sized = createStickyNode(index)
-    const width = sized.width ?? 0
-    const height = sized.height ?? 0
-    const made = createStickyNode(index, {
-      x: GRID_GAP + (index % GRID_COLUMNS) * (width + GRID_GAP) + width / 2,
-      y: top + Math.floor(index / GRID_COLUMNS) * (height + GRID_GAP) + height / 2
-    })
+  const { width, height } = defaultNodeSize('sticky')
+  const occupied = nodes
+    .filter((node) => node.disInvoiceRef)
+    .map((node) => ({ ...node.position, width: node.size.width, height: node.size.height }))
+
+  const takeFreeSlot = (): { x: number; y: number } => {
+    for (let slot = 0; ; slot++) {
+      const x = GRID_GAP + (slot % GRID_COLUMNS) * (width + GRID_GAP)
+      const y = top + Math.floor(slot / GRID_COLUMNS) * (height + GRID_GAP)
+      if (occupied.some((o) => x < o.x + o.width && o.x < x + width && y < o.y + o.height && o.y < y + height)) continue
+      occupied.push({ x, y, width, height })
+      return { x, y }
+    }
+  }
+
+  return ({ id, text, ref }) => {
+    const { x, y } = takeFreeSlot()
+    const made = createStickyNode(0, { x: x + width / 2, y: y + height / 2 })
     return flowToNodeStates([{ ...made, id, data: { ...made.data, text, disInvoiceRef: ref } }])[0]
   }
 }
@@ -330,8 +346,9 @@ export function summarizeDisInvoiceSync(report: DisInvoiceSyncReport): DisInvoic
     return [{ tone: 'warn', text: 'dis-invoice has no columns yet. Open its board once, then sync again. Nothing was changed.' }]
   }
   const lines: DisInvoiceReportLine[] = []
+  // A set, because two dis-invoice projects on one DisTerm project each see the same sticky.
   const sum = (pick: (r: ReconcileReport) => number[]): number =>
-    report.projects.reduce((total, project) => total + pick(project.reconcile).length, 0)
+    new Set(report.projects.flatMap((project) => pick(project.reconcile))).size
 
   const added = report.projects.filter((p) => p.created).length
   const created = sum((r) => r.created)
@@ -361,6 +378,10 @@ export function summarizeDisInvoiceSync(report: DisInvoiceSyncReport): DisInvoic
   const reassigned = sum((r) => r.reassigned)
   if (reassigned) {
     lines.push({ tone: 'warn', text: `${plural(reassigned, 'task')} moved to another project in dis-invoice. The old notes were left in place.` })
+  }
+  const noFinishedColumn = sum((r) => r.noFinishedColumn)
+  if (noFinishedColumn) {
+    lines.push({ tone: 'warn', text: `${plural(noFinishedColumn, 'task')} left the pending list, but dis-invoice lists no finished column, so no card was moved. They move once it has one.` })
   }
   const unplaced = sum((r) => r.unplaced)
   if (unplaced) lines.push({ tone: 'warn', text: `${plural(unplaced, 'task')} in a column dis-invoice did not list, so no card was moved.` })

@@ -42,10 +42,7 @@ const sticky = (id: string, text: string, ref?: unknown): CanvasNodeState =>
     ...(ref ? { disInvoiceRef: ref } : {})
   }) as CanvasNodeState
 
-const newSticky: NewDisInvoiceSticky = ({ id, text, ref, index }) => ({
-  ...sticky(id, text, ref),
-  position: { x: index * 10, y: 0 }
-})
+const newSticky: NewDisInvoiceSticky = ({ id, text, ref }) => sticky(id, text, ref)
 
 const snapshot = (tasks: DisInvoiceTask[], columns = COLUMNS): DisInvoiceSnapshot => ({ columns, tasks })
 
@@ -141,16 +138,6 @@ describe('column seeding', () => {
     expect(columnOf(board, 'term-1')).toBe('kcol-mine')
   })
 
-  it('an empty column list changes nothing, even with mirrored tasks gone from the list', () => {
-    const t = task(1)
-    const nodes = [mirrorOf(t)]
-    const board = seededBoard([{ nodeId: nodes[0].id, columnId: 'dis-invoice:1' }])
-    const result = reconcileProject(nodes, board, snapshot([], []), 7, newSticky)
-    expect(result.upserts).toEqual([])
-    expect(result.board).toBe(board)
-    expect(result.report.finished).toEqual([])
-  })
-
   it('a project with no tasks and no mirrors keeps its unborn board', () => {
     expect(reconcileProject([], undefined, snapshot([task(1, { proyecto: { id: 9, nombre: 'Otro', githubRepo: null } })]), 7, newSticky).board).toBeUndefined()
   })
@@ -172,11 +159,9 @@ describe('reconcileProject', () => {
     expect(report.metaUpdated).toEqual([])
   })
 
-  it('keeps upstream order within a column and places by count', () => {
-    const { board, nodes } = runTwice([mirrorOf(task(9))], seededBoard(), snapshot([task(9), task(1), task(2)]))
+  it('keeps upstream order within a column', () => {
+    const { board } = runTwice([mirrorOf(task(9))], seededBoard(), snapshot([task(9), task(1), task(2)]))
     expect(board?.assignments.map((a) => a.nodeId)).toEqual(['sticky-dis-7-1', 'sticky-dis-7-2'])
-    expect(nodes.find((n) => n.id === 'sticky-dis-7-1')?.position.x).toBe(10)
-    expect(nodes.find((n) => n.id === 'sticky-dis-7-2')?.position.x).toBe(20)
   })
 
   it('pending, text changed upstream: overwrites the text and the hash, and upstream wins over a local edit', () => {
@@ -279,13 +264,22 @@ describe('reconcileProject', () => {
     expect(nodes.map((n) => n.id)).toEqual([before.id])
   })
 
-  it('finishes a sticky even when no finished column exists, without moving it', () => {
+  it('with no finished column: does not mark it finished, reports it, and moves it once a finished column appears', () => {
     const open = COLUMNS.filter((c) => !c.terminada)
     const before = mirrorOf(task(1))
     const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
-    const { upserts, board: next } = runTwice([before], board, snapshot([], open))
-    expect(columnOf(next, before.id)).toBe('dis-invoice:1')
-    expect(upserts[0].disInvoiceRef?.finished).toBe(true)
+
+    const stranded = runTwice([before], board, snapshot([], open))
+    expect(columnOf(stranded.board, before.id)).toBe('dis-invoice:1')
+    expect(stranded.upserts).toEqual([])
+    expect(stranded.report.finished).toEqual([])
+    expect(stranded.report.noFinishedColumn).toEqual([1])
+
+    const landed = runTwice(stranded.nodes, stranded.board, snapshot([], COLUMNS))
+    expect(columnOf(landed.board, before.id)).toBe('dis-invoice:3')
+    expect(landed.upserts[0].disInvoiceRef?.finished).toBe(true)
+    expect(landed.report.finished).toEqual([1])
+    expect(landed.report.noFinishedColumn).toEqual([])
   })
 
   it('now pending in another project: leaves the old sticky and reports it, the new project creates its own', () => {
@@ -303,11 +297,56 @@ describe('reconcileProject', () => {
     expect(fresh.upserts[0].id).toBe('sticky-dis-8-1')
   })
 
-  it('a task with its project removed is not read as finished', () => {
+  it('a task with its project removed is not read as finished, or as moved to another project', () => {
     const before = mirrorOf(task(1))
-    const { report } = runTwice([before], seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }]), snapshot([task(1, { proyecto: null })]))
-    expect(report.reassigned).toEqual([1])
+    const { report, upserts } = runTwice([before], seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }]), snapshot([task(1, { proyecto: null })]))
+    expect(report.reassigned).toEqual([])
     expect(report.finished).toEqual([])
+    expect(upserts).toEqual([])
+  })
+
+  it('two proyectos sharing one DisTerm project: the other’s tasks are neither reassigned nor finished', () => {
+    const sibling = task(2, { proyecto: { id: 8, nombre: 'Hermano', githubRepo: null } })
+    const before = mirrorOf(sibling)
+    const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
+    const { report, upserts } = reconcileProject([before], board, snapshot([task(1), sibling]), 7, newSticky, new Set([7, 8]))
+    expect(report.reassigned).toEqual([])
+    expect(report.finished).toEqual([])
+    expect(upserts.map((n) => n.id)).toEqual(['sticky-dis-7-1'])
+  })
+
+  it('a task moved between proyectos on one DisTerm project keeps its one sticky', () => {
+    const moved = task(1, { proyecto: { id: 8, nombre: 'Hermano', githubRepo: null } })
+    const before = mirrorOf(task(1))
+    const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
+    const sharing = new Set([7, 8])
+    const fromOld = reconcileProject([before], board, snapshot([moved]), 7, newSticky, sharing)
+    expect(fromOld.report.reassigned).toEqual([])
+    const fromNew = reconcileProject([before], board, snapshot([moved]), 8, newSticky, sharing)
+    expect(fromNew.upserts).toEqual([])
+    expect(fromNew.report.created).toEqual([])
+  })
+
+  it('a task moved to a proyecto on another DisTerm project still warns', () => {
+    const moved = task(1, { proyecto: { id: 9, nombre: 'Otro', githubRepo: null } })
+    const before = mirrorOf(task(1))
+    const board = seededBoard([{ nodeId: before.id, columnId: 'dis-invoice:1' }])
+    expect(reconcileProject([before], board, snapshot([moved]), 7, newSticky, new Set([7, 8])).report.reassigned).toEqual([1])
+  })
+
+  it('a minted id never lands on a node that does not mirror the task', () => {
+    const note = sticky('sticky-dis-7-1', 'my own note, kept after an undo cleared its reference')
+    const { upserts, nodes, board } = runTwice([note], seededBoard(), snapshot([task(1)]))
+    expect(upserts.map((n) => n.id)).toEqual(['sticky-dis-7-1-2'])
+    expect(nodes.find((n) => n.id === 'sticky-dis-7-1')).toEqual(note)
+    expect(columnOf(board, 'sticky-dis-7-1-2')).toBe('dis-invoice:1')
+    expect(columnOf(board, 'sticky-dis-7-1')).toBeUndefined()
+  })
+
+  it('a minted id skips every suffix already taken, including by another task’s mirror', () => {
+    const notes = [sticky('sticky-dis-7-1', 'a'), sticky('sticky-dis-7-1-2', 'b'), mirrorOf(task(5), {}, 'sticky-dis-7-1-3')]
+    const { upserts } = runTwice(notes, seededBoard(), snapshot([task(5), task(1)]))
+    expect(upserts.map((n) => n.id)).toEqual(['sticky-dis-7-1-4'])
   })
 
   it('a sticky deleted while pending comes back', () => {

@@ -173,6 +173,41 @@ describe('runDisInvoiceSync over linked projects', () => {
     expect(nodes.get('a')?.[0].disInvoiceRef?.finished).toBe(true)
   })
 
+  it('two dis-invoice projects on one DisTerm project do not warn about each other, or twice about one task', async () => {
+    const links = { 7: { projectId: 'a', folder: '/work/a' }, 8: { projectId: 'a', folder: '/work/a' } }
+    const { deps } = harness(ok([task(1, 7), task(2, 8)]), links, [project('a')])
+    await runDisInvoiceSync(deps)
+    const quiet = await runDisInvoiceSync(deps)
+    expect(quiet.projects.map((p) => p.reconcile.reassigned)).toEqual([[], []])
+    expect(summarizeDisInvoiceSync(quiet)).toEqual([{ tone: 'ok', text: 'Already up to date across 2 projects.' }])
+
+    deps.disInvoice.fetch = async () => ok([task(1, 9), task(2, 8)])
+    deps.disInvoice.links = async () => links
+    deps.disInvoice.ensureFolder = async () => ({ ok: false, message: 'no folder in this test' })
+    const moved = await runDisInvoiceSync(deps)
+    expect(summarizeDisInvoiceSync(moved)).toContainEqual({
+      tone: 'warn',
+      text: '1 task moved to another project in dis-invoice. The old notes were left in place.'
+    })
+  })
+
+  it('says when a finished task has no column to go to, and moves it once one exists', async () => {
+    const { deps, boards, nodes } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    await runDisInvoiceSync(deps)
+    deps.disInvoice.fetch = async () => ok([], COLUMNS.filter((c) => !c.terminada))
+    const stuck = await runDisInvoiceSync(deps)
+    expect(summarizeDisInvoiceSync(stuck)).toEqual([
+      { tone: 'ok', text: 'Already up to date across 1 project.' },
+      { tone: 'warn', text: '1 task left the pending list, but dis-invoice lists no finished column, so no card was moved. They move once it has one.' }
+    ])
+    expect(nodes.get('a')?.[0].disInvoiceRef?.finished).toBeUndefined()
+
+    deps.disInvoice.fetch = async () => ok([])
+    const landed = await runDisInvoiceSync(deps)
+    expect(landed.projects[0].reconcile.finished).toEqual([1])
+    expect(boards.get('a')?.assignments).toEqual([expect.objectContaining({ nodeId: 'sticky-dis-7-1', columnId: 'dis-invoice:3' })])
+  })
+
   it('counts tasks without a project and syncs the rest', async () => {
     const { deps } = harness(ok([task(1), task(2, null), task(3, null)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
     const report = await runDisInvoiceSync(deps)
@@ -555,7 +590,7 @@ describe('disInvoiceStickyFactory', () => {
   const REF = { taskId: 1, columnaId: 1, textHash: 'abc' }
 
   it('builds a persisted sticky with the deterministic id, text and reference', () => {
-    const state = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'Tarea', ref: REF, index: 0 })
+    const state = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'Tarea', ref: REF })
     expect(state).toMatchObject({ id: 'sticky-dis-7-1', kind: 'sticky', text: 'Tarea', disInvoiceRef: REF, position: { x: 32, y: 32 } })
   })
 
@@ -563,11 +598,29 @@ describe('disInvoiceStickyFactory', () => {
     const other = { id: 'term', kind: 'terminal', position: { x: 0, y: 100 }, size: { width: 10, height: 50 } } as CanvasNodeState
     const mirror = { id: 'old', kind: 'sticky', position: { x: 0, y: 9000 }, size: { width: 10, height: 50 }, disInvoiceRef: REF } as CanvasNodeState
     const make = disInvoiceStickyFactory([other, mirror])
-    const first = make({ id: 'a', text: 'a', ref: REF, index: 0 })
-    const fifth = make({ id: 'b', text: 'b', ref: REF, index: 4 })
-    expect(first.position).toEqual({ x: 32, y: 182 })
-    expect(fifth.position.x).toBe(32)
-    expect(fifth.position.y).toBe(182 + first.size.height + 32)
+    const made = [1, 2, 3, 4, 5].map((n) => make({ id: `s${n}`, text: 'x', ref: REF }))
+    const { width, height } = made[0].size
+    expect(made.map((s) => s.position)).toEqual([
+      { x: 32, y: 182 },
+      { x: 32 + (width + 32), y: 182 },
+      { x: 32 + 2 * (width + 32), y: 182 },
+      { x: 32 + 3 * (width + 32), y: 182 },
+      { x: 32, y: 182 + height + 32 }
+    ])
+  })
+
+  it('a sticky recreated after an earlier one was deleted takes the free slot, not a later one’s', () => {
+    const make = disInvoiceStickyFactory([])
+    const [first, second, third] = ['a', 'b', 'c'].map((id) => make({ id, text: id, ref: REF }))
+    const fresh = disInvoiceStickyFactory([second, third])
+    expect(fresh({ id: 'back', text: 'back', ref: REF }).position).toEqual(first.position)
+    expect(fresh({ id: 'next', text: 'next', ref: REF }).position).toEqual({ x: third.position.x + (third.position.x - second.position.x), y: 32 })
+  })
+
+  it('a slot is free again once its mirror has been dragged elsewhere', () => {
+    const made = disInvoiceStickyFactory([])({ id: 'a', text: 'a', ref: REF })
+    const dragged = { ...made, position: { x: 5000, y: 5000 } }
+    expect(disInvoiceStickyFactory([dragged])({ id: 'b', text: 'b', ref: REF }).position).toEqual(made.position)
   })
 })
 
@@ -577,7 +630,7 @@ describe('mergeUpsertsIntoFlow', () => {
     live.data = { ...live.data, text: 'old', title: 'mine' }
     const [saved] = flowToNodeStates([live])
     const ref = { taskId: 1, columnaId: 1, textHash: 'abc' }
-    const fresh = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-2', text: 'new card', ref, index: 0 })
+    const fresh = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-2', text: 'new card', ref })
     const { next, added } = mergeUpsertsIntoFlow([live], [{ ...saved, text: 'upstream', disInvoiceRef: ref }, fresh])
     expect(next.map((n) => n.id)).toEqual(['sticky-1', 'sticky-dis-7-2'])
     expect(next[0].selected).toBe(true)

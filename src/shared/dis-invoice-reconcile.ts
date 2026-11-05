@@ -20,7 +20,9 @@ export interface ReconcileReport {
   moved: number[]
   metaUpdated: number[]
   finished: number[]
-  /** Pending in another project now. This sticky stays, and that project gets its own. */
+  /** Left the pending list, but no finished column exists to move the card to. Moved once one does. */
+  noFinishedColumn: number[]
+  /** Pending in another DisTerm project now. This sticky stays, and that project gets its own. */
   reassigned: number[]
   /** In a column the snapshot does not list, so its card has no column to go to. */
   unplaced: number[]
@@ -37,13 +39,7 @@ export interface ReconcileResult {
   report: ReconcileReport
 }
 
-export type NewDisInvoiceSticky = (spec: {
-  id: string
-  text: string
-  ref: DisInvoiceRef
-  /** How many mirrored stickies the project has before this one, for placement. */
-  index: number
-}) => CanvasNodeState
+export type NewDisInvoiceSticky = (spec: { id: string; text: string; ref: DisInvoiceRef }) => CanvasNodeState
 
 const emptyReport = (): ReconcileReport => ({
   created: [],
@@ -51,6 +47,7 @@ const emptyReport = (): ReconcileReport => ({
   moved: [],
   metaUpdated: [],
   finished: [],
+  noFinishedColumn: [],
   reassigned: [],
   unplaced: [],
   columnsAdded: 0,
@@ -61,8 +58,15 @@ const emptyReport = (): ReconcileReport => ({
 export const disInvoiceColumnId = (columnaId: number): string => `dis-invoice:${columnaId}`
 
 /** Scoped by project because the core store finds a project by node id, and a reassigned task gets
- *  a second sticky elsewhere. */
-export const disInvoiceStickyId = (proyectoId: number, taskId: number): string => `sticky-dis-${proyectoId}-${taskId}`
+ *  a second sticky elsewhere. A mirror that lost its reference keeps its id and is a person's note
+ *  now, so a name already on the canvas takes a suffix rather than merging over that node. */
+function freeStickyId(proyectoId: number, taskId: number, taken: Set<string>): string {
+  const base = `sticky-dis-${proyectoId}-${taskId}`
+  let id = base
+  for (let suffix = 2; taken.has(id); suffix++) id = `${base}-${suffix}`
+  taken.add(id)
+  return id
+}
 
 /** The first line is the title, because a card's title is the text's first line. */
 export function renderDisInvoiceTask(task: DisInvoiceTask): string {
@@ -119,17 +123,18 @@ function withMirroredColumns(board: ProjectKanban | undefined, columns: DisInvoi
   return missing.length ? { ...board, columns: [...board.columns, ...missing] } : board
 }
 
+/** `sharing` holds every dis-invoice project that lands on this DisTerm project. A task moved among
+ *  them stays on this canvas, so it has not moved anywhere a person needs to hear about. */
 export function reconcileProject(
   nodes: readonly CanvasNodeState[],
   initialBoard: ProjectKanban | undefined,
   snapshot: DisInvoiceSnapshot,
   proyectoId: number,
-  newSticky: NewDisInvoiceSticky
+  newSticky: NewDisInvoiceSticky,
+  sharing: ReadonlySet<number> = new Set([proyectoId])
 ): ReconcileResult {
   const report = emptyReport()
   const upserts: CanvasNodeState[] = []
-  // The list is empty until someone opens dis-invoice's board. That says nothing about the tasks.
-  if (snapshot.columns.length === 0) return { upserts, board: initialBoard, report }
 
   const pending = new Map(snapshot.tasks.map((task) => [task.id, task]))
   const own = snapshot.tasks.filter((task) => task.proyecto?.id === proyectoId)
@@ -145,12 +150,10 @@ export function reconcileProject(
       mirrors.set(ref.taskId, { node, ref })
     }
   }
-  const mirroredBefore = mirrors.size
 
   // A project losing its last task still needs its board, to receive that task's sticky.
-  const before = initialBoard
-  let board = own.length > 0 || mirroredBefore > 0 ? withMirroredColumns(initialBoard, snapshot.columns) : initialBoard
-  if (board && board !== before) report.columnsAdded = board.columns.length - (before?.columns.length ?? 0)
+  let board = own.length > 0 || mirrors.size > 0 ? withMirroredColumns(initialBoard, snapshot.columns) : initialBoard
+  if (board && board !== initialBoard) report.columnsAdded = board.columns.length - (initialBoard?.columns.length ?? 0)
 
   const hasColumn = (columnaId: number): boolean =>
     !!board?.columns.some((column) => column.id === disInvoiceColumnId(columnaId))
@@ -176,22 +179,15 @@ export function reconcileProject(
     return true
   }
 
-  let created = 0
+  const takenIds = new Set(nodes.map((node) => node.id))
   for (const task of own) {
     const text = renderDisInvoiceTask(task)
     const textHash = disInvoiceTextHash(text)
     const mirror = mirrors.get(task.id)
 
     if (!mirror) {
-      const id = disInvoiceStickyId(proyectoId, task.id)
-      upserts.push(
-        newSticky({
-          id,
-          text,
-          ref: { taskId: task.id, columnaId: task.columnaId, textHash },
-          index: mirroredBefore + created++
-        })
-      )
+      const id = freeStickyId(proyectoId, task.id, takenIds)
+      upserts.push(newSticky({ id, text, ref: { taskId: task.id, columnaId: task.columnaId, textHash } }))
       report.created.push(task.id)
       if (hasColumn(task.columnaId)) place(id, task.columnaId, 'end')
       else report.unplaced.push(task.id)
@@ -228,13 +224,19 @@ export function reconcileProject(
   const finishedColumn = finishedColumnOf(snapshot.columns)
   for (const [taskId, { node, ref }] of mirrors) {
     if (ownIds.has(taskId)) continue
-    if (pending.has(taskId)) {
-      report.reassigned.push(taskId)
+    const stillPending = pending.get(taskId)
+    if (stillPending) {
+      const owner = stillPending.proyecto?.id
+      if (owner !== undefined && !sharing.has(owner)) report.reassigned.push(taskId)
       continue
     }
     // Moved once. Dragging it back afterwards is the person's call, and later syncs respect it.
     if (ref.finished) continue
-    if (finishedColumn) place(node.id, finishedColumn.id, 'top')
+    if (!finishedColumn) {
+      report.noFinishedColumn.push(taskId)
+      continue
+    }
+    place(node.id, finishedColumn.id, 'top')
     upserts.push({ ...node, disInvoiceRef: { ...ref, finished: true } })
     report.finished.push(taskId)
   }
