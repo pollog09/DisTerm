@@ -7,6 +7,7 @@ import {
   type ReconcileReport
 } from '@shared/dis-invoice-reconcile'
 
+import { registeredCwd, type useProjects } from '../state/projects'
 import { createStickyNode, flowToNodeStates, nodeStatesToFlow, type CanvasNode } from '../state/workspace'
 
 type Proyecto = NonNullable<DisInvoiceTask['proyecto']>
@@ -18,8 +19,12 @@ export interface DisInvoiceProjectOutcome {
   /** A DisTerm project this sync added. */
   created: boolean
   reconcile: ReconcileReport
+  /** The repository landed in this project's folder during this sync. */
+  cloned: boolean
   /** The folder holds other files and is not a repository, so the repository was not cloned. */
   cloneSkipped: boolean
+  /** The project already existed, so its tasks synced, but its repository could not be cloned. */
+  cloneFailed: string | null
   /** Client text in a `.nodeterm/` canvas that git can see in this folder. */
   canvasExposed: boolean
 }
@@ -34,9 +39,14 @@ export interface DisInvoiceSyncReport {
   /** Left without a DisTerm project because the limit gate did not let the sync add one. */
   stopped: string[]
   failed: Array<{ nombre: string; message: string }>
-  /** Linked to a relay tab, whose canvas belongs to another machine. */
+  /** On a relay or SSH project, which runs on another machine. */
   skippedRemote: string[]
+  /** On a project whose folder was missing at load: a save never writes a placeholder's nodes. */
+  unavailable: string[]
 }
+
+/** `foreign`: a relay or SSH project already holds that folder. */
+export type DisInvoiceProjectAdd = { kind: 'added'; project: Project } | { kind: 'refused' } | { kind: 'foreign' }
 
 export interface DisInvoiceSyncDeps {
   disInvoice: DisInvoiceApi
@@ -49,10 +59,10 @@ export interface DisInvoiceSyncDeps {
   applyNodes(projectId: string, upserts: CanvasNodeState[]): void
   applyBoard(projectId: string, board: ProjectKanban): void
   persist(): Promise<unknown>
-  /** Asked before any folder work, so a refusal does not cost a clone. */
+  /** Asked before any folder work, so a refusal costs neither a folder nor a clone. */
   gateNewProject(): Promise<boolean>
-  /** Adds a project without switching tabs. Null means the limit gate refused it. */
-  addProject(name: string, folder: string): Promise<Project | null>
+  /** Adds a project without switching tabs, asking the limit gate one last time. */
+  addProject(name: string, folder: string): Promise<DisInvoiceProjectAdd>
 }
 
 const emptyReport = (): DisInvoiceSyncReport => ({
@@ -61,12 +71,17 @@ const emptyReport = (): DisInvoiceSyncReport => ({
   withoutProject: 0,
   stopped: [],
   failed: [],
-  skippedRemote: []
+  skippedRemote: [],
+  unavailable: []
 })
 
+type CloneFacts = Pick<DisInvoiceProjectOutcome, 'cloned' | 'cloneSkipped' | 'cloneFailed'>
+
+const NOTHING_CLONED: CloneFacts = { cloned: false, cloneSkipped: false, cloneFailed: null }
+
 type Resolution =
-  | { kind: 'ready'; project: Project; created: boolean; cloneSkipped: boolean }
-  | { kind: 'stopped' }
+  | ({ kind: 'ready'; project: Project; created: boolean } & CloneFacts)
+  | { kind: 'stopped' | 'foreign' | 'unavailable' }
   | { kind: 'failed'; message: string }
 
 const isLocal = (project: Project): boolean => !project.remote && !project.ssh
@@ -108,79 +123,84 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
 
   let refused = false
 
+  /** A project first synced before dis-invoice named its repository has a folder and no clone yet.
+   *  Only an empty folder is cloned into, so an existing working tree is never touched. */
+  const cloneIntoExisting = async (proyecto: Proyecto, project: Project): Promise<CloneFacts> => {
+    if (!proyecto.githubRepo || !project.cwd) return NOTHING_CLONED
+    if ((await originRepo(project.cwd)) === proyecto.githubRepo) return NOTHING_CLONED
+    // "Set folder…" can move a project away from the folder its link recorded.
+    if ((await disInvoice.plannedFolder(proyecto.id)) !== project.cwd) return NOTHING_CLONED
+    const folder = await disInvoice.ensureFolder(proyecto.id)
+    if (!folder.ok) return { ...NOTHING_CLONED, cloneFailed: folder.message }
+    if (folder.isRepo) return NOTHING_CLONED
+    if (!folder.empty) return { ...NOTHING_CLONED, cloneSkipped: true }
+    const clone = await disInvoice.clone(proyecto.id)
+    return clone.ok ? { ...NOTHING_CLONED, cloned: true } : { ...NOTHING_CLONED, cloneFailed: clone.message }
+  }
+
+  const useExisting = async (proyecto: Proyecto, project: Project): Promise<Resolution> => {
+    if (!isLocal(project)) return { kind: 'foreign' }
+    if (project.unavailable) return { kind: 'unavailable' }
+    return { kind: 'ready', project, created: false, ...(await cloneIntoExisting(proyecto, project)) }
+  }
+
+  const createProject = async (proyecto: Proyecto): Promise<Resolution> => {
+    if (refused || !(await deps.gateNewProject())) {
+      refused = true
+      return { kind: 'stopped' }
+    }
+    const folder = await disInvoice.ensureFolder(proyecto.id)
+    if (!folder.ok) return { kind: 'failed', message: folder.message }
+
+    let clone = NOTHING_CLONED
+    if (proyecto.githubRepo && !folder.isRepo) {
+      if (!folder.empty) clone = { ...NOTHING_CLONED, cloneSkipped: true }
+      else {
+        const cloned = await disInvoice.clone(proyecto.id)
+        if (!cloned.ok) return { kind: 'failed', message: cloned.message }
+        clone = { ...NOTHING_CLONED, cloned: true }
+      }
+    }
+
+    const added = await deps.addProject(proyecto.nombre, folder.folder)
+    if (added.kind === 'foreign') return { kind: 'foreign' }
+    if (added.kind === 'refused') {
+      refused = true
+      return { kind: 'stopped' }
+    }
+    await disInvoice.saveLink(proyecto.id, added.project.id, folder.folder)
+    return { kind: 'ready', project: added.project, created: true, ...clone }
+  }
+
   const resolve = async (proyecto: Proyecto): Promise<Resolution> => {
+    const linked = linkedProject(proyecto.id)
+    if (linked) return useExisting(proyecto, linked)
     if (proyecto.githubRepo) {
       for (const project of deps.projects()) {
         if (project.closed || !isLocal(project) || !project.cwd) continue
         if ((await originRepo(project.cwd)) !== proyecto.githubRepo) continue
         await disInvoice.saveLink(proyecto.id, project.id, project.cwd)
-        return { kind: 'ready', project, created: false, cloneSkipped: false }
+        return useExisting(proyecto, project)
       }
     }
-    const folder = await disInvoice.ensureFolder(proyecto.id)
-    if (!folder.ok) return { kind: 'failed', message: folder.message }
-
-    const atFolder = deps.projects().find((p) => p.cwd === folder.folder && isLocal(p))
-    if (atFolder) {
-      await disInvoice.saveLink(proyecto.id, atFolder.id, folder.folder)
-      return { kind: 'ready', project: atFolder, created: false, cloneSkipped: false }
-    }
-
-    if (refused || !(await deps.gateNewProject())) {
-      refused = true
-      return { kind: 'stopped' }
-    }
-
-    let cloneSkipped = false
-    if (proyecto.githubRepo && !folder.isRepo) {
-      if (folder.empty) {
-        const clone = await disInvoice.clone(proyecto.id)
-        if (!clone.ok) return { kind: 'failed', message: clone.message }
-      } else {
-        cloneSkipped = true
-      }
-    }
-
-    const project = await deps.addProject(proyecto.nombre, folder.folder)
-    if (!project) {
-      refused = true
-      return { kind: 'stopped' }
-    }
-    await disInvoice.saveLink(proyecto.id, project.id, folder.folder)
-    return { kind: 'ready', project, created: true, cloneSkipped }
+    const target = await disInvoice.plannedFolder(proyecto.id)
+    if (!target) return { kind: 'failed', message: 'That project is not in the last sync.' }
+    const atTarget = deps.projects().find((p) => p.cwd === target)
+    if (!atTarget) return createProject(proyecto)
+    if (isLocal(atTarget) && !atTarget.unavailable) await disInvoice.saveLink(proyecto.id, atTarget.id, target)
+    return useExisting(proyecto, atTarget)
   }
 
-  const targets: Array<{
-    proyectoId: number
-    nombre: string
-    project: Project
-    created: boolean
-    cloneSkipped: boolean
-  }> = []
+  type Target = { proyectoId: number; nombre: string; project: Project; created: boolean } & CloneFacts
+  const targets: Target[] = []
 
   // One at a time: the gate refuses a request while another is deciding, rather than queueing it.
   for (const proyecto of [...proyectos.values()].sort((a, b) => a.id - b.id)) {
-    const linked = linkedProject(proyecto.id)
-    if (linked?.remote) {
-      report.skippedRemote.push(proyecto.nombre)
-      continue
-    }
-    if (linked) {
-      targets.push({ proyectoId: proyecto.id, nombre: proyecto.nombre, project: linked, created: false, cloneSkipped: false })
-      continue
-    }
     const resolved = await resolve(proyecto)
-    if (resolved.kind === 'stopped') report.stopped.push(proyecto.nombre)
+    if (resolved.kind === 'ready') targets.push({ ...resolved, proyectoId: proyecto.id, nombre: proyecto.nombre })
     else if (resolved.kind === 'failed') report.failed.push({ nombre: proyecto.nombre, message: resolved.message })
-    else {
-      targets.push({
-        proyectoId: proyecto.id,
-        nombre: proyecto.nombre,
-        project: resolved.project,
-        created: resolved.created,
-        cloneSkipped: resolved.cloneSkipped
-      })
-    }
+    else if (resolved.kind === 'stopped') report.stopped.push(proyecto.nombre)
+    else (resolved.kind === 'foreign' ? report.skippedRemote : report.unavailable).push(proyecto.nombre)
   }
 
   // A linked project with nothing pending any more still has stickies to finish.
@@ -188,8 +208,9 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
     const proyectoId = Number(key)
     if (proyectos.has(proyectoId)) continue
     const linked = linkedProject(proyectoId)
-    if (!linked || linked.remote) continue
-    targets.push({ proyectoId, nombre: linked.name, project: linked, created: false, cloneSkipped: false })
+    if (!linked || !isLocal(linked)) continue
+    if (linked.unavailable) report.unavailable.push(linked.name)
+    else targets.push({ proyectoId, nombre: linked.name, project: linked, created: false, ...NOTHING_CLONED })
   }
 
   const exposedBy = new Map<string, boolean>()
@@ -219,13 +240,40 @@ export async function runDisInvoiceSync(deps: DisInvoiceSyncDeps): Promise<DisIn
       projectId,
       created: target.created,
       reconcile: result.report,
+      cloned: target.cloned,
       cloneSkipped: target.cloneSkipped,
+      cloneFailed: target.cloneFailed,
       canvasExposed: exposedBy.get(projectId) ?? false
     })
   }
 
   if (changed) await deps.persist()
   return report
+}
+
+type ProjectStore = Pick<
+  ReturnType<typeof useProjects.getState>,
+  'projects' | 'registerProject' | 'setProjectStoreInAppData' | 'getProject'
+>
+
+/**
+ * The store write behind adding a project. `registerProject` matches by cwd alone and un-closes what
+ * it matches, so a relay or SSH project at this path is refused first, untouched. A folder that ships
+ * a canvas is adopted as it is. A project created here stores its canvas in app data, to keep client
+ * text out of the folder and out of git.
+ */
+export function registerDisInvoiceProject(
+  store: ProjectStore,
+  name: string,
+  folder: string,
+  probed: Project | null
+): DisInvoiceProjectAdd {
+  const holder = store.projects.find((p) => p.cwd === registeredCwd(folder))
+  if (holder && !isLocal(holder)) return { kind: 'foreign' }
+  const { project, created } = store.registerProject({ resolvedCwd: folder, name, probed: probed ?? undefined })
+  if (!created) return { kind: 'added', project }
+  store.setProjectStoreInAppData(project.id, true)
+  return { kind: 'added', project: store.getProject(project.id) ?? project }
 }
 
 const GRID_COLUMNS = 4
@@ -326,12 +374,18 @@ export function summarizeDisInvoiceSync(report: DisInvoiceSyncReport): DisInvoic
     if (project.cloneSkipped) {
       lines.push({ tone: 'warn', text: `${project.nombre}: its folder already has other files and is not a repository, so nothing was cloned. Its tasks still synced.` })
     }
+    if (project.cloneFailed) {
+      lines.push({ tone: 'error', text: `${project.nombre}: its tasks synced, but its repository could not be cloned and will be retried next sync. ${project.cloneFailed}` })
+    }
     if (project.canvasExposed) {
       lines.push({ tone: 'warn', text: `${project.nombre}: client task text is in .nodeterm/project.json and git can see it. Ignore .nodeterm/ or store this project's canvas in app data before you commit.` })
     }
   }
   if (report.skippedRemote.length) {
-    lines.push({ tone: 'warn', text: `Skipped, because the canvas belongs to another machine: ${report.skippedRemote.join(', ')}.` })
+    lines.push({ tone: 'warn', text: `Skipped, because the project runs on another machine: ${report.skippedRemote.join(', ')}.` })
+  }
+  if (report.unavailable.length) {
+    lines.push({ tone: 'warn', text: `Skipped, because the project's folder is unavailable: ${report.unavailable.join(', ')}. Restore it and sync again.` })
   }
   return lines
 }

@@ -605,6 +605,7 @@ export const IPC = {
   disInvoiceFetch: 'disInvoice:fetch',
   disInvoiceLinks: 'disInvoice:links',
   disInvoiceSaveLink: 'disInvoice:save-link',
+  disInvoicePlannedFolder: 'disInvoice:planned-folder',
   disInvoiceEnsureFolder: 'disInvoice:ensure-folder',
   disInvoiceClone: 'disInvoice:clone',
   disInvoiceInspectFolder: 'disInvoice:inspect-folder',

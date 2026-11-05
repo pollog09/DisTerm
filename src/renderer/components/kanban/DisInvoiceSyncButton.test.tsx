@@ -14,6 +14,7 @@ const report = (over: Partial<DisInvoiceSyncReport> = {}): DisInvoiceSyncReport 
   stopped: [],
   failed: [],
   skippedRemote: [],
+  unavailable: [],
   ...over
 })
 

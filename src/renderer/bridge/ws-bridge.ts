@@ -534,6 +534,7 @@ export function buildDisInvoiceApi(client: RpcClient): Pick<NodeTerminalApi, 'di
       links: () => client.request(IPC.disInvoiceLinks) as ReturnType<Api['links']>,
       saveLink: (proyectoId, projectId, folder) =>
         client.request(IPC.disInvoiceSaveLink, proyectoId, projectId, folder) as ReturnType<Api['saveLink']>,
+      plannedFolder: (proyectoId) => client.request(IPC.disInvoicePlannedFolder, proyectoId) as ReturnType<Api['plannedFolder']>,
       ensureFolder: (proyectoId) => client.request(IPC.disInvoiceEnsureFolder, proyectoId) as ReturnType<Api['ensureFolder']>,
       clone: (proyectoId) => client.request(IPC.disInvoiceClone, proyectoId) as ReturnType<Api['clone']>,
       inspectFolder: (cwd) => client.request(IPC.disInvoiceInspectFolder, cwd) as ReturnType<Api['inspectFolder']>

@@ -19,6 +19,7 @@ const CHANNELS = [
   IPC.disInvoiceFetch,
   IPC.disInvoiceLinks,
   IPC.disInvoiceSaveLink,
+  IPC.disInvoicePlannedFolder,
   IPC.disInvoiceEnsureFolder,
   IPC.disInvoiceClone,
   IPC.disInvoiceInspectFolder
@@ -151,6 +152,18 @@ describe('folders and clones', () => {
     expect(await call(IPC.disInvoiceEnsureFolder, '/etc/evil')).toEqual(refused)
     expect(await call(IPC.disInvoiceEnsureFolder, '../evil')).toEqual(refused)
     expect(await fs.readdir(documentsDir)).toEqual([])
+  })
+
+  it('says which folder a project would get while creating and reserving nothing', async () => {
+    await call(IPC.disInvoiceFetch)
+    expect(await call(IPC.disInvoicePlannedFolder, 7)).toBe(path.join(base(), 'Web'))
+    expect(await call(IPC.disInvoicePlannedFolder, 999)).toBe(null)
+    expect(existsSync(base())).toBe(false)
+    expect(await call(IPC.disInvoiceLinks)).toEqual({})
+    await call(IPC.disInvoiceEnsureFolder, 7)
+    expect(await call(IPC.disInvoicePlannedFolder, 8)).toBe(path.join(base(), 'web (2)'))
+    await call(IPC.disInvoiceSaveLink, 7, 'p-1', '/work/web')
+    expect(await call(IPC.disInvoicePlannedFolder, 7)).toBe('/work/web')
   })
 
   it('names folders from the snapshot and keeps them across a rename upstream', async () => {

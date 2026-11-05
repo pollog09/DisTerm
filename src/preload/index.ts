@@ -301,6 +301,7 @@ const api: NodeTerminalApi = {
     fetch: () => ipcRenderer.invoke(IPC.disInvoiceFetch),
     links: () => ipcRenderer.invoke(IPC.disInvoiceLinks),
     saveLink: (proyectoId, projectId, folder) => ipcRenderer.invoke(IPC.disInvoiceSaveLink, proyectoId, projectId, folder),
+    plannedFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoicePlannedFolder, proyectoId),
     ensureFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceEnsureFolder, proyectoId),
     clone: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceClone, proyectoId),
     inspectFolder: (cwd) => ipcRenderer.invoke(IPC.disInvoiceInspectFolder, cwd)

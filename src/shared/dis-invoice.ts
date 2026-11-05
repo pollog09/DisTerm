@@ -62,6 +62,9 @@ export interface DisInvoiceApi {
   fetch(): Promise<DisInvoiceFetchResult>
   links(): Promise<DisInvoiceLinks>
   saveLink(proyectoId: number, projectId: string, folder: string): Promise<boolean>
+  /** The folder this project has or would get, with nothing created or reserved. Null when it is not
+   *  in the last snapshot. */
+  plannedFolder(proyectoId: number): Promise<string | null>
   /** Name and repo come from the last fetched snapshot, never from the caller. */
   ensureFolder(proyectoId: number): Promise<DisInvoiceFolderResult>
   clone(proyectoId: number): Promise<DisInvoiceCloneResult>

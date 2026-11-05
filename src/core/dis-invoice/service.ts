@@ -111,13 +111,17 @@ export function registerDisInvoice({ platform, secret, git, client: injected }: 
     return result
   }
 
+  const nameFolder = (current: DisInvoiceLinks, proyectoId: number, nombre: string): string => {
+    const taken = new Set(Object.values(current).map((link) => path.basename(link.folder).toLowerCase()))
+    return path.join(baseDir, disInvoiceFolderName(nombre, proyectoId, taken))
+  }
+
   const reserveFolder = async (proyectoId: number, nombre: string): Promise<string> => {
-    const updated = await links.update((current) => {
-      if (current[proyectoId]) return current
-      const taken = new Set(Object.values(current).map((link) => path.basename(link.folder).toLowerCase()))
-      const folder = path.join(baseDir, disInvoiceFolderName(nombre, proyectoId, taken))
-      return { ...current, [proyectoId]: { projectId: null, folder } }
-    })
+    const updated = await links.update((current) =>
+      current[proyectoId]
+        ? current
+        : { ...current, [proyectoId]: { projectId: null, folder: nameFolder(current, proyectoId, nombre) } }
+    )
     return updated[proyectoId].folder
   }
 
@@ -159,6 +163,13 @@ export function registerDisInvoice({ platform, secret, git, client: injected }: 
       return { ...current, [proyectoId]: { projectId, folder } }
     })
     return true
+  })
+
+  platform.handle(IPC.disInvoicePlannedFolder, async (proyectoId: unknown): Promise<string | null> => {
+    const proyecto = isProyectoId(proyectoId) ? snapshot.get(proyectoId) : undefined
+    if (!proyecto) return null
+    const current = await links.read()
+    return current[proyectoId as number]?.folder ?? nameFolder(current, proyectoId as number, proyecto.nombre)
   })
 
   platform.handle(IPC.disInvoiceEnsureFolder, async (proyectoId: unknown): Promise<DisInvoiceFolderResult> => {

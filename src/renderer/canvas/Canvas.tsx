@@ -295,7 +295,9 @@ import { opensProject, type OpenAction } from '../lib/projectOpens'
 import {
   disInvoiceStickyFactory,
   mergeUpsertsIntoFlow,
+  registerDisInvoiceProject,
   runDisInvoiceSync,
+  type DisInvoiceProjectAdd,
   type DisInvoiceSyncReport
 } from '../lib/disInvoiceSync'
 import type { DisInvoiceSyncControl } from '../components/kanban/DisInvoiceSyncButton'
@@ -6500,7 +6502,7 @@ export function Canvas() {
 
   const disInvoiceSyncRef = useRef<Promise<DisInvoiceSyncReport> | null>(null)
 
-  /** Asked before a project's folder work, so a refusal does not cost a clone. Not the deciding ask:
+  /** Asked before a project's folder work, so a refusal costs no folder or clone. Not the deciding ask:
    *  `addDisInvoiceProject` asks again, last, because its own awaits come after this one. */
   const gateDisInvoiceProject = useCallback(
     async (): Promise<boolean> => {
@@ -6512,18 +6514,14 @@ export function Canvas() {
   )
 
   /** `onRepoCloned`'s probe, gate and commit, without its tab switch: Sync adds projects in the
-   *  background. A folder that ships a canvas is adopted as it is. Any other stores its canvas in app
-   *  data, to keep client text out of the folder and out of git. */
+   *  background. */
   const addDisInvoiceProject = useCallback(
-    async (name: string, folder: string): Promise<Project | null> => {
+    async (name: string, folder: string): Promise<DisInvoiceProjectAdd> => {
       const probed = await api.workspace.probeFolder(folder).catch(() => null)
       const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
-      if (g !== true && !(await g)) return null
+      if (g !== true && !(await g)) return { kind: 'refused' }
       commitActiveToStore()
-      const { project } = useProjects.getState().registerProject({ resolvedCwd: folder, name, probed: probed ?? undefined })
-      if (probed) return project
-      useProjects.getState().setProjectStoreInAppData(project.id, true)
-      return useProjects.getState().getProject(project.id) ?? project
+      return registerDisInvoiceProject(useProjects.getState(), name, folder, probed)
     },
     [commitActiveToStore]
   )

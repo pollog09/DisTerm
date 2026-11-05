@@ -94,9 +94,9 @@ describe('project-limit gate placement in Canvas', () => {
 
   it('dis-invoice Sync: the gate comes after the probe, immediately before the store write, and never activates', () => {
     const body = between('const addDisInvoiceProject = useCallback(', CALLBACK_END)
-    const gate = expectGateRightBefore(body, "{ kind: 'new' }", 'useProjects.getState().registerProject(')
+    const gate = expectGateRightBefore(body, "{ kind: 'new' }", 'registerDisInvoiceProject(useProjects.getState()')
     expect(body.indexOf('await api.workspace.probeFolder(folder)')).toBeLessThan(gate)
-    expectCommitAfterGate(body, gate, 'useProjects.getState().registerProject(')
+    expectCommitAfterGate(body, gate, 'registerDisInvoiceProject(useProjects.getState()')
     expect(body).not.toMatch(/setActive|adoptProject|reopenProject|switchProject/)
     // The early ask spares a clone. It is not a store write, so it is not the deciding one.
     const early = between('const gateDisInvoiceProject = useCallback(', CALLBACK_END)

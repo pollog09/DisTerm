@@ -583,6 +583,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.disInvoiceFetch,
   IPC.disInvoiceLinks,
   IPC.disInvoiceSaveLink,
+  IPC.disInvoicePlannedFolder,
   IPC.disInvoiceEnsureFolder,
   IPC.disInvoiceClone,
   IPC.disInvoiceInspectFolder,
