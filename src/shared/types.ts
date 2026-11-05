@@ -590,6 +590,12 @@ export interface CanvasNodeState {
    */
   issueRef?: import('./github-issue-ref').IssueRef
   /**
+   * Sticky nodes only: the dis-invoice task this note mirrors. Display and sync bookkeeping, never
+   * read back into a launch line. Hostile input: `normalizeDisInvoiceRef` runs at both serializer
+   * seams, and any other kind drops it. See docs/reference/kanban.md.
+   */
+  disInvoiceRef?: import('./dis-invoice').DisInvoiceRef
+  /**
    * The node id of the agent that OPENED this node through a canvas-control open verb
    * (`open-agent`/`open-claude`/`open-terminal`, `spawn-team`, `verify`) — recorded where that verb
    * draws its lineage rope. It is what lets the app tell the right agent when this station stops

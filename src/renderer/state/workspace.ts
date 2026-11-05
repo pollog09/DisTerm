@@ -36,6 +36,7 @@ import { folderTitle } from '../lib/explorerCreate'
 import { sshHostKey } from '@shared/ssh'
 import { normalizeNodeIcon } from '@shared/node-icon'
 import { normalizeIssueRef, type IssueRef } from '@shared/github-issue-ref'
+import { normalizeDisInvoiceRef, type DisInvoiceRef } from '@shared/dis-invoice'
 import { isSafeNodeId } from '@shared/safe-id'
 import { openerByTarget, recordedOpenerOf } from '../lib/teamProgress'
 import { normalizePendingLaunch } from '@shared/pending-launch-shape'
@@ -241,6 +242,8 @@ export interface NodeData {
   /** The GitHub issue this agent session was started on (see `CanvasNodeState.issueRef`).
    *  Display + run history only — never read back into a launch line. */
   issueRef?: IssueRef
+  /** The dis-invoice task this sticky mirrors (see `CanvasNodeState.disInvoiceRef`). */
+  disInvoiceRef?: DisInvoiceRef
   /** The agent that opened this node through a canvas-control open verb (see
    *  `CanvasNodeState.openedBy`). Who is told when this station stops — never read as authority. */
   openedBy?: string
@@ -2674,12 +2677,14 @@ export function duplicateNode(node: CanvasNode, offset = 28): CanvasNode {
     // `issueRef` is not copied: a duplicate is a NEW session nobody started on the issue — carrying
     // the binding would put a phantom run on the issue card (a chip and `#N` with no run-started,
     // then a run-ended when it closes). `openedBy` likewise: nobody's open verb made the copy, and
-    // an orchestrator told about it would be told about a station it never opened.
+    // an orchestrator told about it would be told about a station it never opened. `disInvoiceRef`
+    // too: two notes claiming one task would both be overwritten and moved by every sync.
     data: {
       ...node.data,
       initialCommand: undefined,
       launchIntent: undefined,
       issueRef: undefined,
+      disInvoiceRef: undefined,
       openedBy: undefined,
       ...(whiteboardSource ? { whiteboardSource } : {})
     }
@@ -2981,6 +2986,7 @@ export function nodeStatesToFlow(states: CanvasNodeState[]): CanvasNode[] {
         // Same seam rule as the icon: a git-shared file becoming live data. A malformed or hostile
         // reference becomes no binding (the node is kept — only the chip and history go).
         issueRef: normalizeIssueRef(n.issueRef),
+        disInvoiceRef: n.kind === 'sticky' ? normalizeDisInvoiceRef(n.disInvoiceRef) : undefined,
         // Same seam rule: a hostile value becomes no lineage (the node is kept).
         openedBy: safeOpenedBy(n.openedBy),
         accountId: n.accountId,
@@ -3083,6 +3089,7 @@ export function flowToNodeStates(nodes: CanvasNode[], retainInitialCommand = tru
         agentModel: n.data.agentModel,
         // Re-validated on the way OUT as well — the file is only as trustworthy as its last writer.
         issueRef: normalizeIssueRef(n.data.issueRef),
+        disInvoiceRef: n.type === 'sticky' ? normalizeDisInvoiceRef(n.data.disInvoiceRef) : undefined,
         openedBy: safeOpenedBy(n.data.openedBy),
         accountId: n.data.accountId,
         agentSessionId: n.data.agentSessionId,

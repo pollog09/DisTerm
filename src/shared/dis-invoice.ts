@@ -68,6 +68,29 @@ export interface DisInvoiceApi {
   inspectFolder(cwd: string): Promise<DisInvoiceFolderFacts>
 }
 
+/** On a sticky node mirroring a dis-invoice task. `textHash` is of the text sync last wrote, and
+ *  `columnaId` the column it last saw upstream, so a local edit or drag survives until upstream moves.
+ *  `finished` means the task left the pending list, so its return moves the card back. */
+export interface DisInvoiceRef {
+  taskId: number
+  columnaId: number
+  textHash: string
+  finished?: true
+}
+
+const isPositiveId = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0
+
+/** Nodes are persisted, and may reach this machine in a shared project file, so this is hostile
+ *  input at each serializer seam. A malformed ref is dropped and the sticky stays an ordinary note.
+ *  The result is rebuilt field by field, so nothing else in the value survives. */
+export function normalizeDisInvoiceRef(value: unknown): DisInvoiceRef | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { taskId, columnaId, textHash, finished } = value as Record<string, unknown>
+  if (!isPositiveId(taskId) || !isPositiveId(columnaId)) return undefined
+  if (typeof textHash !== 'string' || !/^[0-9a-f]{1,32}$/.test(textHash)) return undefined
+  return { taskId, columnaId, textHash, ...(finished === true ? { finished: true as const } : {}) }
+}
+
 /** GitHub's slug alphabet, which also keeps a value from dis-invoice out of git's option space. */
 const OWNER_REPO = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/
 

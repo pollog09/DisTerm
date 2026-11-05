@@ -62,6 +62,7 @@ import { pullsClosingIssue, pullsForCard, pullStatusByNumber } from '../../lib/p
 import { usePullAutoMove, usePullChase } from './usePullAutoMove'
 import { mentionCandidatesFrom } from '../../lib/boardMentions'
 import { NO_STATIONS, type TeamStation } from '../../lib/teamProgress'
+import type { DisInvoiceRef } from '@shared/dis-invoice'
 
 /** One session node shown as a board card — derived LIVE from the canvas nodes; the board
  *  itself stores only column assignments. */
@@ -71,6 +72,8 @@ export interface KanbanSession {
   color: string
   kind: 'terminal' | 'sticky' | 'browser'
   agentId?: string
+  /** Sticky mirroring a dis-invoice task: the card and its modal offer to start work on it. */
+  disInvoiceRef?: DisInvoiceRef
   /** Sticky note body — shown in the expanded detail row. */
   text?: string
   /** Sticky-only: last canvas-control `sticky` write (cleared on hand edits) — the modal's stamp. */
