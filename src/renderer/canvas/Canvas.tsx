@@ -298,6 +298,7 @@ import {
   runDisInvoiceSync,
   type DisInvoiceSyncReport
 } from '../lib/disInvoiceSync'
+import type { DisInvoiceSyncControl } from '../components/kanban/DisInvoiceSyncButton'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
@@ -6497,6 +6498,8 @@ export function Canvas() {
     [markDirty]
   )
 
+  const disInvoiceSyncRef = useRef<Promise<DisInvoiceSyncReport> | null>(null)
+
   /** Asked before a project's folder work, so a refusal does not cost a clone. Not the deciding ask:
    *  `addDisInvoiceProject` asks again, last, because its own awaits come after this one. */
   const gateDisInvoiceProject = useCallback(
@@ -6526,8 +6529,10 @@ export function Canvas() {
   )
 
   const syncDisInvoice = useCallback(
-    (): Promise<DisInvoiceSyncReport> =>
-      runDisInvoiceSync({
+    (): Promise<DisInvoiceSyncReport> => {
+      // Both boards have the button, and a second run could add a project the first is adding.
+      if (disInvoiceSyncRef.current) return disInvoiceSyncRef.current
+      const run = runDisInvoiceSync({
         disInvoice: api.disInvoice,
         projects: () => useProjects.getState().projects,
         nodesOf: (projectId) =>
@@ -6541,8 +6546,26 @@ export function Canvas() {
         persist,
         gateNewProject: gateDisInvoiceProject,
         addProject: addDisInvoiceProject
-      }),
+      }).finally(() => {
+        disInvoiceSyncRef.current = null
+      })
+      disInvoiceSyncRef.current = run
+      return run
+    },
     [disInvoiceCanvasIsLive, nodesRef, applyDisInvoiceNodes, applyDisInvoiceBoard, persist, gateDisInvoiceProject, addDisInvoiceProject]
+  )
+
+  const disInvoiceSyncControl = useMemo(
+    (): DisInvoiceSyncControl => ({
+      status: () => api.disInvoice.status(),
+      run: syncDisInvoice,
+      openSettings: () => {
+        setSettingsSection('dis-invoice')
+        setSettingsNonce((n) => n + 1)
+        setSettingsOpen(true)
+      }
+    }),
+    [syncDisInvoice]
   )
 
   /**
@@ -11348,6 +11371,9 @@ export function Canvas() {
     return node.selected && selected.length > 0 ? selected : [node.id]
   }, [])
 
+  // Assigned beside `startDisInvoiceWork`, which needs callbacks declared after the contexts below.
+  const disInvoiceStartItemsRef = useRef<(projectId: string, nodeId: string) => MenuItem[]>(() => [])
+
   /** Everything the node action rows (lib/nodeActionItems) read from, or do through, the LIVE
    *  canvas. Built fresh on every menu open, like the rows themselves. */
   const liveNodeActionCtx = useCallback(
@@ -11371,12 +11397,10 @@ export function Canvas() {
       duplicateNodes,
       snapNodeToZone,
       toggleCollapseNodes,
-  // Assigned beside `startDisInvoiceWork`, which needs callbacks declared after the contexts below.
-  const disInvoiceStartItemsRef = useRef<(projectId: string, nodeId: string) => MenuItem[]>(() => [])
-
       toggleMarkdown,
       reloadTerminals,
       liveLinkMenuItems: (nodeId) => liveLinkMenuItems(nodeId),
+      disInvoiceStartItems: (nodeId) => disInvoiceStartItemsRef.current(useProjects.getState().activeProjectId, nodeId),
       branchClaude,
       transferConversation,
       restartAgentNode,
@@ -11400,7 +11424,6 @@ export function Canvas() {
       pickNodeIcon,
       duplicateNodes,
       snapNodeToZone,
-      disInvoiceStartItems: (nodeId) => disInvoiceStartItemsRef.current(useProjects.getState().activeProjectId, nodeId),
       toggleCollapseNodes,
       toggleMarkdown,
       reloadTerminals,
@@ -11436,6 +11459,7 @@ export function Canvas() {
     (projectId: string): NodeActionCtx => {
       const writes = nodeWritesFor(projectId)
       const liveLink = (nodeId: string): MenuItem[] => liveLinkMenuItems(nodeId, projectId)
+      const disInvoiceStart = (nodeId: string): MenuItem[] => disInvoiceStartItemsRef.current(projectId, nodeId)
       if (liveCanvasHolds(nodesProjectIdRef.current, useProjects.getState().activeProjectId, projectId)) {
         return {
           ...liveNodeActionCtx(),
@@ -11456,11 +11480,11 @@ export function Canvas() {
         cursorModels: () => cursorModelList(),
         writes,
         liveLinkMenuItems: liveLink,
+        disInvoiceStartItems: disInvoiceStart,
         connectedProjectIdForHost,
         refuse: () =>
           window.dispatchEvent(
             new CustomEvent('nodeterm:toast', { detail: { kind: 'error', message: OFF_CANVAS_REFUSAL } })
-      const disInvoiceStart = (nodeId: string): MenuItem[] => disInvoiceStartItemsRef.current(projectId, nodeId)
           )
       })
     },
@@ -11480,7 +11504,6 @@ export function Canvas() {
   )
   const setActiveCardColor = useCallback(
     (nodeId: string, color: string) => setCardColor(activeProjectId, nodeId, color),
-        disInvoiceStartItems: disInvoiceStart,
     [setCardColor, activeProjectId]
   )
   // The per-project board's card-modal icon, through the same router as its card menu's icon row
@@ -12482,6 +12505,7 @@ export function Canvas() {
         nodeId,
         event: { type: 'card-created', to: column?.title ?? 'Ungrouped', title }
       })
+      if (!ref) return
       // …and the issue card's history records the run (with the session id nodeterm minted, when
       // the agent's CLI takes one — otherwise none, never a guess).
       const started = runStartedEntry(ref, {
@@ -12505,7 +12529,6 @@ export function Canvas() {
       if (!ref || !prompt) {
         setNotice({
           kind: 'error',
-      if (!ref) return
           text: `Could not start an agent on #${issue.number}: its GitHub address could not be read. Nothing was started.`
         })
         return undefined
@@ -12546,29 +12569,6 @@ export function Canvas() {
     [agentCreationEntries, startIssueAgent]
   )
 
-  // ---- Board dispatch: a card THIS person moves into the dispatch column starts its own run ----
-  // Decisions are lib/boardDispatch (pure, tested); consent is machine-local settings
-  // (@shared/board-dispatch); the queue is transient (state/boardDispatch). The run itself is
-  // exactly "Start with agent": `issueRef` binding, the reference-only launch prompt,
-  // `fileIssueSession` (card filed + `run-started`). On screen it goes through `addAgentNode`; for a
-  // project that is not on screen (a queued run whose slot freed later, or a project switch during
-  // the move's round trip) it is a cold open, already CLAIMED, plus the #925 headless start — so no
-  // dispatched node is ever left armed to start on its own later (the kill switch could not reach it).
-
-  /** Every node of a project as the dispatcher needs it: the live canvas for the active project,
-   *  the stored copy for any other. `pending` = a launch that will start BY ITSELF. */
-  const dispatchNodesOf = useCallback(
-    (projectId: string): Array<{ id: string; issueRef?: unknown; pending: boolean }> => {
-      const st = useProjects.getState()
-      const selfStarting = (p: unknown): boolean =>
-        !!p && typeof p === 'object' && !(p as PendingLaunch).manualOnly
-      if (st.activeProjectId === projectId && nodesProjectIdRef.current === projectId) {
-        return nodesRef.current.map((n) => ({
-          id: n.id,
-          issueRef: n.data.issueRef,
-          pending: selfStarting(n.data.pendingLaunch)
-        }))
-      }
   /**
    * Start an agent or a plain terminal on a dis-invoice task, in the project's folder, filed under
    * the sticky's current column. An agent's brief goes in a prompt file. Only its path is typed, and
@@ -12624,6 +12624,29 @@ export function Canvas() {
           { type: 'separator' }
         ]
 
+  // ---- Board dispatch: a card THIS person moves into the dispatch column starts its own run ----
+  // Decisions are lib/boardDispatch (pure, tested); consent is machine-local settings
+  // (@shared/board-dispatch); the queue is transient (state/boardDispatch). The run itself is
+  // exactly "Start with agent": `issueRef` binding, the reference-only launch prompt,
+  // `fileIssueSession` (card filed + `run-started`). On screen it goes through `addAgentNode`; for a
+  // project that is not on screen (a queued run whose slot freed later, or a project switch during
+  // the move's round trip) it is a cold open, already CLAIMED, plus the #925 headless start — so no
+  // dispatched node is ever left armed to start on its own later (the kill switch could not reach it).
+
+  /** Every node of a project as the dispatcher needs it: the live canvas for the active project,
+   *  the stored copy for any other. `pending` = a launch that will start BY ITSELF. */
+  const dispatchNodesOf = useCallback(
+    (projectId: string): Array<{ id: string; issueRef?: unknown; pending: boolean }> => {
+      const st = useProjects.getState()
+      const selfStarting = (p: unknown): boolean =>
+        !!p && typeof p === 'object' && !(p as PendingLaunch).manualOnly
+      if (st.activeProjectId === projectId && nodesProjectIdRef.current === projectId) {
+        return nodesRef.current.map((n) => ({
+          id: n.id,
+          issueRef: n.data.issueRef,
+          pending: selfStarting(n.data.pendingLaunch)
+        }))
+      }
       return (st.getProject(projectId)?.nodes ?? []).map((n) => ({
         id: n.id,
         issueRef: n.issueRef,
@@ -20211,6 +20234,7 @@ export function Canvas() {
           onAiName={aiNameFromKanban}
           onSetColor={setCardColor}
           onRunQueued={runQueuedFromOmni}
+          disInvoiceSync={disInvoiceSyncControl}
         />
       ) : perProjectKanbanOpen && (
         <KanbanView
@@ -20230,6 +20254,7 @@ export function Canvas() {
           onAiName={aiNameFromActiveKanban}
           onSetColor={setActiveCardColor}
           onRunQueued={runActiveQueuedFromBoard}
+          disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}
           onAutoMoveFromPulls={autoMoveCardFromPulls}
           issueAgentMenu={issueAgentMenu}
           issueWorktreeMenu={issueWorktreeMenu}

@@ -36,6 +36,7 @@ import type { NodeIcon } from '@shared/node-icon'
 import { columnCategory } from '@shared/kanban-category'
 import { NO_STATIONS, stationsByOpener, type TeamStation } from '../../lib/teamProgress'
 import { stationNodeFromState } from '../../state/teamStations'
+import { DisInvoiceSyncButton, type DisInvoiceSyncControl } from './DisInvoiceSyncButton'
 
 /**
  * Global (Omni) Kanban overview — one swimlane per open project.
@@ -431,9 +432,10 @@ export interface GlobalKanbanViewProps {
    *  makes an open card "watched" (Eco must not hibernate it), wakes a hibernated agent on open,
    *  and points the dictation shortcut at the card instead of the selected canvas node. */
   onModalNodeChange?: (nodeId: string | null) => void
+  disInvoiceSync?: DisInvoiceSyncControl
 }
 
-export const GlobalKanbanView = memo(function GlobalKanbanView({ live = null, onModalNodeChange, nodeActionItems, sessionActionItems, onAiName, onSetColor, onRunQueued }: GlobalKanbanViewProps) {
+export const GlobalKanbanView = memo(function GlobalKanbanView({ live = null, onModalNodeChange, nodeActionItems, sessionActionItems, onAiName, onSetColor, onRunQueued, disInvoiceSync }: GlobalKanbanViewProps) {
   // Same rule as the per-project board: the canvas is covered but mounted underneath.
   useEffect(() => markCanvasCovered(document.documentElement), [])
   const boardStyle = useBoardWallpaperStyle()
@@ -549,7 +551,11 @@ export const GlobalKanbanView = memo(function GlobalKanbanView({ live = null, on
     return (
       <div className="kanban-overlay global-kanban" style={boardStyle}>
         {boardStyle && <AerialWallpaper board />}
-        <div className="kanban-header"><span className="kanban-header__name">All Projects</span><KanbanScopeSwitch scope="all" /></div>
+        <div className="kanban-header">
+          <span className="kanban-header__name">All Projects</span>
+          <KanbanScopeSwitch scope="all" />
+          {disInvoiceSync && <DisInvoiceSyncButton control={disInvoiceSync} />}
+        </div>
         <div className="kanban-empty">No projects yet. Create a project to see its swimlane.</div>
       </div>
     )
@@ -562,6 +568,7 @@ export const GlobalKanbanView = memo(function GlobalKanbanView({ live = null, on
         <span className="kanban-header__name">All Projects</span>
         <KanbanScopeSwitch scope="all" />
         <span className="kanban-swimlane__hint">{projects.length} projects — {mod}+1..{Math.min(9, projects.length)} to jump</span>
+        {disInvoiceSync && <DisInvoiceSyncButton control={disInvoiceSync} />}
       </div>
       <div className="global-kanban__scroll">
         {projects.map((p, idx) => {

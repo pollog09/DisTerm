@@ -37,6 +37,7 @@ import { SignInSection } from './sections/SignInSection'
 import { isBrowserRuntime } from '@renderer/bridge/runtime'
 import { DebugSection } from './sections/DebugSection'
 import { GitHubIssuesSection } from './sections/GitHubIssuesSection'
+import { DisInvoiceSection } from './sections/DisInvoiceSection'
 import { ModelGatewaySection } from './sections/ModelGatewaySection'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
@@ -156,6 +157,9 @@ export function SettingsPage({
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="GitHub Issues" visible={active === 'github-issues'}>
               <GitHubIssuesSection isActive={active === 'github-issues'} />
+            </SettingsSectionBoundary>
+            <SettingsSectionBoundary title="dis-invoice" visible={active === 'dis-invoice'}>
+              <DisInvoiceSection isActive={active === 'dis-invoice'} />
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="License" visible={active === 'license'}>
               <LicenseSection
