@@ -59,6 +59,20 @@ describe('the core store keeps a sticky’s disInvoiceRef verbatim', () => {
     expect(loaded.nodes[0].disInvoiceRef).toEqual(REF)
   })
 
+  it('a clone that ships its own canvas probes as folder-backed, with its nodes, so sync adopts it', async () => {
+    await fs.mkdir(path.join(folder, '.nodeterm'))
+    await fs.writeFile(
+      path.join(folder, '.nodeterm', 'project.json'),
+      JSON.stringify({ version: 1, name: 'Shipped', color: '#111', viewport: { x: 0, y: 0, zoom: 1 }, nodes: [{ ...sticky, disInvoiceRef: undefined, text: 'from the repo' }] })
+    )
+    const probed = await new WorkspaceStore().probeFolder(folder)
+    expect(probed?.storeInAppData).toBeUndefined()
+    expect(probed?.nodes.map((n) => n.text)).toEqual(['from the repo'])
+    await new WorkspaceStore().save(ws({ ...probed!, nodes: [...probed!.nodes, { ...sticky, id: 'sticky-dis-7-1' }] }))
+    const file = JSON.parse(await fs.readFile(path.join(folder, '.nodeterm', 'project.json'), 'utf8'))
+    expect(file.nodes.map((n: { id: string }) => n.id)).toEqual(['sticky-1', 'sticky-dis-7-1'])
+  })
+
   it('in a folder-backed project', async () => {
     await new WorkspaceStore().save(ws(project({ cwd: folder })))
     expect((await reload()).nodes[0].disInvoiceRef).toEqual(REF)

@@ -292,7 +292,12 @@ import {
 } from '../lib/projectLimitGate'
 import { countOpenProjects, decideOpen } from '@shared/project-limit'
 import { opensProject, type OpenAction } from '../lib/projectOpens'
-import { mergeUpsertsIntoFlow } from '../lib/disInvoiceSync'
+import {
+  disInvoiceStickyFactory,
+  mergeUpsertsIntoFlow,
+  runDisInvoiceSync,
+  type DisInvoiceSyncReport
+} from '../lib/disInvoiceSync'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
@@ -6489,6 +6494,54 @@ export function Canvas() {
       markDirty()
     },
     [markDirty]
+  )
+
+  /** Asked before a project's folder work, so a refusal does not cost a clone. Not the deciding ask:
+   *  `addDisInvoiceProject` asks again, last, because its own awaits come after this one. */
+  const gateDisInvoiceProject = useCallback(
+    async (): Promise<boolean> => {
+      const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
+      if (g !== true && !(await g)) return false
+      return true
+    },
+    []
+  )
+
+  /** `onRepoCloned`'s probe, gate and commit, without its tab switch: Sync adds projects in the
+   *  background. A folder that ships a canvas is adopted as it is. Any other stores its canvas in app
+   *  data, to keep client text out of the folder and out of git. */
+  const addDisInvoiceProject = useCallback(
+    async (name: string, folder: string): Promise<Project | null> => {
+      const probed = await api.workspace.probeFolder(folder).catch(() => null)
+      const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
+      if (g !== true && !(await g)) return null
+      commitActiveToStore()
+      const { project } = useProjects.getState().registerProject({ resolvedCwd: folder, name, probed: probed ?? undefined })
+      if (probed) return project
+      useProjects.getState().setProjectStoreInAppData(project.id, true)
+      return useProjects.getState().getProject(project.id) ?? project
+    },
+    [commitActiveToStore]
+  )
+
+  const syncDisInvoice = useCallback(
+    (): Promise<DisInvoiceSyncReport> =>
+      runDisInvoiceSync({
+        disInvoice: api.disInvoice,
+        projects: () => useProjects.getState().projects,
+        nodesOf: (projectId) =>
+          disInvoiceCanvasIsLive(projectId)
+            ? flowToNodeStates(nodesRef.current)
+            : useProjects.getState().getProject(projectId)?.nodes ?? [],
+        boardOf: (projectId) => useProjects.getState().getProject(projectId)?.kanban,
+        stickyFactory: disInvoiceStickyFactory,
+        applyNodes: applyDisInvoiceNodes,
+        applyBoard: applyDisInvoiceBoard,
+        persist,
+        gateNewProject: gateDisInvoiceProject,
+        addProject: addDisInvoiceProject
+      }),
+    [disInvoiceCanvasIsLive, nodesRef, applyDisInvoiceNodes, applyDisInvoiceBoard, persist, gateDisInvoiceProject, addDisInvoiceProject]
   )
 
   /**

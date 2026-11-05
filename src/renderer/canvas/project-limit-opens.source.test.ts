@@ -92,6 +92,19 @@ describe('project-limit gate placement in Canvas', () => {
     expect(body).toContain('return g === true ? open() : g.then((ok) => ok && open())')
   })
 
+  it('dis-invoice Sync: the gate comes after the probe, immediately before the store write, and never activates', () => {
+    const body = between('const addDisInvoiceProject = useCallback(', CALLBACK_END)
+    const gate = expectGateRightBefore(body, "{ kind: 'new' }", 'useProjects.getState().registerProject(')
+    expect(body.indexOf('await api.workspace.probeFolder(folder)')).toBeLessThan(gate)
+    expectCommitAfterGate(body, gate, 'useProjects.getState().registerProject(')
+    expect(body).not.toMatch(/setActive|adoptProject|reopenProject|switchProject/)
+    // The early ask spares a clone. It is not a store write, so it is not the deciding one.
+    const early = between('const gateDisInvoiceProject = useCallback(', CALLBACK_END)
+    expect(early).toContain(gateFor("{ kind: 'new' }"))
+    expect(early).toContain(`${AWAIT_GATE} false`)
+    expect(early).not.toMatch(/useProjects\.getState\(\)\.(registerProject|addProject)/)
+  })
+
   it('every gate call is guarded by opensProject, and only the human open paths call it', () => {
     const calls = src.match(/gateProjectOpen\(\)/g) ?? []
     const guarded = src.match(/\? gateProjectOpen\(\) : true/g) ?? []
@@ -101,7 +114,9 @@ describe('project-limit gate placement in Canvas', () => {
       between('const onRepoCloned = useCallback(', CALLBACK_END),
       between('const createSshProject = useCallback(', CALLBACK_END),
       between('const openOrAdoptFolder = useCallback(', CALLBACK_END),
-      between('const reopenProject = useCallback(', CALLBACK_END)
+      between('const reopenProject = useCallback(', CALLBACK_END),
+      between('const gateDisInvoiceProject = useCallback(', CALLBACK_END),
+      between('const addDisInvoiceProject = useCallback(', CALLBACK_END)
     ].reduce((n, body) => n + (body.match(/gateProjectOpen\(\)/g) ?? []).length, 0)
     expect(inPaths).toBe(calls.length)
     // The share-to-team undo and relay/team tabs never meet the gate.

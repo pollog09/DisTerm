@@ -139,8 +139,9 @@ DO_NOT_TRACK the gate turns one `block` per open into a claim first (The limit m
 ## Where the gate sits
 
 Every way a person opens a project goes through `gateProjectOpen`
-(`src/renderer/lib/projectLimitGate.ts`), in five Canvas call sites: `addProject`,
-`openOrAdoptFolder`, `createSshProject`, `onRepoCloned`, `reopenProject`. The rule:
+(`src/renderer/lib/projectLimitGate.ts`), in seven Canvas call sites: `addProject`,
+`openOrAdoptFolder`, `createSshProject`, `onRepoCloned`, `reopenProject`, and for dis-invoice Sync
+`gateDisInvoiceProject` and `addDisInvoiceProject`. The rule:
 
 ```ts
 const g = opensProject(useProjects.getState().projects, action) ? gateProjectOpen() : true
@@ -166,8 +167,14 @@ if (g !== true && !(await g)) return
   (the agent-text-in-sync rule is met by the outcome text itself). A headless start of a node in a
   CLOSED project at the limit starts the session but does not unhide the project (the existing
   "reopen it from the welcome screen" reply).
+- **dis-invoice Sync** is a person pressing a button, so it meets the gate like any other human open.
+  It asks once before a project's folder work, so a refusal does not cost a clone, and again as the
+  last await before the store write, which is the deciding ask. It calls the gate strictly one project
+  at a time, because a request made while another is deciding is refused rather than queued. A refusal,
+  or a gate that is busy, stops further creation and the report names what was left. Projects the sync
+  already linked still update. See `docs/reference/kanban.md`.
 - A new way to open a project must call the gate. `src/renderer/canvas/project-limit-opens.source.test.ts`
-  pins the five call sites.
+  pins the seven call sites.
 
 **Never force-close.** The gate only answers whether one NEW open may proceed. Nothing closes,
 deletes or detaches a project, a node or a tmux session because of the limit — not at the limit,
