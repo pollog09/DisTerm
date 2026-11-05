@@ -1,49 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { summarizeDisInvoiceSync, type DisInvoiceReportLine, type DisInvoiceSyncReport } from '../../lib/disInvoiceSync'
+import { useDisInvoiceSyncRun, type DisInvoiceSyncControl } from '../../state/disInvoiceSyncRun'
 
-export interface DisInvoiceSyncControl {
-  status: () => Promise<{ hasKey: boolean }>
-  run: () => Promise<DisInvoiceSyncReport>
-  openSettings: () => void
-}
-
-type Outcome = { lines: DisInvoiceReportLine[]; offerSettings: boolean }
+export type { DisInvoiceSyncControl }
 
 /** One button for both boards. A person presses it: nothing here polls or runs on its own. */
 export function DisInvoiceSyncButton({ control }: { control: DisInvoiceSyncControl }): React.JSX.Element {
-  const [busy, setBusy] = useState(false)
-  const [outcome, setOutcome] = useState<Outcome | null>(null)
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  const sync = useCallback(async () => {
-    setOutcome(null)
-    setBusy(true)
-    let next: Outcome
-    try {
-      const { hasKey } = await control.status()
-      if (!hasKey) {
-        control.openSettings()
-        return
-      }
-      const report = await control.run()
-      if (report.failure?.reason === 'no-key') {
-        control.openSettings()
-        return
-      }
-      next = { lines: summarizeDisInvoiceSync(report), offerSettings: report.failure?.reason === 'unauthorized' }
-    } catch {
-      next = { lines: [{ tone: 'error', text: 'The sync stopped before it finished. Try again.' }], offerSettings: false }
-    } finally {
-      if (mounted.current) setBusy(false)
-    }
-    if (mounted.current) setOutcome(next)
-  }, [control])
+  const busy = useDisInvoiceSyncRun((s) => s.busy)
+  const outcome = useDisInvoiceSyncRun((s) => s.outcome)
+  const start = useDisInvoiceSyncRun((s) => s.start)
+  const dismiss = useDisInvoiceSyncRun((s) => s.dismiss)
 
   return (
     <div className="kanban-header__filter kanban-sync">
@@ -52,7 +16,7 @@ export function DisInvoiceSyncButton({ control }: { control: DisInvoiceSyncContr
         disabled={busy}
         aria-busy={busy}
         title="Bring pending tasks from dis-invoice onto the board"
-        onClick={() => void sync()}
+        onClick={() => void start(control)}
       >
         {busy ? 'Syncing…' : 'Sync'}
       </button>
@@ -69,7 +33,7 @@ export function DisInvoiceSyncButton({ control }: { control: DisInvoiceSyncContr
                 Open Settings
               </button>
             )}
-            <button className="kanban-filter-btn" onClick={() => setOutcome(null)}>
+            <button className="kanban-filter-btn" onClick={dismiss}>
               Dismiss
             </button>
           </div>

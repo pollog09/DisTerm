@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DisInvoiceSyncReport } from '../../lib/disInvoiceSync'
+import { useDisInvoiceSyncRun } from '../../state/disInvoiceSyncRun'
 import { DisInvoiceSyncButton, type DisInvoiceSyncControl } from './DisInvoiceSyncButton'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -22,6 +23,7 @@ let host: HTMLDivElement
 let root: Root
 
 beforeEach(() => {
+  useDisInvoiceSyncRun.setState({ busy: false, outcome: null })
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -103,6 +105,51 @@ describe('DisInvoiceSyncButton', () => {
     await press()
     expect(host.querySelector('.kanban-sync__line--error')?.textContent).toBe('dis-invoice answered 500.')
     expect(button('Open Settings')).toBeUndefined()
+  })
+
+  describe('when the board changes during a run', () => {
+    const REPORT_LINE = 'Already up to date across 0 projects.'
+    const lines = (): Array<string | null> => [...host.querySelectorAll('.kanban-sync__line')].map((p) => p.textContent)
+
+    const switchBoard = (): void => {
+      act(() => root.unmount())
+      root = createRoot(host)
+    }
+
+    it('the next board shows the run still going, and refuses a second one', async () => {
+      let finish: (value: DisInvoiceSyncReport) => void = () => {}
+      const run = vi.fn(() => new Promise<DisInvoiceSyncReport>((resolve) => (finish = resolve)))
+      render({ run })
+      await press()
+      switchBoard()
+      const otherRun = vi.fn(async () => report())
+      render({ run: otherRun })
+      expect(button('Syncing…').disabled).toBe(true)
+      await act(async () => finish(report()))
+      expect(lines()).toEqual([REPORT_LINE])
+      expect(button('Sync').disabled).toBe(false)
+      expect(run).toHaveBeenCalledTimes(1)
+      expect(otherRun).toHaveBeenCalledTimes(0)
+    })
+
+    it('a report that lands with no board open is waiting on the next one', async () => {
+      let finish: (value: DisInvoiceSyncReport) => void = () => {}
+      render({ run: vi.fn(() => new Promise<DisInvoiceSyncReport>((resolve) => (finish = resolve))) })
+      await press()
+      switchBoard()
+      await act(async () => finish(report()))
+      render()
+      expect(lines()).toEqual([REPORT_LINE])
+    })
+
+    it('a dismissed report stays dismissed on the next board', async () => {
+      render()
+      await press()
+      await press('Dismiss')
+      switchBoard()
+      render()
+      expect(lines()).toEqual([])
+    })
   })
 
   it('a channel that rejects is a failure on screen, not an unhandled one', async () => {
