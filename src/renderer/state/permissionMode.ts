@@ -133,6 +133,56 @@ export function cursorCliCapsNow(): CursorCliCaps {
   return cursorCaps
 }
 
+/**
+ * The Claude inside a distribution, one memo per `wsl:` value: a pane there runs that CLI, so this
+ * machine's answer never applies to it (this machine may have no Claude at all). Fail-open like the
+ * rest, so a launch is never blocked: until it answers the line is the bare `claude`.
+ */
+const wslCaps = new Map<string, ClaudeCliCaps>()
+/** One ask per question at a time: a cold restore of N nodes asks N times at once. */
+const wslAsks = new Map<string, Promise<ClaudeCliCaps>>()
+
+/** A cold distribution boots first. Past this the node opens with what is known; a late answer still
+ *  lands in the memo for the next launch. */
+const WSL_CAPS_WAIT_MS = 5000
+
+export function ensureWslClaudeCliCaps(
+  shell: string,
+  opts: { ifRunning?: boolean } = {}
+): Promise<ClaudeCliCaps> {
+  const known = wslCaps.get(shell)
+  if (known?.version) return Promise.resolve(known)
+  const key = `${shell}\0${opts.ifRunning === true}`
+  const pending = wslAsks.get(key)
+  if (pending) return pending
+  const probe = Promise.resolve()
+    .then(() => window.nodeTerminal.claude.wslCliCaps(shell, opts))
+    .then((c) => {
+      const answer = c ?? UNKNOWN_CLAUDE_CLI_CAPS
+      wslCaps.set(shell, answer)
+      return answer
+    })
+    .catch(() => UNKNOWN_CLAUDE_CLI_CAPS)
+  const timeout = new Promise<ClaudeCliCaps>((resolve) =>
+    setTimeout(() => resolve(wslCaps.get(shell) ?? UNKNOWN_CLAUDE_CLI_CAPS), WSL_CAPS_WAIT_MS)
+  )
+  const asked = Promise.race([probe, timeout]).finally(() => wslAsks.delete(key))
+  wslAsks.set(key, asked)
+  return asked
+}
+
+/** Last-known caps of a distribution's Claude, synchronously: node creation is a sync factory. */
+export function wslClaudeCliCapsNow(shell: string): ClaudeCliCaps {
+  return wslCaps.get(shell) ?? UNKNOWN_CLAUDE_CLI_CAPS
+}
+
+/** Test seam for the distribution memo. */
+export function resetWslClaudeCliCapsForTests(shell?: string, next?: ClaudeCliCaps): void {
+  wslAsks.clear()
+  if (shell && next) wslCaps.set(shell, next)
+  else wslCaps.clear()
+}
+
 /** Test seam for the cursor memo. */
 export function resetCursorCliCapsForTests(): void {
   cursorCaps = UNKNOWN_CURSOR_CLI_CAPS
@@ -200,6 +250,22 @@ export function projectPermissionMode(
   // or absent entirely. An agent that needs its own gate adds it here, beside this one, rather than
   // inheriting claude's.
   return agentId === 'claude' ? gatePermissionMode(mode, autoSupportedFor(project)) : mode
+}
+
+/**
+ * {@link projectPermissionMode} for a Claude running in a distribution, gated on THAT CLI's version.
+ * The Windows probe says nothing about it, and with no Claude on Windows it would drop `auto` always.
+ */
+export function wslPermissionMode(project: Project | undefined, shell: string): AgentPermissionMode {
+  const mode = resolvePermissionMode(project, useSettings.getState().settings)
+  return gatePermissionMode(mode, wslClaudeCliCapsNow(shell).autoPermissionMode)
+}
+
+/** {@link ensureActivePermissionMode} for a cold-restored pane in a distribution. */
+export async function ensureWslPermissionMode(shell: string): Promise<AgentPermissionMode> {
+  await ensureWslClaudeCliCaps(shell)
+  const { getProject, activeProjectId } = useProjects.getState()
+  return wslPermissionMode(getProject(activeProjectId), shell)
 }
 
 /** How long a launch on an SSH project may wait for the REMOTE probe's first answer. The probe

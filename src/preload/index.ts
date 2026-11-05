@@ -704,6 +704,7 @@ const api: NodeTerminalApi = {
   },
   claude: {
     cliCaps: () => ipcRenderer.invoke(IPC.claudeCliCaps),
+    wslCliCaps: (shell, opts) => ipcRenderer.invoke(IPC.claudeWslCliCaps, shell, opts),
     readTranscript: (sessionId, cwd, accountId, nodeId) =>
       ipcRenderer.invoke(IPC.claudeReadTranscript, sessionId, cwd, accountId, nodeId)
   },

@@ -44,6 +44,25 @@ afterEach(() => {
   resetPlatformForTests()
 })
 
+describe('a refused token', () => {
+  it.each([
+    [401, true],
+    [403, undefined]
+  ])('HTTP %i reads as unavailable, and only a 401 as an expired login', async (code, expired) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: code })))
+    const u = await fetchUsage()
+    expect(u.status).toBe('unavailable')
+    expect(u.loginExpired).toBe(expired)
+  })
+
+  it('no token at all is not an expired login: nothing was refused', async () => {
+    files = {}
+    const u = await fetchUsage()
+    expect(u.status).toBe('unavailable')
+    expect(u.loginExpired).toBeUndefined()
+  })
+})
+
 describe('active Claude organization', () => {
   it('reads the identity even when credentials already supply email; refresh follows a same-email org switch', async () => {
     expect(await fetchUsage()).toMatchObject({ email: 'same@example.test', organization: { name: 'Personal', rateLimitTier: 'default_raven' } })

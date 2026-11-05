@@ -539,6 +539,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.projectSettingsUpdateLocal,
   IPC.projectSettingsLaunchInfo,
   IPC.ptyTerminalProfiles,
+  IPC.claudeWslCliCaps,
   IPC.wslProjectList,
   IPC.wslProjectPrepare,
   IPC.wslProjectBind,

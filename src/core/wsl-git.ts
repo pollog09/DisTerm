@@ -15,6 +15,7 @@
 // two commands that print absolute paths have them mapped back. Elsewhere the command is unchanged.
 
 import type { ExecFileOptions } from 'child_process'
+import { WSL_UNC_PATH as WSL_UNC } from '../shared/terminal-profiles'
 import { wslExe } from './terminal-profiles'
 
 export interface WslRepoRef {
@@ -25,7 +26,6 @@ export interface WslRepoRef {
   windowsRoot: string
 }
 
-const WSL_UNC = /^[\\/]{2}(wsl\.localhost|wsl\$)[\\/]([^\\/]+)([\\/].*)?$/i
 const SAFE_DISTRO = /^[A-Za-z0-9][\w.-]*$/
 
 /** The distribution holding `cwd`, or null for every path that is not a WSL path on a Windows core. */

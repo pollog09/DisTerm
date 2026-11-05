@@ -25,7 +25,7 @@ import { boundAccountId } from '@shared/agents/account-binding'
 import { agentEnvSnapshot } from '../lib/agentEnv'
 import { uuid } from '@renderer/lib/uuid'
 import { COLLAPSED_HEIGHT, expandRectToGrid, NODE_MIN_SIZES, snapNodeToGrid, type Rect } from '../lib/nodeSizing'
-import { claudeCliCapsNow, grokCliCapsNow } from './permissionMode'
+import { claudeCliCapsNow, grokCliCapsNow, wslClaudeCliCapsNow } from './permissionMode'
 import { ensureGrokTakenIds, grokTakenIdsNow } from './grokSessionIds'
 import { mintFreeGrokSessionId } from '@shared/agents/grok-session-mint'
 import { projectLaunchInfoNow } from './projectLaunchInfo'
@@ -830,7 +830,10 @@ export function createAgentNode(
    *  conversation. An id the resume grammar refuses (`resumeCommandWith` re-validates it against
    *  SAFE_SESSION_ID) yields NO node-level resume: the caller must check `canResumeWith` first —
    *  this factory never silently starts a fresh conversation under a resume request, it throws. */
-  resumeSessionId?: string
+  resumeSessionId?: string,
+  /** The `wsl:<distro>` value this node runs in. Stamped as its `shell`, and the line is built for
+   *  the CLI in there, not this machine's. */
+  wslShell?: string
 ): CanvasNode {
   const { label, color: agentColor } = resolveAgent(agentId)
   // ONE binding decision, shared with the phone-registration path (core/project-node-append) so
@@ -867,7 +870,7 @@ export function createAgentNode(
   // command line stays byte-identical to what it has always been, and the node falls back to
   // learning its id from hooks exactly as before. Inheritance-aware: a custom agent with
   // baseAgent:'claude' mints an id too (capabilityAgentId resolves it to claude).
-  const cliCaps = claudeCliCapsNow()
+  const cliCaps = wslShell ? wslClaudeCliCapsNow(wslShell) : claudeCliCapsNow()
   // Each probed agent answers with its own probe — grok's flag never rides claude's result.
   const sessionIdFlagSupported = supportsSessionIdFlag(
     agentId,
@@ -954,7 +957,8 @@ export function createAgentNode(
     command: initialCommand,
     launchCmdOverride,
     model,
-    remote: !!ssh,
+    // A pane in a distribution reads POSIX, like a remote one: never the Windows launch plan.
+    remote: !!ssh || !!wslShell,
     resume: resumeSessionId !== undefined,
     initialPrompt,
     promptFile,
@@ -986,6 +990,7 @@ export function createAgentNode(
       ...(model ? { agentModel: model } : {}),
       cwd: ssh ? ssh.remoteCwd : cwd,
       initialCommand,
+      ...(wslShell ? { shell: wslShell } : {}),
       ...(launchIntent ? { launchIntent } : {}),
       ...(ssh ? { ssh: ssh.server, sshRemoteTmux: true } : {})
     }

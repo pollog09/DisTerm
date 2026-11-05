@@ -160,3 +160,9 @@ export function contextPillText(usedTokens: number, windowTokens: number, usedPe
     ? `${formatTokensShort(usedTokens)}/${formatTokensShort(windowTokens)}`
     : `${percentNumber(usedPercent, mode)}%`
 }
+
+/** What an expired login needs. Not an error: the CLI renews its own token whenever it runs, and
+ *  this app only reads it, so one idle for hours reads this way until then. */
+export function loginExpiredText(where: string): string {
+  return `The Claude login ${where} has expired. It renews the next time Claude runs there.`
+}

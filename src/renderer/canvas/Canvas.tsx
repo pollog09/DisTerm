@@ -598,6 +598,7 @@ import { useWorktrees } from '../state/worktrees'
 import { setupAckDecision, setupGateDone, useProjectSetup } from '../state/projectSetup'
 import {
   ensureProjectLaunchInfo,
+  trustedProjectShell,
   invalidateProjectLaunchInfo,
   projectLaunchInfoNow
 } from '../state/projectLaunchInfo'
@@ -798,7 +799,15 @@ import {
 } from '@shared/node-colors'
 import { parseLenses, verifyLensPrompt, verifySynthesisPrompt } from '../lib/verifyPanel'
 import { useSettings } from '../state/settings'
-import { activePermissionMode, cursorCliCapsNow, grokCliCapsNow, projectPermissionMode } from '../state/permissionMode'
+import {
+  activePermissionMode,
+  cursorCliCapsNow,
+  ensureWslClaudeCliCaps,
+  grokCliCapsNow,
+  projectPermissionMode,
+  wslClaudeCliCapsNow,
+  wslPermissionMode
+} from '../state/permissionMode'
 import { useContextWindow } from '../state/contextWindow'
 import { useSessionNaming } from '../state/sessionNaming'
 import { useSshServers } from '../state/sshServers'
@@ -858,10 +867,14 @@ import {
 } from '../state/viewMode'
 import { GlobalKanbanView } from '../components/kanban/GlobalKanbanView'
 import { useTerminalProfiles } from '../terminal/use-terminal-profiles'
+import { parseWslShell } from '@shared/terminal-profiles'
 import {
   mayStartWslTerminal,
+  nodePaneRunsInWsl,
   useWslTerminals,
+  WSL_ACCOUNT_REFUSED,
   useWslTerminalsFor,
+  wslShellForNewAgent,
   wslTerminalsForProject
 } from '../state/wslTerminals'
 import { AgentGraphView } from '../components/graph/AgentGraphView'
@@ -6754,8 +6767,21 @@ export function Canvas() {
    */
   const agentCreateRefusal = useCallback(
     (agentId: AgentId, accountId?: string | null): string | null => {
-      if (!canCreateOnCanvas(nodesProjectIdRef.current, useProjects.getState().activeProjectId)) {
+      const activeId = useProjects.getState().activeProjectId
+      if (!canCreateOnCanvas(nodesProjectIdRef.current, activeId)) {
         return CANVAS_NOT_ACTIVE_NOTICE
+      }
+      if (
+        accountId &&
+        wslShellForNewAgent(
+          agentId,
+          undefined,
+          useSettings.getState().settings.defaultShell,
+          useProjects.getState().getProject(activeId),
+          trustedProjectShell(activeId)
+        )
+      ) {
+        return WSL_ACCOUNT_REFUSED
       }
       if (agentId !== 'codex') return null
       const decision = resolveNewCodexNodeAccount(
@@ -6794,6 +6820,8 @@ export function Canvas() {
         cwd?: string
         title?: string
         promptFile?: string
+        // A "New Claude: WSL: <distro>" row: the `wsl:` value this node runs in.
+        wslShell?: string
       }
     ): { node: CanvasNode; placed: CanvasNode; projectId: string } | undefined => {
       // Resolve the target project LIVE, at click time — never from this callback's render
@@ -6811,6 +6839,27 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
+      if (extra?.wslShell && !mayStartWslTerminal(project)) {
+        setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
+        return
+      }
+      // A distribution's Claude runs under its own ~/.claude: a managed account is a Windows-side
+      // dir, its env does not cross wsl.exe, and a label naming one would be a lie.
+      const wslShell = wslShellForNewAgent(
+        agentId,
+        extra?.wslShell,
+        useSettings.getState().settings.defaultShell,
+        project,
+        trustedProjectShell(targetProjectId)
+      )
+      // Choosing an account and getting a different login with no word would be worse than refusing.
+      if (wslShell && accountId) {
+        setNotice({ kind: 'error', text: WSL_ACCOUNT_REFUSED })
+        return
+      }
+      // A plain New Claude on a WSL default shell got here with no chance to ask, so this one may
+      // open with the bare line. The next will know.
+      if (wslShell && !wslClaudeCliCapsNow(wslShell).version) void ensureWslClaudeCliCaps(wslShell)
       const cwd = extra?.cwd ?? cwdForNewNodeIn(groupId) ?? project?.cwd
       // Codex accounts (S6) resolve through their OWN fail-closed gate: an explicitly picked account
       // that is missing/hostile/unconnected is REFUSED here rather than silently downgraded to the
@@ -6855,6 +6904,9 @@ export function Canvas() {
       // whose models are its own CLI's (grok, cursor): a gateway id is not in their catalogue.
       const settings = useSettings.getState().settings
       const model =
+        // The gateway's URL and key are env, which stops at wsl.exe: its model name would be sent to
+        // the distribution's own Claude login.
+        !wslShell &&
         settings.agentLaunchMode === 'gateway-model' &&
         settings.modelGatewayDefaultModel &&
         hasGatewayModels(agentId)
@@ -6869,13 +6921,15 @@ export function Canvas() {
         center ?? emptyNodePos(),
         initialPrompt,
         project?.ssh,
-        account,
-        activePermissionMode(agentId),
+        wslShell ? undefined : account,
+        wslShell ? wslPermissionMode(project, wslShell) : activePermissionMode(agentId),
         // Same funnel as the account above: the active project owns the node, so its own
         // `.nodeterm/settings.json` launch command layers over the global one.
         targetProjectId,
         model,
-        extra?.promptFile
+        extra?.promptFile,
+        undefined,
+        wslShell
       )
       const issueRef = normalizeIssueRef(extra?.issueRef)
       const titled = extra?.title
@@ -6903,6 +6957,24 @@ export function Canvas() {
       parentInto,
       connectedProjectIdForHost
     ]
+  )
+
+  /**
+   * A Claude in a distribution. Asks that distribution's CLI what it accepts before the line is
+   * built, bounded, so the first one of a run still gets its session id and permission mode. A switch
+   * of project during the wait opens nothing: the position and frame belong to the canvas it left.
+   */
+  const addWslClaude = useCallback(
+    async (shell: string, center?: { x: number; y: number }, groupId?: string): Promise<void> => {
+      const projectId = useProjects.getState().activeProjectId
+      await ensureWslClaudeCliCaps(shell)
+      if (useProjects.getState().activeProjectId !== projectId) {
+        setNotice({ kind: 'error', text: CANVAS_NOT_ACTIVE_NOTICE })
+        return
+      }
+      addAgentNode('claude', center, groupId, null, undefined, { wslShell: shell })
+    },
+    [addAgentNode]
   )
 
   // A terminal node asking for an agent node BESIDE it — today only the Gemini-retirement banner
@@ -11506,9 +11578,26 @@ export function Canvas() {
           onClick: () => create(aid)
         }
       }
+      // "New Claude: WSL: <distro>", beside New Claude. Not on a `pick` surface: starting on an issue
+      // carries a prompt, and a long one spills to a Windows file a distribution's shell cannot read.
+      const wslClaudeRows = pick
+        ? []
+        : wslTerminalsForProject(useProjects.getState().activeProjectId).map(
+            (wsl): AgentAddEntry => ({
+              agentId: 'claude',
+              item: {
+                label: `New Claude: ${wsl.label}`,
+                icon: <AgentIcon agentId="claude" />,
+                onClick: () => void addWslClaude(wsl.shell, at, groupId)
+              }
+            })
+          )
       return [
-        ...BUILTIN_AGENT_IDS.filter((aid) => !disabled.includes(aid)).map(
-          (aid): AgentAddEntry => ({ agentId: aid, item: itemForBuiltin(aid) })
+        ...BUILTIN_AGENT_IDS.filter((aid) => !disabled.includes(aid)).flatMap(
+          (aid): AgentAddEntry[] => [
+            { agentId: aid, item: itemForBuiltin(aid) },
+            ...(aid === 'claude' ? wslClaudeRows : [])
+          ]
         ),
         ...useSettings
           .getState()
@@ -11525,7 +11614,7 @@ export function Canvas() {
           )
       ]
     },
-    [addAgentNode, connectedProjectIdForHost]
+    [addAgentNode, addWslClaude, connectedProjectIdForHost]
   )
 
   const groupItems = useCallback(
@@ -11711,6 +11800,14 @@ export function Canvas() {
   // since the distributions belong to this desktop and not to an SSH or relay project's core.
   const terminalProfiles = useTerminalProfiles(isWindowsCore)
   useEffect(() => useWslTerminals.getState().publish(terminalProfiles), [terminalProfiles])
+  // A plain New Claude runs in the default shell's distribution and cannot wait to ask its CLI. Only
+  // if it is already up: opening the app must not boot one.
+  const defaultShellSetting = useSettings((s) => s.settings.defaultShell)
+  useEffect(() => {
+    if (isWindowsCore && parseWslShell(defaultShellSetting)) {
+      void ensureWslClaudeCliCaps(defaultShellSetting, { ifRunning: true })
+    }
+  }, [isWindowsCore, defaultShellSetting])
   const wslTerminals = useWslTerminalsFor(activeProjectId)
   const addCtx = useMemo(
     () => ({
@@ -12136,7 +12233,19 @@ export function Canvas() {
   // NOT through the board's pruned commit path: the fresh node isn't in the derived session
   // list until the next render, and a pruned commit would strip the assignment right back off.
   const createNodeInColumn = useCallback(
-    (choice: KanbanCreateChoice, columnId: string | null) => {
+    (choice: KanbanCreateChoice, columnId: string | null, capsAsked = false): void => {
+      // A Claude in a distribution asks that CLI first, as the canvas row does (`addWslClaude`).
+      if (choice.kind === 'agent' && choice.shell && !capsAsked) {
+        const askedFrom = useProjects.getState().activeProjectId
+        void ensureWslClaudeCliCaps(choice.shell).then(() => {
+          if (useProjects.getState().activeProjectId === askedFrom) {
+            createNodeInColumn(choice, columnId, true)
+          } else {
+            setNotice({ kind: 'error', text: CANVAS_NOT_ACTIVE_NOTICE })
+          }
+        })
+        return
+      }
       // Live read + epoch guard, like addAgentNode/addTerminal (issue #443): board cards are the
       // active project's sessions, so a board-created node must be charged to the project whose
       // canvas React Flow actually holds under the overlay.
@@ -12152,12 +12261,22 @@ export function Canvas() {
         return
       }
       const project = useProjects.getState().getProject(targetProjectId)
-      const wslShell = choice.kind === 'terminal' ? choice.shell : undefined
+      const pickedWsl = choice.kind === 'terminal' || choice.kind === 'agent' ? choice.shell : undefined
       // The Omni board creates after a project switch, so this is asked of the project it landed on.
-      if (wslShell && !mayStartWslTerminal(project)) {
+      if (pickedWsl && !mayStartWslTerminal(project)) {
         setNotice({ kind: 'error', text: WSL_TERMINAL_REFUSED })
         return
       }
+      const wslShell =
+        choice.kind === 'agent'
+          ? wslShellForNewAgent(
+              choice.agentId,
+              pickedWsl,
+              useSettings.getState().settings.defaultShell,
+              project,
+              trustedProjectShell(targetProjectId)
+            )
+          : pickedWsl
       const index = nodesRef.current.length
       const at = emptyNodePos() // board has no cursor — drop it in free canvas space, not on a pile
       const made =
@@ -12174,14 +12293,20 @@ export function Canvas() {
                 at,
                 undefined,
                 project?.ssh,
-                resolveNewNodeAccount(
-                  undefined,
-                  project,
-                  useSettings.getState().settings.claudeAccounts
-                ),
-                activePermissionMode(choice.agentId),
+                wslShell
+                  ? undefined
+                  : resolveNewNodeAccount(
+                      undefined,
+                      project,
+                      useSettings.getState().settings.claudeAccounts
+                    ),
+                wslShell ? wslPermissionMode(project, wslShell) : activePermissionMode(choice.agentId),
                 // Board-created nodes belong to the active project like any other.
-                targetProjectId
+                targetProjectId,
+                undefined,
+                undefined,
+                undefined,
+                wslShell
               )
       const node = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
       setNodes((ns) => [...ns, node])
@@ -16853,7 +16978,11 @@ export function Canvas() {
         // The same narrow fact the node menu's Pause row uses: `st?.sessionId` alone, never the
         // minted `data.agentSessionId` fallback, because the pause closure gates on the live id and
         // a row lit by the fallback would enable here and refuse there.
-        eligibility: restartEligibility(agentId, st?.state, st?.sessionId)
+        // A pane in a distribution can never be paused: the exit poll cannot see the CLI quit, so
+        // the row is absent rather than offered and refused (`not-resumable`).
+        eligibility: nodePaneRunsInWsl(node?.data, useProjects.getState().activeProjectId)
+          ? { ok: false, reason: 'not-resumable' }
+          : restartEligibility(agentId, st?.state, st?.sessionId)
       })
     },
     []
@@ -19197,6 +19326,14 @@ export function Canvas() {
             run: () => addAgentNode(c.id)
           })
         ),
+      ...(disabled.includes('claude') ? [] : wslTerminals).map(
+        (wsl): Command => ({
+          id: `new-claude-${wsl.shell}`,
+          label: `New Claude: ${wsl.label}`,
+          icon: <AgentIcon agentId="claude" />,
+          run: () => void addWslClaude(wsl.shell)
+        })
+      ),
       // One "New Claude — <label>" per account usable in the active project (local accounts for a
       // local project, this host's accounts for an SSH project). Plain "New Claude" above uses the
       // resolved project default; these pin a specific account.
@@ -20953,6 +21090,7 @@ export function Canvas() {
         onAddWslTerminal={(shell) =>
           addTerminal(undefined, undefined, undefined, undefined, undefined, shell)
         }
+        onAddWslClaude={(shell) => void addWslClaude(shell)}
         onAddSticky={addSticky}
         onSpawnTeam={() => setSpawnTeamDialog({})}
         onAddDino={addDino}

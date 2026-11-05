@@ -51,7 +51,7 @@ function labelFor(provider: string): string {
 }
 
 const PROVIDER_BLURBS: Record<string, string> = {
-  claude: 'Session, weekly and per-model limits from your Claude subscription.',
+  claude: 'Session, weekly and per-model limits from your Claude subscription. A project in WSL reads them inside its distribution.',
   'claude-remote':
     "Limits for the Claude accounts on your connected SSH projects' hosts. Each read runs on the host itself over the existing connection — the credential never leaves it.",
   codex: 'Session and weekly limits from your ChatGPT (Codex) subscription.',

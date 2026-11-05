@@ -36,12 +36,26 @@ describe('the new-terminal surfaces offer the WSL rows', () => {
 
   it('a board-created node keeps its shell, and a refused project opens nothing', () => {
     expect(canvas).toContain('data: { ...made.data, shell: wslShell }')
-    expect(canvas.match(/!mayStartWslTerminal\(project\)/g)).toHaveLength(2)
+    expect(canvas.match(/!mayStartWslTerminal\(project\)/g)).toHaveLength(3)
+  })
+
+  it('the canvas surfaces offer a Claude in each, through the one path that asks its CLI', () => {
+    expect(canvas).toContain('label: `New Claude: ${wsl.label}`')
+    expect(canvas).toContain('id: `new-claude-${wsl.shell}`')
+    expect(canvas).toContain('onAddWslClaude={(shell) => void addWslClaude(shell)}')
+    expect(canvas.match(/void addWslClaude\(/g)).toHaveLength(3)
+    expect(canvas).toContain('await ensureWslClaudeCliCaps(shell)')
+    expect(canvas).toContain("{ wslShell: shell })")
+  })
+
+  it('a board-created Claude runs in the distribution and asks its CLI first', () => {
+    expect(canvas).toContain("choice.kind === 'agent' && choice.shell && !capsAsked")
+    expect(canvas).toContain('wslShell ? wslPermissionMode(project, wslShell) : activePermissionMode(choice.agentId)')
   })
 
   it.each([
-    ['components/kanban/KanbanView.tsx', 'wslCreateOptions(wslTerminals)'],
-    ['components/kanban/GlobalKanbanView.tsx', 'wslCreateOptions(wslTerminals)'],
+    ['components/kanban/KanbanView.tsx', "wslCreateOptions(wslTerminals, !disabledAgents.includes('claude'))"],
+    ['components/kanban/GlobalKanbanView.tsx', "wslCreateOptions(wslTerminals, !disabledAgents.includes('claude'))"],
     ['components/Dock.tsx', 'useWslTerminalsFor(activeProjectId)'],
     ['nodes/FilesNode.tsx', 'wslTerminalsForProject('],
     ['nodes/TerminalNode.tsx', 'wslTerminalsForProject(project?.id)']

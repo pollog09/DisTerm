@@ -92,15 +92,20 @@ export function enabledProviders(providers: ProviderUsage[]): ProviderUsage[] {
  * is a configured provider failing and hiding it would make the pill flap between refreshes.
  */
 export function hasAnyUsage(
-  claude: { status: string } | null | undefined,
+  claude: { status: string; loginExpired?: true } | null | undefined,
   providers: ProviderUsage[],
   remote: readonly RemoteAccountUsage[] = []
 ): boolean {
-  if (claude && (claude.status === 'ok' || claude.status === 'error')) return true
+  if (claude && (claude.status === 'ok' || claude.status === 'error' || claude.loginExpired)) return true
   if (enabledProviders(providers).length > 0 || providers.some((p) => p.status === 'error')) return true
   // A remote row counts for the same reason a local Claude one does — and it is the whole point
   // of remote usage: someone whose Claude only ever runs on a server had no indicator at all.
-  return remote.some((r) => r.usage.status === 'ok' || r.usage.status === 'error')
+  return remote.some(
+    (r) =>
+      r.usage.status === 'ok' ||
+      r.usage.status === 'error' ||
+      (r.provider !== 'codex' && r.usage.loginExpired)
+  )
 }
 
 // (A per-host pill segment lived here while the pill showed every connected host at once. The

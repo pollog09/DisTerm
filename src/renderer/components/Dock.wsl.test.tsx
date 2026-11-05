@@ -9,6 +9,7 @@ import { Dock } from './Dock'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const onAddWslTerminal = vi.fn()
+const onAddWslClaude = vi.fn()
 const noop = (): void => {}
 
 function renderDockMenu(): { container: HTMLElement; unmount: () => void } {
@@ -42,6 +43,7 @@ function renderDockMenu(): { container: HTMLElement; unmount: () => void } {
         dictateActive={false}
         onAddTerminal={noop}
         onAddWslTerminal={onAddWslTerminal}
+        onAddWslClaude={onAddWslClaude}
         onAddAgent={noop}
         onAddRemote={noop}
         onConnectRemote={noop}
@@ -79,6 +81,7 @@ const rowLabels = (c: HTMLElement): string[] =>
 describe('the Dock add menu', () => {
   beforeEach(() => {
     onAddWslTerminal.mockReset()
+    onAddWslClaude.mockReset()
     useProjects.setState({ projects: [{ id: 'p', nodes: [] }] as never, activeProjectId: 'p' })
   })
   afterEach(() => useWslTerminals.getState().publish([]))
@@ -96,6 +99,21 @@ describe('the Dock add menu', () => {
         .click()
     })
     expect(onAddWslTerminal).toHaveBeenCalledWith('wsl:Ubuntu')
+    unmount()
+  })
+
+  it('offers a Claude in each distribution, and starts the one picked', () => {
+    useWslTerminals
+      .getState()
+      .publish([{ value: 'wsl:Ubuntu', label: 'WSL: Ubuntu', kind: 'wsl' }])
+    const { container, unmount } = renderDockMenu()
+    act(() => {
+      ;[...container.querySelectorAll<HTMLButtonElement>('.dock-add-menu button')]
+        .find((b) => b.textContent === 'Claude: WSL: Ubuntu')!
+        .click()
+    })
+    expect(onAddWslClaude).toHaveBeenCalledWith('wsl:Ubuntu')
+    expect(onAddWslTerminal).not.toHaveBeenCalled()
     unmount()
   })
 

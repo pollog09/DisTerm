@@ -284,6 +284,13 @@ describe('fetchRemoteUsage', () => {
   it('treats an API-key / expired token (401) as unavailable', async () => {
     const u = await fetchRemoteUsage(target, async () => reply('__NTU_EMAIL__', '{}', '__NTU_HTTP__401'), 1)
     expect(u.status).toBe('unavailable')
+    expect(u.loginExpired).toBe(true)
+  })
+
+  it('does not call a 403 an expired login: that token works, it just lacks the scope', async () => {
+    const u = await fetchRemoteUsage(target, async () => reply('__NTU_EMAIL__', '{}', '__NTU_HTTP__403'), 1)
+    expect(u.status).toBe('unavailable')
+    expect(u.loginExpired).toBeUndefined()
   })
 
   it('says so when the endpoint rate-limited the read (429), and only then', async () => {

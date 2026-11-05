@@ -52,3 +52,21 @@ export function parseWslShell(shell: string | undefined | null): string | null {
   if (distro.startsWith('-') || CONTROL.test(distro)) return null
   return distro
 }
+
+/** A Windows path into a distribution: `\\wsl.localhost\Ubuntu\home\me`, or `\\wsl$\Ubuntu\...`.
+ *  Git for Windows spells the same path with forward slashes. Groups: host, distro, rest. */
+export const WSL_UNC_PATH = /^[\\/]{2}(wsl\.localhost|wsl\$)[\\/]([^\\/]+)([\\/].*)?$/i
+
+/** The `shell` value of the distribution holding `path`, or null for any other path. */
+export function wslShellOfPath(path: string | undefined | null): string | null {
+  const distro = path ? WSL_UNC_PATH.exec(path)?.[2] : undefined
+  if (!distro) return null
+  const shell = wslShellValue(distro)
+  return parseWslShell(shell) ? shell : null
+}
+
+/** How a person reads a `wsl:` value: the label its terminal row uses. Null for anything else. */
+export function wslShellLabel(shell: string | undefined | null): string | null {
+  const distro = parseWslShell(shell)
+  return distro ? `WSL: ${distro}` : null
+}

@@ -75,6 +75,8 @@ import { canChat } from '@shared/agents/config'
 import { transcriptSessionFor } from '../../lib/transcriptSession'
 import { effectiveAccountId } from '../../lib/accountChip'
 import { useSettings } from '../../state/settings'
+import { nodePaneRunsInWsl } from '../../state/wslTerminals'
+import { useOwningProjectId } from '../../session/owning-project'
 import { chipFor, commandTooltip } from '../../lib/keybindingOverrides'
 import {
   LocalFilePreviewModal,
@@ -251,7 +253,11 @@ export function CardModal({ session, projectId, projectName, projectColor, colum
     persisted: session.spawn.agentSessionId,
     cwd: session.spawn.cwd
   })
-  const useChat = mdOpen && !!createdAgent && canChat(createdAgent) && !!transcript.sessionId
+  // A pane in a distribution has no transcript a reader here can reach, as on the canvas node.
+  const owningProject = useOwningProjectId()
+  const useChat =
+    mdOpen && !!createdAgent && canChat(createdAgent) && !!transcript.sessionId &&
+    !nodePaneRunsInWsl(session.spawn, owningProject ?? useProjects.getState().activeProjectId, coreSource)
   const captureFull = useCallback((nodeId: string) => api.pty.capture(nodeId, true), [api])
   const mdChip = chipFor('node.toggleMarkdown')
   // The chord (main-intercepted on desktop, bridged in the browser) toggles THIS view while the

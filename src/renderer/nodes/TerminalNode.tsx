@@ -117,7 +117,7 @@ import {
   requestTerminalFontZoom,
   terminalFontZoomAction
 } from '../terminal/terminal-font-zoom'
-import { ensureProjectLaunchInfo } from '../state/projectLaunchInfo'
+import { ensureProjectLaunchInfo, trustedProjectShell } from '../state/projectLaunchInfo'
 import { loseWebglContexts, registerWebglClient, type WebglClientHandle } from '../terminal/webgl-budget'
 import {
   backgroundReleaseMs,
@@ -333,7 +333,8 @@ import { withPermissionMode } from '@shared/agents/approval-mode'
 import { assembleResumeCommand } from '@shared/agents/launch'
 import { agentEnvSnapshot } from '@renderer/lib/agentEnv'
 import { normalizedAgentModel } from '@shared/agents/model-gateway'
-import { ensureActivePermissionMode } from '../state/permissionMode'
+import { ensureActivePermissionMode, ensureWslPermissionMode } from '../state/permissionMode'
+import { nodePaneRunsInWsl } from '../state/wslTerminals'
 import {
   buildSshArgs,
   sshChipRepeatsProject,
@@ -1831,11 +1832,23 @@ export function TerminalNode({
   const showLoop = !!agentId && canRecur(agentId) // /loop · /schedule · /cron chrome
   const contextLinkCapable = !!agentId && canContextLink(agentId) // context-link tip wording only; handles render on all terminals
   const showUsage = !!agentId && hasUsage(agentId) // per-node context-window meter
-  const showChat = !!agentId && canChat(agentId) // Cmd+M opens a chat panel instead of markdown
+  // A pane in a distribution: its transcript is on the far side of wsl.exe, where no reader here
+  // goes, and the pane probes see only `wsl.exe`.
+  const paneInWsl = nodePaneRunsInWsl(data, owningProject ?? owningProjectId(), session.source)
+  // Cmd+M opens a chat panel instead of markdown. In a distribution it would only ever say "No
+  // transcript found", so there the output view answers.
+  const showChat = !!agentId && canChat(agentId) && !paneInWsl
+  // Every exit-then-resume action asks this. Those poll the pane for a shell taking back over, which
+  // a distribution's pane never reports: the CLI would quit and nothing would resume it.
+  const restartGate: typeof restartEligibility = (agent, state, sessionId) =>
+    nodePaneRunsInWsl(data, owningProject ?? owningProjectId(), session.source)
+      ? { ok: false, reason: 'not-resumable' }
+      : restartEligibility(agent, state, sessionId)
   // Everything that reads the conversation through CLAUDE's transcript readers (`context.ensure`'s
   // mount-time meter rehydration, the find bar's transcript index) — deliberately NOT `showUsage`,
   // which now spans three agents. See lib/transcriptGates.ts for what sharing that gate broke.
-  const claudeTranscript = readsClaudeTranscript(agentId)
+  // Not in a distribution: this resolver would answer with another conversation's transcript.
+  const claudeTranscript = readsClaudeTranscript(agentId) && !paneInWsl
   // The header 💬 now opens the board-log comments flyout (right side); ⌘M keeps the markdown/chat view.
   const [commentsOpen, setCommentsOpen] = useState(false)
   const canRenameNode = !!agentId && canRename(agentId) // WRITE leg: push `/rename <name>` back
@@ -2294,7 +2307,9 @@ export function TerminalNode({
   // refused over the relay; the output view captures the host's pane).
   const chatAvailable = showChat && !!transcript.sessionId && gates.chatView
   const useChat = mdMode && chatAvailable
-  useContextEnsure(session.api.context, id, agentId, transcript.sessionId, transcript.cwd, accountForReads)
+  // Not in a distribution: Claude's resolver would miss the id here and fall back to the newest local
+  // transcript for this folder, which is another conversation's meter.
+  useContextEnsure(session.api.context, id, agentId, paneInWsl ? null : transcript.sessionId, transcript.cwd, accountForReads)
   const updateNodeInternals = useUpdateNodeInternals()
 
   const [searchOpen, setSearchOpen] = useState(false)
@@ -4292,7 +4307,11 @@ export function TerminalNode({
           // are not symmetric). `data.accountId` is the right scope and `accountForReads` is not:
           // the question is whether the command we are about to type will find the conversation,
           // and that command runs under the config dir `data.accountId` names.
-          const presence = shouldProbeTranscript(priorId, agentId)
+          // In a distribution the conversation is not on this machine: a local scan would answer
+          // `absent` about a live one and drop the resume. Resume, and let the CLI answer.
+          const wslProjectId = await warmOwningProjectId()
+          const wslPaneNow = nodePaneRunsInWsl(data, owningProject ?? wslProjectId, session.source)
+          const presence = shouldProbeTranscript(priorId, agentId) && !wslPaneNow
             ? await api.chat
                 .transcriptExists(priorId!, data.accountId, id)
                 .catch((): TranscriptPresence => 'unknown')
@@ -4317,7 +4336,14 @@ export function TerminalNode({
           // Shared-identity agents (codex) resume THROUGH their launcher, so the cold-restored node
           // re-claims its own thread instead of joining as an anonymous client. `data.ssh` /
           // `data.sshRemoteTmux` keep a remote node on the bare command (no launcher on the host).
-          const mode = await ensureActivePermissionMode(agentId)
+          const coldWslShell = wslPaneNow
+            ? data.shell ||
+              trustedProjectShell(owningProject ?? wslProjectId) ||
+              useSettings.getState().settings.defaultShell
+            : undefined
+          const mode = coldWslShell && agentId === 'claude'
+            ? await ensureWslPermissionMode(coldWslShell)
+            : await ensureActivePermissionMode(agentId)
           // …and the project's launch-info snapshot, for the same reason and with the same shape:
           // this runs at MOUNT, so on a cold boot it is racing the session's very first fetch, and
           // the synchronous `agentLaunchOverride` read below would answer "no project settings" for
@@ -4396,8 +4422,9 @@ export function TerminalNode({
                   RESTART_EXIT_TIMEOUT_MS
                 )
                 // `null` is "we could not see the pane", never "nothing is running in it" — the
-                // same contract every other reader of this query keeps.
-                if (!isShellCommand(pane)) return
+                // same contract every other reader of this query keeps. A distribution's pane only
+                // ever reads `wsl.exe`, and there the CLI's own line is the evidence: it exits on it.
+                if (!isShellCommand(pane) && !wslPaneNow) return
                 const { command: fresh } = assembleResumeCommand(
                   {
                     agentId,
@@ -4555,7 +4582,7 @@ export function TerminalNode({
           }))
           return 'restarted'
         }
-        const gate = restartEligibility(sourceAgentId, st?.state, agentSessionId)
+        const gate = restartGate(sourceAgentId, st?.state, agentSessionId)
         if (!gate.ok || !sourceAgentId || !agentSessionId || !restartTarget())
           return 'not-eligible'
         const target = targetAgentId ?? sourceAgentId
@@ -4743,7 +4770,7 @@ export function TerminalNode({
         // Re-asked here, not trusted from the plan: a node that started working between the sweep's
         // decision and its turn must keep its turn (BUSY_STATES — an exit line typed into a
         // permission prompt ANSWERS it).
-        const gate = restartEligibility(agentId, st?.state, agentSessionId)
+        const gate = restartGate(agentId, st?.state, agentSessionId)
         if (!gate.ok || !agentId || !agentSessionId || !restartTarget()) return 'not-eligible'
         // ── IS THE CLI ACTUALLY IN THIS PANE? (issue #823) ──────────────────────────────────────
         // Everything above asks about the node's STATE; this asks about the pane, and it is the
@@ -4913,7 +4940,7 @@ export function TerminalNode({
         if (deep && session.source === 'relay') return 'not-eligible'
         const st = agentStatusStore.getState().byId[id]
         const agentSessionId = st?.sessionId
-        const gate = restartEligibility(agentId, st?.state, agentSessionId)
+        const gate = restartGate(agentId, st?.state, agentSessionId)
         if (!gate.ok || !agentId || !agentSessionId || !restartTarget()) return 'not-eligible'
         // Already hibernated (Eco already exited this CLI, or a prior shallow pause): the pane is
         // ALREADY a bare shell, so asking it to quit again would type `/exit` into that shell as a
@@ -4980,7 +5007,7 @@ export function TerminalNode({
       guardConcurrentRestart(id, async (): Promise<ExitPhaseOutcome> => {
         const st = agentStatusStore.getState().byId[id]
         const agentSessionId = st?.sessionId
-        const gate = restartEligibility(agentId, st?.state, agentSessionId)
+        const gate = restartGate(agentId, st?.state, agentSessionId)
         if (!gate.ok || !agentId || !agentSessionId || !restartTarget()) return 'not-eligible'
         if (!agentProcessInPane(agentId, st)) return 'exited'
         if (decideHibernateExit(await readPaneOwner(), agentId, paneBinaries()) !== 'agent-owns-pane')

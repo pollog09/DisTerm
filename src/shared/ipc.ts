@@ -99,6 +99,7 @@ export const IPC = {
   codexAccountsSwitchThreadRemote: 'codex-accounts:switch-thread-remote',
   codexAccountsTransferThreadToSsh: 'codex-accounts:transfer-thread-to-ssh',
   claudeCliCaps: 'claude-cli:caps',
+  claudeWslCliCaps: 'claude-cli:wsl-caps',
   grokCliCaps: 'grok-cli:caps',
   grokTakenSessionIds: 'grok-cli:taken-session-ids',
   cursorCliCaps: 'cursor-cli:caps',

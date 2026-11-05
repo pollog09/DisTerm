@@ -11,6 +11,7 @@ import path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { IPC } from '../../shared/ipc'
+import { isWslShellValue } from '../../shared/terminal-profiles'
 import type {
   ClaudeUsage,
   ProviderUsage,
@@ -24,6 +25,7 @@ import {
   type RemoteUsageTarget
 } from './remote-claude-usage'
 import { fetchCodexUsage } from './codex-usage'
+import { defaultWslUsageDeps, wslUsageTarget, type WslUsageDeps } from './wsl-usage'
 import { fetchCursorUsage } from './cursor-usage'
 import { fetchRemoteCodexUsage } from './remote-codex-usage'
 import { fetchGeminiUsage } from './gemini-usage'
@@ -194,7 +196,10 @@ export async function fetchUsage(accountId?: string): Promise<ClaudeUsage> {
     if (!res.ok) {
       // 401/403 → token is an API key or expired: no subscription windows to show.
       const status = res.status === 401 || res.status === 403 ? 'unavailable' : 'error'
-      const failed = emptyUsage(email, now, status)
+      const failed: ClaudeUsage = {
+        ...emptyUsage(email, now, status),
+        ...(res.status === 401 ? { loginExpired: true as const } : {})
+      }
       // 429 is named, not folded into "could not read": the endpoint answered, and its budget is
       // shared with every Claude CLI using the same login — not a network or credentials fault.
       return identify(res.status === 429 ? { ...failed, rateLimited: true } : failed)
@@ -254,6 +259,9 @@ export interface UsageServiceOptions {
    * Edition (no SSH projects there) and needs no capability check in the UI.
    */
   remote?: RemoteUsageDeps
+  /** Reads inside a WSL distribution. Absent = the real one, which is null off Windows; both shells
+   *  get it from here. A test seam, not a shell choice. */
+  wsl?: WslUsageDeps | null
 }
 
 export interface RemoteUsageDeps {
@@ -499,7 +507,33 @@ export function startUsageService(opts: UsageServiceOptions = {}): UsageService 
     }
   }
 
+  const wslUsage = opts.wsl === undefined ? defaultWslUsageDeps() : opts.wsl
+  // A distribution has no ssh target to be evicted against, so the host loop below must keep it.
+  const wslCacheKeys = new Set<string>()
+
+  /**
+   * The Claude inside a distribution, for a project that runs there. A read never boots one: a
+   * stopped distribution keeps the numbers it last gave, or none. Through `runRemote`, so it shares
+   * the cache, the coalescing and holdLastGood with an SSH host.
+   */
+  const readWslUsage = async (query: RemoteUsageQuery): Promise<RemoteAccountUsage[]> => {
+    const target = wslUsage ? wslUsageTarget(query.hostKey) : null
+    if (!wslUsage || !target) return []
+    const key = remoteKey(target)
+    wslCacheKeys.add(key)
+    const row = (usage: ClaudeUsage | ProviderUsage): RemoteAccountUsage[] =>
+      'provider' in usage ? [] : [{ hostKey: target.hostKey, accountId: null, label: target.label, usage }]
+    const cached = remoteCache.get(key)
+    if (!query.force && cached && Date.now() - cached.at < REFETCH_DEBOUNCE_MS) return row(cached.usage)
+    if (!(await wslUsage.isRunning(target).catch(() => false))) return cached ? row(cached.usage) : []
+    const usage = await runRemote({ targets: () => [target], run: wslUsage.run }, target).catch(
+      (): ClaudeUsage => emptyUsage(null, Date.now(), 'error')
+    )
+    return row(usage)
+  }
+
   platform().handle(IPC.usageRemote, async (query?: RemoteUsageQuery): Promise<RemoteAccountUsage[]> => {
+    if (isWslShellValue(query?.hostKey)) return readWslUsage(query!)
     const deps = opts.remote
     if (!deps) return []
     let all: RemoteUsageTarget[] = []
@@ -513,8 +547,8 @@ export function startUsageService(opts: UsageServiceOptions = {}): UsageService 
     // list rather than the caller's filtered one: switching between two SSH projects would
     // otherwise throw away each host's cache on the way to the other.
     const live = new Set(all.map(remoteKey))
-    for (const key of [...remoteCache.keys()]) if (!live.has(key)) remoteCache.delete(key)
-    for (const key of [...remoteInFlight.keys()]) if (!live.has(key)) remoteInFlight.delete(key)
+    for (const key of [...remoteCache.keys()]) if (!live.has(key) && !wslCacheKeys.has(key)) remoteCache.delete(key)
+    for (const key of [...remoteInFlight.keys()]) if (!live.has(key) && !wslCacheKeys.has(key)) remoteInFlight.delete(key)
     // The scoped indicator asks for ONE host — the machine the active project runs on — so the
     // other connections cost nothing while you are not looking at them.
     const targets = query?.hostKey ? all.filter((t) => t.hostKey === query.hostKey) : all

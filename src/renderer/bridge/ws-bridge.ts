@@ -1248,6 +1248,12 @@ export function buildClaudeApi(client: RpcClient, stub: ClaudeApi): ClaudeApi {
     cliCaps: () =>
       (client.request(IPC.claudeCliCaps) as Promise<ClaudeCliCaps>).catch(
         () => UNKNOWN_CLAUDE_CLI_CAPS
+      ),
+    // A distribution belongs to this core. A relay tab gets no WSL rows, and the host refuses the
+    // channel, so a refusal lands here as the unknown.
+    wslCliCaps: (shell, opts) =>
+      (client.request(IPC.claudeWslCliCaps, shell, opts) as Promise<ClaudeCliCaps>).catch(
+        () => UNKNOWN_CLAUDE_CLI_CAPS
       )
   }
 }

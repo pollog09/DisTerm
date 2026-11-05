@@ -119,6 +119,19 @@ describe('enabledProviders', () => {
 })
 
 describe('hasAnyUsage', () => {
+  it('keeps the pill up for an expired login, which has no numbers to show', () => {
+    expect(hasAnyUsage({ status: 'unavailable', loginExpired: true }, [])).toBe(true)
+    expect(hasAnyUsage({ status: 'unavailable' }, [])).toBe(false)
+    const row = (loginExpired?: true): RemoteAccountUsage => ({
+      hostKey: 'wsl:Ubuntu',
+      accountId: null,
+      label: 'WSL: Ubuntu',
+      usage: { limits: [], session: null, weekly: null, email: null, updatedAt: 1, status: 'unavailable', ...(loginExpired ? { loginExpired } : {}) }
+    })
+    expect(hasAnyUsage(null, [], [row(true)])).toBe(true)
+    expect(hasAnyUsage(null, [], [row()])).toBe(false)
+  })
+
   it('renders for a Codex-only user with no Claude at all', () => {
     // The regression this exists for: gating on Claude left such a user with no indicator.
     expect(

@@ -23,7 +23,7 @@ describe("the card modal's transcript search is gated like the node's", () => {
   it('ANDs gates.transcriptSearch into the one searchTranscript site', () => {
     const sites = src.split('\n').filter((l) => l.includes('searchTranscript:'))
     expect(sites).toHaveLength(1)
-    expect(sites[0].trim()).toBe('searchTranscript: gates.transcriptSearch && readsClaudeTranscript(spawn.agentId),')
+    expect(sites[0].trim()).toBe('searchTranscript: gates.transcriptSearch && readsClaudeTranscript(spawn.agentId) && !paneInWsl,')
   })
 
   it('a relay-scoped modal searches no transcript; a local one still does', () => {

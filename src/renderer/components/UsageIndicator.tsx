@@ -6,6 +6,7 @@ import type { ClaudeUsage, ProviderUsage, RemoteAccountUsage, UsageLimit } from 
 import { AGENT_CONFIG } from '@shared/agents/config'
 import { useSettings } from '../state/settings'
 import { useProjects } from '../state/projects'
+import { trustedProjectShell } from '../state/projectLaunchInfo'
 import { useSshConn } from '../state/sshConn'
 import {
   accountRowAction,
@@ -13,13 +14,15 @@ import {
   providerRowKey,
   scopeFromKey,
   scopeUsage,
-  usageScopeKey
+  usagePillScopeKey
 } from '../lib/usageScope'
+import { isWslShellValue, wslShellLabel } from '@shared/terminal-profiles'
 import {
   barFillPercent,
   formatResetCountdown,
   formatTimeAgo,
   heldUsageText,
+  loginExpiredText,
   percentNumber,
   percentText,
   severityColor,
@@ -45,6 +48,16 @@ const USAGE_HOVER_CLOSE_MS = 220
  *  account is polled + pushed by the service; the service caches managed reads for its own
  *  debounce, so a re-ask inside that window is free. */
 const DEFAULT_ACCOUNT_POLL_MS = 5 * 60 * 1000
+
+/** How often a focused window re-asks a distribution, the local system account's own cadence. A read
+ *  there is a process on this machine, unlike an SSH host's, and nothing else would refresh the pill.
+ *  The service answers a call inside its debounce from cache. */
+const WSL_USAGE_POLL_MS = 15 * 60 * 1000
+/** While a distribution has given no row, it is usually still booting: a cold restore mounts the pill
+ *  before the panes that start it. Each try only lists what is running; 2 minutes, then focus and the
+ *  poll above. */
+const WSL_USAGE_RETRY_MS = 5000
+const WSL_USAGE_RETRIES = 24
 
 /**
  * A single limit row in the popover: bar, "% left"/"% used", reset countdown. The bar's fill
@@ -245,7 +258,11 @@ function AccountUsageBlock({
       <HeldNote u={u} />
       {u && u.limits.length === 0 && (
         <div className="usage-popover__empty">
-          {u.status === 'error' ? usageFailureText(u) : 'No usage data.'}
+          {u.loginExpired
+            ? loginExpiredText('for this account')
+            : u.status === 'error'
+              ? usageFailureText(u)
+              : 'No usage data.'}
         </div>
       )}
       {!u && <div className="usage-popover__empty usage-pill__pulse">···</div>}
@@ -276,15 +293,18 @@ function RemoteUsageBlock({
   onUse?: () => void
   move?: React.ReactNode
 }) {
-  if (row.usage.status === 'unavailable') return null
+  if (row.usage.status === 'unavailable' && !row.usage.loginExpired) return null
+  const wsl = isWslShellValue(row.hostKey)
   const showHost = row.label !== row.hostKey
   return (
     <div className="usage-account">
       <div className="usage-account__label">
         {row.label}
-        <span className="usage-account__host" title={`Read on ${row.hostKey} over SSH`}>
-          {showHost ? row.hostKey : 'SSH'}
-        </span>
+        {!wsl && (
+          <span className="usage-account__host" title={`Read on ${row.hostKey} over SSH`}>
+            {showHost ? row.hostKey : 'SSH'}
+          </span>
+        )}
         <DefaultAccountMark isDefault={isDefault} onUse={onUse} />
         {move}
       </div>
@@ -295,7 +315,11 @@ function RemoteUsageBlock({
       <HeldNote u={row.usage} />
       {row.usage.limits.length === 0 && (
         <div className="usage-popover__empty">
-          {row.usage.status === 'error' ? usageFailureText(row.usage, 'on this host') : 'No usage data.'}
+          {row.usage.loginExpired
+            ? loginExpiredText(wsl ? `in ${row.label}` : `on ${row.hostKey}`)
+            : row.usage.status === 'error'
+              ? usageFailureText(row.usage, wsl ? 'in this distribution' : 'on this host')
+              : 'No usage data.'}
         </div>
       )}
     </div>
@@ -392,8 +416,13 @@ export function UsageIndicator({
   // project it is that host and nothing else. Showing every source at once is what made the panel
   // unreadable once remote hosts joined it.
   const activeProjectId = useProjects((s) => s.activeProjectId)
+  const defaultShell = useSettings((s) => s.settings.defaultShell)
   const scopeHostKey = useProjects((s) =>
-    usageScopeKey(s.projects.find((p) => p.id === s.activeProjectId))
+    usagePillScopeKey(
+      s.projects.find((p) => p.id === s.activeProjectId),
+      defaultShell,
+      trustedProjectShell(s.activeProjectId)
+    )
   )
   const scope = useMemo(() => scopeFromKey(scopeHostKey), [scopeHostKey])
 
@@ -504,13 +533,15 @@ export function UsageIndicator({
   // be looking at.
   const sshConnection = useSshConn((s) => s.byProject[activeProjectId])
   const sshUp = !!sshConnection
+  // A distribution has no connection to wait for: the service reads it while it is running.
+  const scopeReadable = sshUp || scope.kind === 'wsl'
   const remoteScope = useRef({ activeProjectId, scopeHostKey, sshConnection })
   if (remoteScope.current.activeProjectId !== activeProjectId || remoteScope.current.scopeHostKey !== scopeHostKey ||
       remoteScope.current.sshConnection !== sshConnection) {
     remoteScope.current = { activeProjectId, scopeHostKey, sshConnection }
   }
   useEffect(() => {
-    if (!scopeHostKey || !sshUp) {
+    if (!scopeHostKey || !scopeReadable) {
       // Leaving the rows up after a switch would attribute one machine's numbers to another.
       setRemote((prev) => (prev.length ? [] : prev))
       return
@@ -522,7 +553,36 @@ export function UsageIndicator({
     return () => {
       cancelled = true
     }
-  }, [open, scopeHostKey, sshUp, sshConnection])
+  }, [open, scopeHostKey, scopeReadable, sshConnection])
+
+  // A distribution's pill keeps itself current while someone is looking, and notices one that has
+  // come up since the last read, which otherwise leaves no pill to hover.
+  const wslHostKey = scope.kind === 'wsl' ? scope.hostKey : null
+  const wslHasNoRows = wslHostKey !== null && remote.length === 0
+  useEffect(() => {
+    if (!wslHostKey) return
+    const read = (): void => {
+      void window.nodeTerminal.usage.remote({ hostKey: wslHostKey }).then((rows) => {
+        if (remoteScope.current.scopeHostKey === wslHostKey) setRemote(rows)
+      })
+    }
+    const timer = window.setInterval(() => {
+      if (document.hasFocus()) read()
+    }, WSL_USAGE_POLL_MS)
+    window.addEventListener('focus', read)
+    let retries = 0
+    const retry = wslHasNoRows
+      ? window.setInterval(() => {
+          if (++retries > WSL_USAGE_RETRIES) window.clearInterval(retry)
+          else read()
+        }, WSL_USAGE_RETRY_MS)
+      : undefined
+    return () => {
+      window.clearInterval(timer)
+      window.clearInterval(retry)
+      window.removeEventListener('focus', read)
+    }
+  }, [wslHostKey, wslHasNoRows])
 
   // Fetch each account's usage on demand when the popover opens (system row uses `usage`).
   // Skipped entirely on an SSH project: those identities are not what this project spends.
@@ -594,8 +654,11 @@ export function UsageIndicator({
     accounts,
     providers: providers.filter((p) => !hidden.has(p.provider)),
     // Its own switch, not Claude's: hiding the local rows must not silently take the SSH hosts
-    // down with them, and vice versa.
-    remote: remote.filter(r => !hidden.has(r.provider === 'codex' ? 'codex' : 'claude-remote')),
+    // down with them, and vice versa. A distribution is this computer's Claude, so it answers to
+    // Claude's switch, not to the one labelled SSH hosts.
+    remote: remote.filter(r => !hidden.has(
+      r.provider === 'codex' ? 'codex' : isWslShellValue(r.hostKey) ? 'claude' : 'claude-remote'
+    )),
     defaultAccountId,
     defaultUsage: localDefaultId && !hidden.has('claude') ? (acctUsage[localDefaultId] ?? null) : null
   })
@@ -630,6 +693,12 @@ export function UsageIndicator({
   const claudeError = claudeUsage?.status === 'error' ||
     visibleRemote.some(r => r.provider !== 'codex' && r.usage.status === 'error')
   const isError = claudeError || providerError
+  // Which login expired, for the words: a distribution's, a host's, or this machine's.
+  const loginExpired =
+    limits.length === 0 &&
+    (!!claudeUsage?.loginExpired ||
+      visibleRemote.some((r) => r.provider !== 'codex' && r.usage.loginExpired))
+  const scopeLabel = wslShellLabel(scopeHostKey) ?? scopeHostKey
   // The pill leads with whatever is closest to biting, so a scoped model cap that is nearly
   // exhausted can't hide behind a comfortable 5h window. Considers every enabled provider, not
   // just Claude, so an exhausted Codex window drives the bar too.
@@ -650,6 +719,13 @@ export function UsageIndicator({
           .remote({ hostKey: scope.hostKey, force: true })
           .catch((): RemoteAccountUsage[] => [])
         if (remoteScope.current === requestedScope) setRemote(rows)
+      } else if (scope.kind === 'wsl') {
+        const [rows, ps] = await Promise.allSettled([
+          window.nodeTerminal.usage.remote({ hostKey: scope.hostKey, force: true }),
+          window.nodeTerminal.usage.providers(true)
+        ])
+        if (rows.status === 'fulfilled' && remoteScope.current === requestedScope) setRemote(rows.value)
+        if (ps.status === 'fulfilled') setProviders(ps.value)
       } else {
         // The other providers sit behind the same debounce, so a stale failure (an expired token
         // the CLI has since renewed) would otherwise stay on screen until it runs out. Settled
@@ -711,6 +787,8 @@ export function UsageIndicator({
     pillBody = <span className="usage-pill__dim usage-pill__pulse">···</span>
   } else if (!hasData && isError) {
     pillBody = <span className="usage-pill__dim">⚠</span>
+  } else if (!hasData && loginExpired) {
+    pillBody = <span className="usage-pill__dim">Login expired</span>
   } else {
     pillBody = (
       <>
@@ -836,7 +914,11 @@ export function UsageIndicator({
                       last-known Claude bars instead of replacing them with the empty state. */}
                   {((!hasData && !providerError) || (claudeError && limits.length === 0)) && (
                     <div className="usage-popover__empty">
-                      {claudeError ? usageFailureText(claudeUsage) : 'No usage data.'}
+                      {claudeError
+                        ? usageFailureText(claudeUsage)
+                        : loginExpired
+                          ? loginExpiredText('on this computer')
+                          : 'No usage data.'}
                     </div>
                   )}
                   {/* Issue #912: the account is part of Claude's block, set like a meter row
@@ -868,13 +950,19 @@ export function UsageIndicator({
                 key={`${r.hostKey}#${r.accountId ?? ''}`}
                 row={r}
                 mode={percentMode}
-                {...rowMark(r.accountId)}
-                move={moveFor(r.accountId)}
+                // A distribution's one row has no account to pick or move: its sessions are its own.
+                {...(scope.kind === 'wsl' ? {} : rowMark(r.accountId))}
+                move={scope.kind === 'wsl' ? null : moveFor(r.accountId)}
               />
             ))}
             {scope.kind === 'ssh' && visibleRemote.length === 0 && (
               <div className="usage-popover__empty">
                 No usage from this host yet — it is read once the project connects.
+              </div>
+            )}
+            {scope.kind === 'wsl' && visibleRemote.length === 0 && (
+              <div className="usage-popover__empty">
+                No usage from {scopeLabel} yet — it is read while the distribution is running.
               </div>
             )}
             {/* U8 (owed from PR 7): Codex emits one row per account, all `provider: 'codex'`.
@@ -894,7 +982,15 @@ export function UsageIndicator({
         // touch) and as the way to dismiss it without moving the pointer away.
         onClick={() => setOpen((v) => !v)}
         onFocus={openNow}
-        title={scope.kind === 'ssh' ? `Agent usage on ${scope.hostKey}` : 'Agent usage'}
+        title={
+          loginExpired
+            ? loginExpiredText(
+                scope.kind === 'wsl' ? `in ${scopeLabel}` : scope.kind === 'ssh' ? `on ${scopeLabel}` : 'on this computer'
+              )
+            : scope.kind === 'local'
+              ? 'Agent usage'
+              : `Agent usage ${scope.kind === 'wsl' ? 'in' : 'on'} ${scopeLabel}`
+        }
       >
         <span className="usage-pill__icon">✦</span>
         <span className="usage-pill__summary">{pillBody}</span>
