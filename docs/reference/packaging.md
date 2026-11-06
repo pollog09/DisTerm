@@ -20,7 +20,9 @@ publishes no feed. Windows has its own tag-triggered workflow (**Releasing** bel
 and pushes `main` and the tag in one `git push --atomic`. It refuses unless the branch is `main`, no
 tracked file is modified, `HEAD` is the commit `origin/main` names (`git ls-remote`, nothing fetched)
 and the tag exists neither locally nor on `origin`. `npm run release -- --dry-run` prints the steps and
-changes nothing (a bare `--dry-run` is npm's own flag). The decision is the pure `planRelease`, table-
+changes nothing. A bare `npm run release --dry-run` is a dry run too: npm keeps that flag and passes
+it on only as `npm_config_dry_run=true`, which the script reads, because without that it would cut a
+real release. The decision is the pure `planRelease`, table-
 tested in `scripts/release.test.ts` along with real runs against a local bare remote. The tag push
 starts `.github/workflows/release-windows.yml` on `windows-latest`, the one Windows release path
 (`release.yml` has no Windows job): the deadline guard first, then a check that the tag is

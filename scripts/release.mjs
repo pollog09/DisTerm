@@ -4,7 +4,8 @@
 // the Windows installer and the update feed (docs/reference/packaging.md, docs/adr/0001).
 //
 // Usage: npm run release [-- patch|minor|major] [-- --dry-run]
-//   `--dry-run` must come after `--`: npm reads a bare --dry-run as its own flag.
+//   A bare `npm run release --dry-run` works too: npm keeps that flag for itself and hands it on only
+//   as npm_config_dry_run=true, which counts the same.
 //
 // The decision is `planRelease`, pure and table-tested (scripts/release.test.ts). This file only
 // reads the repo's state and runs the steps the plan returns.
@@ -70,11 +71,12 @@ export function planRelease(current, bump, state) {
 
 /**
  * @param {string[]} argv
+ * @param {Record<string, string | undefined>} [env]
  * @returns {{ bump: string, dryRun: boolean } | { error: string }}
  */
-export function parseArgs(argv) {
+export function parseArgs(argv, env = {}) {
   let bump = 'patch'
-  let dryRun = false
+  let dryRun = !['', 'false', '0'].includes(env.npm_config_dry_run ?? '')
   let seenBump = false
   for (const a of argv) {
     if (a === '--dry-run') dryRun = true
@@ -114,7 +116,7 @@ export function readRepoState(cwd, tag) {
 const shellWord = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
 function main() {
-  const args = parseArgs(process.argv.slice(2))
+  const args = parseArgs(process.argv.slice(2), process.env)
   if ('error' in args) {
     console.error(`release: ${args.error}\nusage: npm run release [-- patch|minor|major] [-- --dry-run]`)
     return 2
