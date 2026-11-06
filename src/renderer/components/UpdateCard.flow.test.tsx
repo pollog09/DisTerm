@@ -152,7 +152,7 @@ describe('the ready card', () => {
   })
 
   it('says it installs on quit, shows highlights, and offers Later', () => {
-    expect(text()).toContain('It installs automatically the next time you quit.')
+    expect(text()).toContain('It installs automatically the next time you quit. Your terminals keep running.')
     expect(text()).toContain('Faster canvas')
     expect(text()).toContain('Fewer prompts')
     act(() => button('Later')!.click())
