@@ -99,9 +99,23 @@ export interface FakeConnector {
   close(): Promise<void>
 }
 
-const json = (res: http.ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void => {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers })
+const json = (res: http.ServerResponse, status: number, body: unknown, bearerChallenge = false): void => {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Cache-Control', 'no-store')
+  if (bearerChallenge) res.setHeader('WWW-Authenticate', 'Bearer')
   res.end(JSON.stringify(body))
+}
+
+const parseForce = (value: unknown): FakeForce | null | undefined => {
+  if (value === null) return null
+  if (typeof value !== 'object') return undefined
+  const { status, route, page } = value as Record<string, unknown>
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) return undefined
+  if (route !== 'tasks' && route !== 'columns') return undefined
+  if (page === undefined) return { status, route }
+  if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) return undefined
+  return { status, route, page }
 }
 
 const readBody = (req: http.IncomingMessage): Promise<string> =>
@@ -142,7 +156,9 @@ export async function startFakeConnector(
       return json(res, 200, { columns: columns.length, cards: cards.length })
     }
     if (url.pathname === '/__control/force') {
-      forced = parsed as FakeForce | null
+      const next = parseForce(parsed)
+      if (next === undefined) return json(res, 400, { error: 'force needs {status: 100-599, route: tasks|columns, page?: n} or null' })
+      forced = next
       return json(res, 200, { forced })
     }
     const finished = url.pathname.match(/^\/__control\/finish\/(\d+)$/)
@@ -159,7 +175,7 @@ export async function startFakeConnector(
     }
     requests.push({ method: req.method ?? '', path: `${url.pathname}${url.search}` })
     if (req.headers.authorization !== `Bearer ${key}`) {
-      return json(res, 401, { error: 'Clave no válida.' }, { 'WWW-Authenticate': 'Bearer' })
+      return json(res, 401, { error: 'Clave no válida.' }, true)
     }
     if (req.method !== 'GET') {
       writes.push(`${req.method} ${url.pathname}`)
