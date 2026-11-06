@@ -317,7 +317,6 @@ describe('the CLI the release workflow runs', () => {
   it('is the first step that runs anything in every build job, right after checkout', () => {
     // First in all three: a refused tag must build and upload nothing anywhere — the Linux and
     // Windows jobs do not wait for the mac one, and each creates the release on its first upload.
-    // Windows lives in its own tag-triggered workflow, release-windows.yml, whose only job it is.
     const read = (file: string) => fs.readFileSync(path.resolve(__dirname, '../.github/workflows', file), 'utf8')
     const release = read('release.yml')
     const windows = read('release-windows.yml')

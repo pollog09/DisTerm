@@ -1,15 +1,9 @@
 name: Release
 
-# Build, code-sign, and notarize the macOS app, build the Linux packages, and attach them to a
-# GitHub Release. Run by hand only, against a version tag: pick the tag as the ref when dispatching,
-# since the jobs name the release after GITHUB_REF_NAME. Nothing here publishes a mac or Linux feed
-# or promotes a release to "latest".
-#
-# Windows is not here: release-windows.yml builds it on the tag push and publishes that release as
-# the latest, which is the Windows update feed. So no job here changes the flags of a release that
-# already exists: each only uploads to it, and creates the release as a prerelease when it is missing.
-# Marking a published release a prerelease would drop it from /releases/latest and point the feed back
-# at the previous version.
+# Pick the version tag as the ref when dispatching: the jobs name the release after GITHUB_REF_NAME.
+# No job here changes the flags of a release that already exists, because release-windows.yml
+# publishes the tag's release as latest, and marking it a prerelease would drop it from
+# /releases/latest and point the Windows update feed back at the previous version.
 on:
   workflow_dispatch:
 
@@ -38,9 +32,8 @@ jobs:
       # in every release before the flip, or DO_NOT_TRACK users are gated before anyone else. This
       # refuses a tag whose deadline is under 30 days away (until it is frozen at the flip). Plain
       # node, no npm ci, so a refused release fails in seconds. It is the FIRST step that runs in
-      # every build job (mac, linux, and win in release-windows.yml): those jobs do not wait for each
-      # other and each creates the release on its first upload, so a refused tag must stop all three
-      # before they build.
+      # every build job (mac, linux, win): those jobs do not wait for each other and each creates
+      # the release on its first upload, so a refused tag must stop all three before they build.
       # See docs/project-limit.md.
       - name: Project-limit deadline guard
         run: node scripts/check-project-limit-deadline.mjs
@@ -209,10 +202,8 @@ jobs:
           npm run build
           npx electron-builder --linux --publish never
 
-      # Same shape as release-mac's upload. Not softprops: it sends `prerelease: true` to a release
-      # that already exists, which takes a published Windows release off /releases/latest. An
-      # existing release only gets the assets; a missing one is created as a prerelease, and the
-      # `|| true` tolerates release-mac creating it first.
+      # Not softprops: it sends `prerelease: true` to a release that already exists, which takes a
+      # published Windows release off /releases/latest. `|| true` tolerates release-mac creating it first.
       - name: Upload to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -231,7 +222,6 @@ jobs:
             sleep 30
           done
 
-  # Writes the release notes once the mac and linux jobs uploaded their assets.
   publish:
     runs-on: ubuntu-latest
     needs: [release-mac, release-linux]

@@ -6,16 +6,9 @@
  * the `APPIMAGE` env var, which quitAndInstall re-execs). A .deb / .rpm install has no
  * APPIMAGE, so quitAndInstall throws "APPIMAGE env is not defined" AND every 6h check would
  * still download the full ~231MB AppImage for nothing. For that case we degrade to a
- * manual-download link. macOS (dmg/zip) and Windows (NSIS) self-install.
+ * manual-download link.
  *
- * Any package can reach the same manual-download link by a different route: the
- * `nodeTermUpdates=manual` build marker (see `updateDelivery`), not a platform rule.
- *
- * DisTerm has no default feed: a package reaches a feed only when it was built with
- * `-c.extraMetadata.distermUpdateFeed=<https url>`, which only .github/workflows/release-windows.yml
- * passes. Forgetting the flag can therefore never pull an update from anywhere; such a build is
- * `no-channel` (see `updateDelivery`). The Windows release self-installs unsigned on purpose:
- * docs/adr/0001-unsigned-windows-auto-update.md.
+ * A build without the stamped `distermUpdateFeed` can never pull an update from anywhere.
  */
 import type { UpdateInfo } from './types'
 
@@ -26,9 +19,7 @@ export function isManualUpdatePlatform(platform: string, hasAppImage: boolean): 
 
 /**
  * The build marker that asks for a feed check WITHOUT self-install: the updater learns which
- * version is out, never downloads it and never installs it. No script stamps it today; pass
- * `-c.extraMetadata.nodeTermUpdates=manual` for a package that should only say "a new version is
- * available — download it".
+ * version is out, never downloads it and never installs it.
  */
 export const MANUAL_UPDATE_MODE = 'manual'
 
@@ -108,12 +99,11 @@ export function installReadiness(
  * user needs differs and the card must not blur them:
  *
  *  - `self-install`   there is a feed and electron-updater can relaunch the new binary: macOS
- *                     dmg/zip, a Linux AppImage, and the Windows NSIS release (unsigned, see
- *                     docs/adr/0001). The ordinary download-progress → "Restart to update" flow.
+ *                     dmg/zip, a Linux AppImage, the Windows NSIS release. The ordinary
+ *                     download-progress → "Restart to update" flow.
  *  - `manual-install` there IS a feed, but this install cannot — or must not — self-install:
  *                     Linux .deb/.rpm (no APPIMAGE, so quitAndInstall throws), and any build
- *                     stamped `nodeTermUpdates=manual`. We know which version is out; the user
- *                     installs it themselves.
+ *                     stamped `nodeTermUpdates=manual`. The user installs it themselves.
  *  - `no-channel`     there is no feed AT ALL: the build carries no valid `distermUpdateFeed` (the
  *                     default for every package), or was stamped `nodeTermUpdates=disabled`. This
  *                     build can never learn that a newer version exists, so a check must say so.
@@ -123,8 +113,7 @@ export function installReadiness(
  *                     running `npm run dev` is not a user who can be misled about their install.
  *
  * `no-channel` and the marker-driven `manual-install` are decided by the BUILD MARKER, never by a
- * platform name. That is why the Windows release (feed stamped, no marker) takes the ordinary
- * self-install path with no Windows rule here.
+ * platform name.
  */
 export type UpdateDelivery = 'self-install' | 'manual-install' | 'no-channel' | 'dev'
 
@@ -148,9 +137,8 @@ export function updateDelivery(opts: {
 /**
  * Whether a "Restart to update" request may reach `autoUpdater.quitAndInstall()`. Only a build
  * that self-installs (or a dev run, which keeps its historical no-op behaviour) may. A
- * `manual-install` build never downloads anything, and a build stamped with the `manual` marker
- * asked never to install itself — so the guard holds in main even if a renderer (or a stale card)
- * asks.
+ * `manual-install` build never downloads anything, so the guard holds in main even if a renderer
+ * (or a stale card) asks.
  */
 export function mayQuitAndInstall(delivery: UpdateDelivery): boolean {
   return delivery === 'self-install' || delivery === 'dev'

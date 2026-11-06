@@ -12,7 +12,6 @@ const workflow = fs
   .readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
 
-/** Runs the real `release:mac` script, with stand-ins for npm and electron-builder. */
 describe.skipIf(process.platform === 'win32')('the release:mac script', () => {
   let dir: string
 

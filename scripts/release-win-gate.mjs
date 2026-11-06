@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Decides whether release-windows.yml may publish a tag as the latest GitHub Release, which is the
-// Windows update feed. Refuses a tag whose release is already published (a rerun would replace the
-// installer people update from) and a tag older than a published release (it would move every
-// install back). A draft, or a prerelease that release.yml made for the mac and Linux packages, may
-// be filled in and published.
-//
-// Usage: node scripts/release-win-gate.mjs vX.Y.Z   (GITHUB_REPOSITORY and GH_TOKEN from Actions)
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,8 +14,8 @@ const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
 
 /**
  * @typedef {{ tag: string, draft: boolean, prerelease: boolean }} ReleaseRow
- * @param {string} tag this run's tag
- * @param {ReleaseRow[]} releases every release on the repo, drafts included
+ * @param {string} tag
+ * @param {ReleaseRow[]} releases
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 export function windowsReleaseGate(tag, releases) {
@@ -48,7 +41,7 @@ export function windowsReleaseGate(tag, releases) {
   return { ok: true }
 }
 
-/** @param {string} out lines of "<tag> <draft> <prerelease>" @returns {ReleaseRow[]} */
+/** @param {string} out @returns {ReleaseRow[]} */
 export function parseReleaseRows(out) {
   return out
     .split('\n')

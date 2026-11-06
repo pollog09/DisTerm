@@ -3,26 +3,19 @@ import fs from 'fs'
 import path from 'path'
 import { updateDelivery } from '../shared/update-platform'
 
-/**
- * Release guard for the one Windows release path, release-windows.yml: a tag push builds the
- * installer with the update feed stamped in and publishes it as the latest, non-prerelease GitHub
- * Release, which is the feed itself (docs/adr/0001-unsigned-windows-auto-update.md). Text-level
- * (the repo carries no YAML parser), on workflows regular enough for it.
- */
 const WORKFLOWS = path.resolve(__dirname, '../../.github/workflows')
 const FEED = 'https://github.com/pollog09/DisTerm/releases/latest/download'
 
 const read = (file: string): string =>
   fs.readFileSync(path.join(WORKFLOWS, file), 'utf8').replace(/\r\n/g, '\n')
 
-/** Only the shell lines: comments explain the omissions and would match the negative checks. */
-const commands = (text: string): string =>
+// Comments explain the omissions and would match the negative checks.
+const shellLines = (text: string): string =>
   text
     .split('\n')
     .filter((l) => !l.trim().startsWith('#'))
     .join('\n')
 
-/** One job's text, up to the next job. */
 function jobBlock(text: string, job: string): string {
   const start = text.indexOf(`\n  ${job}:\n`)
   expect(start, `job ${job} not found`).toBeGreaterThanOrEqual(0)
@@ -31,20 +24,18 @@ function jobBlock(text: string, job: string): string {
   return next < 0 ? rest : rest.slice(0, next + 1)
 }
 
-/** The first `run:` line of a job: the first command it executes. */
 const firstRun = (block: string): string | undefined =>
-  commands(block)
+  shellLines(block)
     .split('\n')
     .find((l) => /^\s+run: /.test(l))
     ?.trim()
 
-/** Job names under `jobs:`. */
 const jobNames = (text: string): string[] =>
   [...text.slice(text.indexOf('\njobs:\n')).matchAll(/^ {2}([a-z][\w-]*):$/gm)].map((m) => m[1])
 
 describe('release-windows.yml', () => {
   const text = read('release-windows.yml')
-  const cmds = commands(text)
+  const cmds = shellLines(text)
   const at = (needle: string): number => {
     const i = cmds.indexOf(needle)
     expect(i, needle).toBeGreaterThanOrEqual(0)
@@ -145,8 +136,8 @@ describe('release.yml', () => {
 
   it('builds no Windows package, so release-windows.yml is the one Windows path', () => {
     expect(jobNames(text)).toEqual(['release-mac', 'release-linux', 'publish'])
-    expect(commands(text)).not.toContain('dist:win')
-    expect(commands(text)).not.toContain('--win')
+    expect(shellLines(text)).not.toContain('dist:win')
+    expect(shellLines(text)).not.toContain('--win')
   })
 
   it('runs the deadline guard first in every build job', () => {
@@ -160,20 +151,20 @@ describe('release.yml', () => {
       'gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \\\n' +
       '            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true\n'
     for (const job of ['release-mac', 'release-linux']) {
-      const block = commands(jobBlock(text, job))
+      const block = shellLines(jobBlock(text, job))
       expect(block, job).toContain(create)
       expect(block, job).toMatch(/until gh release upload "\$tag" .* --clobber --repo "\$GITHUB_REPOSITORY"; do\n/)
       expect(block, job).not.toContain('gh release edit')
       expect(block, job).not.toContain('softprops')
       expect(block, job).not.toContain('prerelease: true')
     }
-    expect(commands(jobBlock(text, 'release-linux'))).toContain(
+    expect(shellLines(jobBlock(text, 'release-linux'))).toContain(
       'until gh release upload "$tag" dist/*.AppImage dist/*.deb dist/*.rpm --clobber --repo "$GITHUB_REPOSITORY"; do\n'
     )
   })
 
   it('promotes nothing and talks to no upstream service', () => {
-    expect(commands(text)).not.toContain('--latest')
+    expect(shellLines(text)).not.toContain('--latest')
     expect(text).not.toContain('nodeterm.dev')
     expect(text).not.toContain('verify-feed')
   })

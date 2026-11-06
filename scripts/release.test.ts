@@ -7,7 +7,7 @@ import { testTmpDir } from '../src/core/test-tmp'
 import { bumpVersion, parseArgs, planRelease } from './release.mjs'
 
 const SCRIPT = path.resolve(__dirname, 'release.mjs')
-const READY = { branch: 'main', clean: true, upToDate: true, tagExists: false }
+const READY = { branch: 'main', clean: true, upToDate: true, nextTagExists: false }
 
 describe('bumpVersion', () => {
   it.each([
@@ -54,7 +54,7 @@ describe('planRelease', () => {
     [{ ...READY, branch: 'feat/x' }, 'on branch "feat/x", releases are cut from main'],
     [{ ...READY, clean: false }, 'the working tree has uncommitted changes'],
     [{ ...READY, upToDate: false }, 'main is not the same commit as origin/main: pull or push first'],
-    [{ ...READY, tagExists: true }, 'tag v0.4.6 already exists']
+    [{ ...READY, nextTagExists: true }, 'tag v0.4.6 already exists']
   ])('refuses %o', (state, reason) => {
     expect(planRelease('0.4.5', 'patch', state)).toEqual({ ok: false, reason })
   })
@@ -71,7 +71,7 @@ describe('planRelease', () => {
   })
 
   it('reports the first refusal when several apply', () => {
-    expect(planRelease('0.4.5', 'patch', { branch: 'dev', clean: false, upToDate: false, tagExists: true })).toEqual({
+    expect(planRelease('0.4.5', 'patch', { branch: 'dev', clean: false, upToDate: false, nextTagExists: true })).toEqual({
       ok: false,
       reason: 'on branch "dev", releases are cut from main'
     })
@@ -100,7 +100,6 @@ describe('parseArgs', () => {
   })
 })
 
-/** A clone of a local bare remote holding a package.json and lockfile at 0.4.5. No network. */
 function fixtureRepo(): { work: string; origin: string } {
   const root = testTmpDir('nt-release-')
   const origin = path.join(root, 'origin.git')
@@ -117,7 +116,7 @@ function fixtureRepo(): { work: string; origin: string } {
   run(work, 'config', 'user.name', 'release test')
   run(work, 'config', 'commit.gpgsign', 'false')
   run(work, 'config', 'tag.gpgsign', 'false')
-  // A global hooks path would run the developer's own hooks on the fixture's commit and push.
+  // core.hooksPath is set explicitly in these fixtures: a developer's global one would replace the repo's hooks.
   fs.mkdirSync(path.join(root, 'no-hooks'))
   run(work, 'config', 'core.hooksPath', path.join(root, 'no-hooks'))
   const pkg = { name: 'node-terminal', version: '0.4.5', private: true, scripts: { release: `node "${SCRIPT}"` } }
@@ -130,7 +129,6 @@ function fixtureRepo(): { work: string; origin: string } {
   return { work, origin }
 }
 
-/** The test run's own env, minus an npm dry-run flag it may have been started with. */
 function scriptEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   // npm turns on Node's compile cache, which would leave a node-compile-cache dir in the run's tmp.
   const env: NodeJS.ProcessEnv = { ...process.env, NODE_DISABLE_COMPILE_CACHE: '1', ...extra }
@@ -209,7 +207,6 @@ describe('the release script against a local remote', () => {
   it('takes back its own commit and tag when the remote refuses the push, so a rerun works', () => {
     const { work, origin } = fixtureRepo()
     const hooks = path.join(origin, 'hooks')
-    // Set explicitly: a developer's global core.hooksPath would otherwise replace the bare repo's hooks.
     spawnSync('git', ['config', 'core.hooksPath', hooks], { cwd: origin })
     const hook = path.join(hooks, 'pre-receive')
     fs.writeFileSync(hook, '#!/bin/sh\necho "push refused by test hook" >&2\nexit 1\n', { mode: 0o755 })

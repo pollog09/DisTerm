@@ -1,25 +1,16 @@
 name: Release (Windows)
 
-# The one Windows release path. `npm run release` (scripts/release.mjs) pushes a vX.Y.Z tag, and this
-# builds the unsigned NSIS installer with the update feed stamped in, then publishes it as the LATEST
-# GitHub Release. That release is the feed: installed DisTerm reads latest.yml from FEED, which
-# GitHub redirects to the latest release, and downloads the installer it names, checked against the
-# sha512 inside. docs/reference/packaging.md and docs/adr/0001-unsigned-windows-auto-update.md.
-#
-# A separate workflow rather than a job in release.yml: that one is dispatch-only and its mac job
-# needs the self-hosted signing Mac, which a tag push must not wait on.
 on:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write # create the GitHub Release and upload its assets
+  contents: write
 
-# One group for every tag, never per ref, so two releases cannot publish at once or out of order, and
-# a running release is never cancelled. GitHub keeps one waiting run per group: a third tag pushed
-# while one runs and one waits cancels the waiting one, and the gate below refuses it once a newer
-# version is out, so it simply never publishes.
+# One group for every tag, never per ref, so two releases cannot publish at once or out of order.
+# GitHub keeps one pending run per group: a third tag pushed while one runs and one waits cancels the
+# waiting one, which is safe because the gate would refuse it once a newer version is out.
 concurrency:
   group: release-windows
   cancel-in-progress: false
@@ -33,20 +24,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # full history, for the main-ancestry check
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
-      # Same guard as release.yml's jobs, and first for the same reason: a refused tag must build
-      # and upload nothing. See docs/project-limit.md.
       - name: Project-limit deadline guard
         run: node scripts/check-project-limit-deadline.mjs
 
-      # latest.yml carries package.json's version; a tag that disagrees would publish a feed that
-      # names a different version than the release it sits in.
       - name: Tag matches package.json version
         shell: bash
         run: |
@@ -66,8 +53,6 @@ jobs:
             exit 1
           fi
 
-      # Fails a refused tag (already published, or older than a published release) in seconds instead
-      # of after the build. The publish step asks again, since the releases can change meanwhile.
       - name: Release can be published
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,10 +62,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # dist:win is make-icon + build + electron-builder --win --x64 --publish never; the flags land
-      # on electron-builder. The publish flags make it write latest.yml (and app-update.yml) and
-      # distermUpdateFeed is what the app reads. package.json keeps `publish: null`, so local builds
-      # stay feed-less. Unsigned: SmartScreen warns on a first manual install.
+      # electron-builder writes latest.yml only when it has a publish config; package.json keeps
+      # `publish: null` so local builds stay feed-less, and the flags add one for this build only.
       - name: Build Windows packages with the update feed (NSIS installer + zip, unsigned)
         shell: bash
         run: npm run dist:win -- "-c.extraMetadata.distermUpdateFeed=${FEED}" -c.publish.provider=generic "-c.publish.url=${FEED}"
@@ -98,10 +81,9 @@ jobs:
           grep -qx "version: ${version}" <<<"$feed" || { echo "::error::latest.yml does not name ${version}"; exit 1; }
           grep -qx "path: ${installer}" <<<"$feed" || { echo "::error::latest.yml does not point at ${installer}"; exit 1; }
 
-      # Created as a draft and published only after every asset is up, so /releases/latest never
-      # points at a release whose latest.yml or installer is missing. A draft left by a failed run is
-      # resumed (--clobber); the gate refuses a published one. No *.blockmap: differential
-      # downloads are out of scope and electron-updater falls back to the full installer.
+      # A draft until every asset is up: /releases/latest skips drafts, so it never points at a
+      # release missing its latest.yml or installer. No *.blockmap, so updaters download the full
+      # installer.
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

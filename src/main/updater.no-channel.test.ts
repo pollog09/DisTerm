@@ -255,7 +255,7 @@ const restart = (): void => ipcOn[IPC.appRestartToUpdate]?.()
 /**
  * A package stamped `nodeTermUpdates=manual` (no script does this today): it must LEARN that a
  * new version is out — a passive "available, download it" card — and must never download or
- * install it: the marker is the build asking never to install itself.
+ * install it.
  */
 describe('a Windows build with the manual marker', () => {
   const onBeforeRestart = vi.fn()

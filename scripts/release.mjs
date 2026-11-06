@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-// Cuts a DisTerm release: bumps the version, commits, tags and pushes main and the tag in one atomic
-// push. The tag push is what starts .github/workflows/release-windows.yml, which builds and publishes
-// the Windows installer and the update feed (docs/reference/packaging.md, docs/adr/0001).
-//
-// Usage: npm run release [-- patch|minor|major] [-- --dry-run]
-//   A bare `npm run release --dry-run` works too: npm keeps that flag for itself and hands it on only
-//   as npm_config_dry_run=true, which counts the same.
-//
-// The decision is `planRelease`, pure and table-tested (scripts/release.test.ts). This file only
-// reads the repo's state and runs the steps the plan returns.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,9 +9,10 @@ const REMOTE = 'origin'
 const BRANCH = 'main'
 
 /**
+ * @typedef {'patch' | 'minor' | 'major'} Bump
  * @param {string} current
- * @param {'patch' | 'minor' | 'major'} bump
- * @returns {string | null} null when `current` is not a plain X.Y.Z or `bump` is unknown
+ * @param {Bump} bump
+ * @returns {string | null}
  */
 export function bumpVersion(current, bump) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(current)
@@ -34,16 +25,15 @@ export function bumpVersion(current, bump) {
 }
 
 /**
- * @typedef {{ branch: string, clean: boolean, upToDate: boolean, tagExists: boolean }} RepoState
+ * @typedef {{ branch: string, clean: boolean, upToDate: boolean, nextTagExists: boolean }} RepoState
  * @typedef {{ ok: true, next: string, tag: string, steps: string[][], undoPush: string[][] }
  *   | { ok: false, reason: string }} ReleasePlan
- * `undoPush` takes back the commit and tag `steps` made locally, for when the push is refused.
  */
 
 /**
- * @param {string} current the version in package.json
- * @param {'patch' | 'minor' | 'major'} bump
- * @param {RepoState} state `tagExists` is about the tag of the bumped version
+ * @param {string} current
+ * @param {Bump} bump
+ * @param {RepoState} state
  * @returns {ReleasePlan}
  */
 export function planRelease(current, bump, state) {
@@ -54,7 +44,7 @@ export function planRelease(current, bump, state) {
   if (state.branch !== BRANCH) return { ok: false, reason: `on branch "${state.branch}", releases are cut from ${BRANCH}` }
   if (!state.clean) return { ok: false, reason: 'the working tree has uncommitted changes' }
   if (!state.upToDate) return { ok: false, reason: `${BRANCH} is not the same commit as ${REMOTE}/${BRANCH}: pull or push first` }
-  if (state.tagExists) return { ok: false, reason: `tag ${tag} already exists` }
+  if (state.nextTagExists) return { ok: false, reason: `tag ${tag} already exists` }
   return {
     ok: true,
     next,
@@ -64,7 +54,6 @@ export function planRelease(current, bump, state) {
       ['git', 'add', 'package.json', 'package-lock.json'],
       ['git', 'commit', '-m', `chore(release): ${tag}`],
       ['git', 'tag', '-a', tag, '-m', tag],
-      // Atomic: the tag never reaches the remote without the commit it points at, or the reverse.
       ['git', 'push', '--atomic', REMOTE, BRANCH, tag]
     ],
     undoPush: [
@@ -75,18 +64,23 @@ export function planRelease(current, bump, state) {
   }
 }
 
+/** @param {string} a @returns {a is Bump} */
+const isBump = (a) => BUMPS.includes(a)
+
 /**
  * @param {string[]} argv
  * @param {Record<string, string | undefined>} [env]
- * @returns {{ bump: string, dryRun: boolean } | { error: string }}
+ * @returns {{ bump: Bump, dryRun: boolean } | { error: string }}
  */
 export function parseArgs(argv, env = {}) {
+  /** @type {Bump} */
   let bump = 'patch'
+  // A bare `npm run release --dry-run` reaches the script only as npm_config_dry_run=true.
   let dryRun = !['', 'false', '0'].includes(env.npm_config_dry_run ?? '')
   let seenBump = false
   for (const a of argv) {
     if (a === '--dry-run') dryRun = true
-    else if (BUMPS.includes(a) && !seenBump) {
+    else if (isBump(a) && !seenBump) {
       bump = a
       seenBump = true
     } else return { error: `unexpected argument "${a}"` }
@@ -100,8 +94,6 @@ function git(cwd, args) {
 }
 
 /**
- * Read-only: `ls-remote` asks the remote without fetching, so a dry run moves no ref.
- * Untracked files do not make the tree dirty: the release commit adds only the two version files.
  * @param {string} cwd
  * @param {string} tag
  * @returns {RepoState}
@@ -116,13 +108,10 @@ export function readRepoState(cwd, tag) {
   const localTag = git(cwd, ['rev-parse', '-q', '--verify', `refs/tags/${tag}`]).ok
   const remoteTag = git(cwd, ['ls-remote', '--tags', REMOTE, `refs/tags/${tag}`])
   if (!remoteTag.ok) throw new Error(`cannot list ${REMOTE}'s tags: ${remoteTag.err}`)
-  return { branch, clean, upToDate, tagExists: localTag || remoteTag.out !== '' }
+  return { branch, clean, upToDate, nextTagExists: localTag || remoteTag.out !== '' }
 }
 
 /**
- * After a refused push, takes back the local commit and tag so a rerun starts clean, but only when they
- * are this run's: HEAD is one commit past where the run started, the tag points at it, and `origin`
- * does not have the tag (a push that errored after the remote took it must not be half undone).
  * @param {string} cwd
  * @param {Extract<ReleasePlan, { ok: true }>} plan
  * @param {string} current
@@ -130,16 +119,15 @@ export function readRepoState(cwd, tag) {
  */
 function undoPush(cwd, plan, current, startHead) {
   const head = git(cwd, ['rev-parse', 'HEAD']).out
-  const ours =
+  const isThisRunsCommit =
     git(cwd, ['rev-parse', 'HEAD~1']).out === startHead && git(cwd, ['rev-parse', `${plan.tag}^{commit}`]).out === head
   const remoteTag = git(cwd, ['ls-remote', '--tags', REMOTE, `refs/tags/${plan.tag}`])
-  const keep = !ours
-    ? 'they are not the ones this run made'
-    : !remoteTag.ok
-      ? `cannot ask ${REMOTE} whether the push landed`
-      : remoteTag.out !== ''
-        ? `${REMOTE} has ${plan.tag}, so the push may have landed`
-        : null
+  const canAskRemote = remoteTag.ok
+  const remoteHasTag = remoteTag.out !== ''
+  let keep = null
+  if (!isThisRunsCommit) keep = 'they are not the ones this run made'
+  else if (!canAskRemote) keep = `cannot ask ${REMOTE} whether the push landed`
+  else if (remoteHasTag) keep = `${REMOTE} has ${plan.tag}, so the push may have landed`
   if (keep) {
     console.error(`release: left the release commit and tag ${plan.tag} in place: ${keep}`)
     return
@@ -156,7 +144,7 @@ function undoPush(cwd, plan, current, startHead) {
   console.error(`release: back at ${current} with no tag; fix the push and run it again`)
 }
 
-const shellWord =(w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
+const shellWord = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
 function main() {
   const args = parseArgs(process.argv.slice(2), process.env)
@@ -166,7 +154,7 @@ function main() {
   }
   const cwd = process.cwd()
   const current = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).version
-  const next = bumpVersion(current, /** @type {any} */ (args.bump))
+  const next = bumpVersion(current, args.bump)
   let state
   try {
     state = readRepoState(cwd, `v${next ?? current}`)
@@ -174,7 +162,7 @@ function main() {
     console.error(`release: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
-  const plan = planRelease(current, /** @type {any} */ (args.bump), state)
+  const plan = planRelease(current, args.bump, state)
   if (!plan.ok) {
     console.error(`release: refused, ${plan.reason}`)
     return 1
