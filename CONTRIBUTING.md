@@ -163,10 +163,23 @@ Coalesce renderer updates before building the workspace map, without resetting t
 Intermediate publications retain resolved transcript paths only for unchanged identities; changing
 a session/account/location/hook path or removing the target invalidates that cache immediately.
 
-Windows updates: `release-win` builds `dist:win` and uploads only the installer and zip, so a package
-has no feed. A build given a feed and stamped `nodeTermUpdates=manual` shows a passive "new version —
+Releasing: `npm run release [-- patch|minor|major]` from a clean `main` that matches `origin/main`
+bumps, commits, tags and pushes; `npm run release -- --dry-run` shows the steps first. The tag push
+runs `release-windows.yml`, which publishes the Windows installer as the latest GitHub Release, and
+that release is the update feed (`docs/adr/0001-unsigned-windows-auto-update.md`: unsigned on
+purpose). `npm run release:mac` is the old mac packaging script, used by `release.yml`. Every
+release job runs the project-limit deadline guard first, so releases stop from 2027-01-01 until
+`PROJECT_LIMIT_DEADLINE_MS` moves forward, and `CLAUDE.md` freezes that file.
+
+Windows updates: only `release-windows.yml` stamps the feed, so local packages stay `no-channel`;
+keep `publish: null` in package.json. It uploads the installer, the zip and `latest.yml` and never a
+`*.blockmap` (differential downloads are out of scope; the updater downloads the full installer).
+Do not make a Windows release a prerelease, or `/releases/latest` and every install go back a
+version; that is why `release.yml` only uploads to a release that already exists and never edits its
+flags. A rerun of `release-windows.yml` on a published release, or on a tag older than one, refuses
+(`scripts/release-win-gate.mjs`). A build stamped `nodeTermUpdates=manual` shows a passive "new version —
 Download" card; it never downloads or installs, and main refuses restart-to-update for any
-non-self-installing build. Never upload Windows `*.blockmap`s until signing lands.
+non-self-installing build.
 
 Updater UX: an update-check button must call `checkForUpdatesNow()` (`state/pendingUpdate.ts`) —
 the card treats every other check as automatic and silent. Never flip quitting flags before
@@ -345,7 +358,7 @@ Four things to know before touching a view:
   keeps the window at display rate, so a line moves only while something is passing along it.
 
 Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
-and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
+and `release:mac` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
 work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
 
 **Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two

@@ -150,7 +150,8 @@ quickstart, security model, and current limitations.
 
 ## 📦 Install
 
-There are no prebuilt downloads: build DisTerm from source. See
+Windows installers are published as GitHub releases (see **Windows updates itself** below). For
+macOS and Linux there are no prebuilt downloads: build DisTerm from source. See
 [Build from source](#-build-from-source) for the requirements, then package for your platform:
 
 ```bash
@@ -158,8 +159,19 @@ npm install
 npm run dist:linux   # or: npm run dist (macOS), npm run dist:win (Windows)
 ```
 
-The packages land in `dist/`. They are unsigned, and a package has no update feed, so to update,
-pull and build again.
+The packages land in `dist/`. They are unsigned, and a package you build yourself has no update
+feed, so to update, pull and build again.
+
+**Windows updates itself** when installed from this repo's
+[GitHub releases](https://github.com/pollog09/DisTerm/releases): it downloads a new version in the
+background and offers "Restart to update", or installs it the next time you quit. Your terminals and
+agents keep running through it. The installer is unsigned, so Windows SmartScreen warns on the first
+manual install, and an update is checked only against the checksum published with it
+([why](docs/adr/0001-unsigned-windows-auto-update.md)).
+
+To publish a version (maintainers): `npm run release -- --dry-run` to preview, then `npm run release`
+(or `-- minor` / `-- major`). It bumps the version, tags it and pushes, and GitHub Actions builds and
+publishes the Windows release.
 
 **Removing it:** `scripts/uninstall.sh` stops every process the app started, reverts the
 status-hook/skill entries it merged into your agent CLIs' config (your own hooks and credentials

@@ -227,10 +227,8 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
   }
 
   const restartToUpdate = (): void => {
-    // A build that must not self-install refuses here, in main — not only by the card never
-    // offering the button. The unsigned Windows beta (`nodeTermUpdates=manual`) is the reason:
-    // quitAndInstall must never run there, whatever the renderer sends. It also skips
-    // onBeforeRestart, which would otherwise leave the app flagged as quitting with no quit.
+    // Main refuses to self-install a build that must not, whatever the renderer sends. It also
+    // skips onBeforeRestart, which would otherwise leave the app flagged as quitting with no quit.
     if (!mayQuitAndInstall(delivery)) {
       console.warn(`[updater] restart-to-update ignored: this build does not self-install (${delivery})`)
       return
@@ -302,19 +300,19 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
   // From here on the build has a feed: load electron-updater now (the one place it is loaded on
   // these builds), after every IPC handler above is registered.
   const autoUpdater = updater()
-  // No app-update.yml to fall back on (package.json has no build.publish): the stamped feed is the
-  // only place this build can update from. Non-null here: `updateDelivery` validated it.
+  // setFeedURL overrides the app-update.yml the Windows release build writes, but NsisUpdater still
+  // reads that file for `publisherName`; an unsigned build has none, so it skips the Authenticode
+  // check and relies on latest.yml's sha512.
   autoUpdater.setFeedURL({ provider: 'generic', url: validUpdateFeed(updateFeed) as string })
 
-  // A Linux .deb/.rpm install (no APPIMAGE env) cannot self-install and would re-download the
-  // full AppImage every 6h only to throw on install; the unsigned Windows beta must not
-  // self-install. Degrade both to a manual-download link: don't auto-download; surface
-  // update-available with `manual: true` so the card shows a Download link. (electron-updater's
-  // NsisUpdater verifies a signature only at install time, which this path never reaches.)
   const manualUpdates = delivery === 'manual-install'
 
   autoUpdater.autoDownload = !manualUpdates
   autoUpdater.autoInstallOnAppQuit = !manualUpdates
+  // The Windows release publishes no *.blockmap: electron-updater would fetch one, get a 404 and
+  // fall back to the full installer anyway. The flag also gates macOS and AppImage differential
+  // downloads, hence win32 only.
+  if (platform === 'win32') autoUpdater.disableDifferentialDownload = true
 
   // The flow an error belongs to (classifyUpdaterError): who started the check, and whether a
   // download is running.
@@ -437,7 +435,7 @@ export function initUpdater(hooks: UpdaterHooks = {}, deps: UpdaterDeps = {}): U
     })
   }
 
-  // A check-only build (`nodeTermUpdates=manual`, the unsigned Windows beta) downloads nothing, so
+  // A check-only build (`nodeTermUpdates=manual`) downloads nothing, so
   // every 'error' it sees outside a restart is a CHECK failure. Its silent launch/6h check failures
   // are not shown (classifyUpdaterError already keeps every auto-check off the card) — but they are
   // NOT silent either: recorded (`lastUpdateCheck`) and logged as one actionable warning, so a feed

@@ -1,0 +1,107 @@
+name: Release (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+# One group for every tag, never per ref, so two releases cannot publish at once or out of order.
+# GitHub keeps one pending run per group: a third tag pushed while one runs and one waits cancels the
+# waiting one, which is safe because the gate would refuse it once a newer version is out.
+concurrency:
+  group: release-windows
+  cancel-in-progress: false
+
+env:
+  FEED: https://github.com/pollog09/DisTerm/releases/latest/download
+
+jobs:
+  release-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Project-limit deadline guard
+        run: node scripts/check-project-limit-deadline.mjs
+
+      - name: Tag matches package.json version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+
+      # Anyone who can push a tag could otherwise ship an unreviewed branch to every install.
+      - name: Tag is on main
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::${GITHUB_REF_NAME} is not on main: releases are cut from main with npm run release"
+            exit 1
+          fi
+
+      - name: Release can be published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/release-win-gate.mjs "${GITHUB_REF_NAME}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # electron-builder writes latest.yml only when it has a publish config; package.json keeps
+      # `publish: null` so local builds stay feed-less, and the flags add one for this build only.
+      - name: Build Windows packages with the update feed (NSIS installer + zip, unsigned)
+        shell: bash
+        run: npm run dist:win -- "-c.extraMetadata.distermUpdateFeed=${FEED}" -c.publish.provider=generic "-c.publish.url=${FEED}"
+
+      - name: Verify expected artifacts
+        shell: bash
+        run: |
+          ls -la dist
+          version=$(node -p "require('./package.json').version")
+          installer="DisTerm-Setup-${version}.exe"
+          test -f "dist/${installer}" || { echo "::error::NSIS installer missing"; exit 1; }
+          ls dist/DisTerm-*-win.zip >/dev/null 2>&1 || { echo "::error::win zip missing"; exit 1; }
+          test -f dist/latest.yml || { echo "::error::latest.yml missing: the feed flags did not reach electron-builder"; exit 1; }
+          feed=$(tr -d '\r' < dist/latest.yml)
+          grep -qx "version: ${version}" <<<"$feed" || { echo "::error::latest.yml does not name ${version}"; exit 1; }
+          grep -qx "path: ${installer}" <<<"$feed" || { echo "::error::latest.yml does not point at ${installer}"; exit 1; }
+
+      # A draft until every asset is up: /releases/latest skips drafts, so it never points at a
+      # release missing its latest.yml or installer. No *.blockmap, so updaters download the full
+      # installer.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version=$(node -p "require('./package.json').version")
+          node scripts/release-win-gate.mjs "$tag"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --draft --generate-notes
+          n=1
+          until gh release upload "$tag" "dist/DisTerm-Setup-${version}.exe" dist/DisTerm-*-win.zip dist/latest.yml --clobber --repo "$GITHUB_REPOSITORY"; do
+            if [ "$n" -ge 5 ]; then
+              echo "::error::asset upload failed after $n attempts"
+              exit 1
+            fi
+            echo "::warning::asset upload attempt $n failed (transient network?); retrying in 30s…"
+            n=$((n + 1))
+            sleep 30
+          done
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest

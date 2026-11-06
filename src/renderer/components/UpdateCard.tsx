@@ -328,7 +328,8 @@ export function UpdateCard(): JSX.Element | null {
         <>
           {/* `downloaded` is only reached on self-install delivery, where install-on-quit is on. */}
           <p className="update-card__body">
-            DisTerm v{status.version} is ready. It installs automatically the next time you quit.
+            DisTerm v{status.version} is ready. It installs automatically the next time you quit. Your
+            terminals keep running.
           </p>
           {highlightList}
           {status.installError && <p className="update-card__hint">{status.installError}</p>}

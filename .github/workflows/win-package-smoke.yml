@@ -7,10 +7,6 @@ name: Windows package smoke
 #
 # BUILD ONLY — this workflow must NEVER publish. `dist:win` passes `--publish never`, nothing
 # here uploads to the update feed or creates a release, and the produced installer is unsigned.
-# The session-host phase (#305) has merged and release.yml's `release-win` job now ships this
-# same build, unsigned, when it is run by hand.
-# Still deliberate follow-ups: code signing, and — gated on it — Windows self-install;
-# this build has no update feed.
 on:
   workflow_dispatch:
 

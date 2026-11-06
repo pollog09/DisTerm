@@ -141,7 +141,7 @@ describe('installReadiness', () => {
  * Issue #814: a local package carries `nodeTermUpdates=disabled` (no feed), so the updater never
  * wires a feed — and the one thing that branch DID wire was a manual check answering "up to date".
  * These pin the delivery paths apart, and pin that the macOS and Linux release paths are untouched
- * by the Windows `manual` marker.
+ * by the `manual` marker.
  */
 describe('updateDelivery', () => {
   const pkgd = { isPackaged: true, updateMode: undefined as unknown, hasAppImage: false }
@@ -159,8 +159,18 @@ describe('updateDelivery', () => {
     }
   })
 
-  it('a future signed Windows release self-installs, by carrying no marker', () => {
+  it('a Windows release stamped with the feed self-installs, by carrying no marker', () => {
     expect(delivery({ ...pkgd, platform: 'win32' })).toBe('self-install')
+    expect(
+      delivery({ ...pkgd, platform: 'win32', feed: 'https://github.com/pollog09/DisTerm/releases/latest/download' })
+    ).toBe('self-install')
+  })
+
+  it('a Windows build without the feed (local dist:win) has no channel', () => {
+    expect(delivery({ ...pkgd, platform: 'win32', feed: undefined })).toBe('no-channel')
+    expect(delivery({ ...pkgd, platform: 'win32', feed: 'http://github.com/pollog09/DisTerm/releases/latest/download' })).toBe(
+      'no-channel'
+    )
   })
 
   it('macOS is unchanged: a release self-installs', () => {
@@ -181,7 +191,7 @@ describe('updateDelivery', () => {
     }
   })
 
-  it('the manual marker is a feed check that never self-installs (the unsigned Windows beta)', () => {
+  it('the manual marker is a feed check that never self-installs, on Windows too', () => {
     expect(delivery({ ...pkgd, updateMode: 'manual', platform: 'win32' })).toBe('manual-install')
     expect(shouldEnableUpdater(true, 'manual', FEED)).toBe(true)
   })
@@ -222,7 +232,7 @@ describe('mayQuitAndInstall', () => {
     expect(mayQuitAndInstall('no-channel')).toBe(false)
   })
 
-  it('the unsigned Windows beta can never install from the feed', () => {
+  it('a Windows build stamped with the manual marker can never install from the feed', () => {
     const d = delivery({ isPackaged: true, updateMode: 'manual', platform: 'win32', hasAppImage: false })
     expect(mayQuitAndInstall(d)).toBe(false)
   })

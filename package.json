@@ -38,7 +38,8 @@
     "dist:mac:x64": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --x64 --publish never -c.mac.identity=null -c.mac.notarize=false; s=$?; npm run rebuild; r=$?; if [ $s -ne 0 ]; then exit $s; fi; exit $r'",
     "dist:linux": "npm run make-icon && npm run build && electron-builder --linux --publish never",
     "dist:win": "npm run make-icon && npm run build && electron-builder --win --x64 --publish never",
-    "release": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --arm64 --x64 --publish never; s=$?; npm run rebuild; r=$?; [ \"$s\" -eq 0 ] || exit \"$s\"; [ \"$r\" -eq 0 ] && exit 0; echo \"release: the build is good, but restoring native modules failed; run npm run rebuild\" >&2; [ -n \"$CI\" ] && exit 0; exit \"$r\"'",
+    "release": "node scripts/release.mjs",
+    "release:mac": "npm run make-icon && npm run build && sh -c 'electron-builder --mac --arm64 --x64 --publish never; s=$?; npm run rebuild; r=$?; [ \"$s\" -eq 0 ] || exit \"$s\"; [ \"$r\" -eq 0 ] && exit 0; echo \"release: the build is good, but restoring native modules failed; run npm run rebuild\" >&2; [ -n \"$CI\" ] && exit 0; exit \"$r\"'",
     "postinstall": "node scripts/patch-node-pty.mjs && node scripts/patch-smart-whisper.mjs && electron-rebuild -f -w node-pty,smart-whisper && node scripts/stage-conpty-dll.mjs"
   },
   "build": {

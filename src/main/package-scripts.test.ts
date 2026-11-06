@@ -29,7 +29,7 @@ describe('packaging scripts', () => {
   it('finds the packaging scripts it is guarding', () => {
     // An empty list would make every assertion below vacuously green.
     expect(packaging.map(([name]) => name).sort()).toEqual(
-      expect.arrayContaining(['dist', 'dist:linux', 'dist:win', 'release'])
+      expect.arrayContaining(['dist', 'dist:linux', 'dist:win', 'release:mac'])
     )
   })
 

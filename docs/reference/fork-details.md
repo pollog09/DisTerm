@@ -10,12 +10,15 @@ opens `https://github.com/pollog09/GrafoTerm`. The `report-issue` verb refuses a
 repository is upstream's (`report-upstream-repo`, `core/github/report-issue-service.ts`), so a clone of
 upstream cannot file there. `canvas/help-menu.source.test.ts` pins the menu.
 
-**What the fork cut:** the default update feed, the telemetry ping (`main/telemetry.ts`), announcement
+**What the fork cut:** upstream's update feed (Windows now updates from this repo's own GitHub
+releases, `release-windows.yml` and `docs/adr/0001-unsigned-windows-auto-update.md`; macOS and Linux
+have no feed), the telemetry ping (`main/telemetry.ts`), announcement
 banners and popups, the mandatory-update policy, the mobile launch card and the onboarding phone step,
 the default relay and API base (so phone access, Team Access, hosted teams, Live Links and push are
 off), store links (`mobileStoreLinks()` answers `[]`), the install and download infrastructure
 (`scripts/install.sh`, curl one-liners, site feeds, `.github/FUNDING.yml`, the download badge), and
-the automatic release trigger and feed verification in `release.yml`.
+the automatic release trigger and feed verification in `release.yml` (the Windows tag trigger in
+`release-windows.yml` is this fork's own).
 
 **The env vars that turn things back on, none with a default:** `NODETERM_RELAY_URL` (relay features),
 `NODETERM_API_BASE` (relay tokens and push), `NODETERM_SERVER_INSTALL_URL` (Share with team's
@@ -45,4 +48,5 @@ signed allowance; Pro is unlimited. Design, runbook, checklist: **`docs/project-
   one tick (`finishAgentProjectOpen`).
 - **Relay tabs are never gated or counted**; `projectLimit:*` is host-only and `projectLimit:changed`
   reaches this machine's windows only. **The Server Edition has no gate** (stub answers inactive).
-- `PROJECT_LIMIT_DEADLINE_MS` is bumped every release until the flip — release.yml refuses < 30 days.
+- `PROJECT_LIMIT_DEADLINE_MS` is bumped every release until the flip — every release job (release.yml,
+  release-windows.yml) refuses < 30 days, so releases stop from 2027-01-01 until it moves.

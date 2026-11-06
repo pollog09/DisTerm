@@ -60,7 +60,7 @@ describe('Intel Mac packaging', () => {
     const targets = pkg.build.mac.target as Array<{ arch: string[] }>
     expect(targets.length).toBeGreaterThan(0)
     for (const t of targets) expect(t.arch).toContain('x64')
-    expect(pkg.scripts.release).toContain('--x64')
+    expect(pkg.scripts['release:mac']).toContain('--x64')
   })
 
   it('the graph layout dependency is pure JS: no install script, no platform pin', () => {

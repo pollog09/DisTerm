@@ -12,8 +12,7 @@ const workflow = fs
   .readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
 
-/** Runs the real `release` script, with stand-ins for npm and electron-builder. */
-describe.skipIf(process.platform === 'win32')('the release script', () => {
+describe.skipIf(process.platform === 'win32')('the release:mac script', () => {
   let dir: string
 
   beforeEach(() => {
@@ -37,7 +36,7 @@ describe.skipIf(process.platform === 'win32')('the release script', () => {
   function run(opts: { build: number; rebuild: number; ci: boolean }) {
     const log = path.join(dir, 'log')
     const { CI: _ci, ...env } = process.env
-    const result = spawnSync('sh', ['-c', pkg.scripts.release], {
+    const result = spawnSync('sh', ['-c', pkg.scripts['release:mac']], {
       encoding: 'utf8',
       cwd: dir,
       env: {

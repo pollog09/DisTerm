@@ -61,6 +61,7 @@ const { autoUpdater } = vi.hoisted(() => {
     autoUpdater: Object.assign(em, {
       autoDownload: true,
       autoInstallOnAppQuit: true,
+      disableDifferentialDownload: false,
       checkForUpdates: vi.fn(() => Promise.resolve(null)),
       downloadUpdate: vi.fn(() => Promise.resolve([])),
       quitAndInstall: vi.fn(),
@@ -120,6 +121,8 @@ beforeEach(() => {
   autoUpdater.quitAndInstall.mockClear()
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.disableDifferentialDownload = false
+  autoUpdater.setFeedURL.mockClear()
   appMock.isPackaged = true
   delete process.env.APPIMAGE
 })
@@ -279,6 +282,39 @@ describe('other self-install platforms install from the download', () => {
     expect(of(IPC.appUpdateInstalling).map((s) => (s.payload as { phase: string }).phase)).toEqual(['restarting'])
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
     expect(nativeUpdater.listenerCount('update-downloaded')).toBe(0)
+  })
+
+  it('Windows with a feed: downloads in the background with progress, full download only, installs on click or quit', async () => {
+    release('win32')
+    const h = hooks()
+    initUpdater(h)
+    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: 'https://updates.example/disterm' })
+    expect([autoUpdater.autoDownload, autoUpdater.autoInstallOnAppQuit, autoUpdater.disableDifferentialDownload]).toEqual([
+      true,
+      true,
+      true
+    ])
+    autoUpdater.emit('update-available', { version: '1.1.0' })
+    expect(of(IPC.appUpdateAvailable).map((s) => s.payload)).toEqual([{ version: '1.1.0', notes: '', manual: false }])
+    autoUpdater.emit('download-progress', { percent: 40, transferred: 4, total: 10, bytesPerSecond: 1 })
+    expect(of(IPC.appUpdateProgress).map((s) => s.payload)).toEqual([
+      { percent: 40, transferred: 4, total: 10, bytesPerSecond: 1 }
+    ])
+    autoUpdater.emit('update-downloaded', { version: '1.1.0' })
+    restart()
+    await flushMicrotasks()
+    expect(h.onBeforeRestart).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('macOS and AppImage keep differential downloads', () => {
+    release('darwin')
+    initUpdater(hooks())
+    expect(autoUpdater.disableDifferentialDownload).toBe(false)
+    release('linux')
+    process.env.APPIMAGE = '/tmp/nodeterm.AppImage'
+    initUpdater(hooks())
+    expect(autoUpdater.disableDifferentialDownload).toBe(false)
   })
 
   it('nothing downloaded yet: the click is ignored and nothing is flagged', async () => {
