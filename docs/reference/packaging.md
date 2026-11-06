@@ -17,7 +17,10 @@ publishes no feed. Windows has its own tag-triggered workflow (**Releasing** bel
 
 **Releasing.** `npm run release [-- patch|minor|major]` (patch by default; `scripts/release.mjs`) bumps
 `package.json` and the lockfile with `npm version`, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z`
-and pushes `main` and the tag in one `git push --atomic`. It refuses unless the branch is `main`, no
+and pushes `main` and the tag in one `git push --atomic`. When that push fails it deletes its own
+tag, `git reset --soft HEAD~1` and puts both version files back, so a rerun starts clean; it leaves
+them alone when they are not the commit and tag it just made, or when `origin` already has the tag (the
+push may have landed). It refuses unless the branch is `main`, no
 tracked file is modified, `HEAD` is the commit `origin/main` names (`git ls-remote`, nothing fetched)
 and the tag exists neither locally nor on `origin`. `npm run release -- --dry-run` prints the steps and
 changes nothing. A bare `npm run release --dry-run` is a dry run too: npm keeps that flag and passes

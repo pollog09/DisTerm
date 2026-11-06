@@ -35,6 +35,11 @@ describe('planRelease', () => {
         ['git', 'commit', '-m', 'chore(release): v0.4.6'],
         ['git', 'tag', '-a', 'v0.4.6', '-m', 'v0.4.6'],
         ['git', 'push', '--atomic', 'origin', 'main', 'v0.4.6']
+      ],
+      undoPush: [
+        ['git', 'tag', '-d', 'v0.4.6'],
+        ['git', 'reset', '--soft', 'HEAD~1'],
+        ['git', 'checkout', 'HEAD', '--', 'package.json', 'package-lock.json']
       ]
     })
   })
@@ -199,6 +204,41 @@ describe('the release script against a local remote', () => {
     expect(git(origin, 'log', '-1', '--format=%s', 'main')).toBe('chore(release): v0.4.6')
     expect(git(origin, 'rev-parse', 'v0.4.6^{commit}')).toBe(git(origin, 'rev-parse', 'main'))
     expect(git(origin, 'show', 'main:package.json')).toContain('"version": "0.4.6"')
+  })
+
+  it('takes back its own commit and tag when the remote refuses the push, so a rerun works', () => {
+    const { work, origin } = fixtureRepo()
+    const hooks = path.join(origin, 'hooks')
+    // Set explicitly: a developer's global core.hooksPath would otherwise replace the bare repo's hooks.
+    spawnSync('git', ['config', 'core.hooksPath', hooks], { cwd: origin })
+    const hook = path.join(hooks, 'pre-receive')
+    fs.writeFileSync(hook, '#!/bin/sh\necho "push refused by test hook" >&2\nexit 1\n', { mode: 0o755 })
+    const start = git(work, 'rev-parse', 'HEAD')
+
+    const refused = release(work)
+    expect(refused.status).toBe(1)
+    expect(refused.stderr.slice(refused.stderr.indexOf('release: step failed'))).toBe(
+      [
+        'release: step failed (exit 1): git push --atomic origin main v0.4.6',
+        "release: the push did not land; undoing this run's commit and tag v0.4.6:",
+        '  git tag -d v0.4.6',
+        "  git reset --soft 'HEAD~1'",
+        '  git checkout HEAD -- package.json package-lock.json',
+        'release: back at 0.4.5 with no tag; fix the push and run it again',
+        ''
+      ].join('\n')
+    )
+    expect(git(work, 'rev-parse', 'HEAD')).toBe(start)
+    expect(git(work, 'tag')).toBe('')
+    expect(git(work, 'status', '--porcelain')).toBe('')
+    expect(JSON.parse(fs.readFileSync(path.join(work, 'package.json'), 'utf8')).version).toBe('0.4.5')
+    expect(git(origin, 'log', '-1', '--format=%s', 'main')).toBe('init')
+
+    fs.rmSync(hook)
+    const rerun = release(work)
+    expect(rerun.status, rerun.stderr).toBe(0)
+    expect(git(origin, 'log', '-1', '--format=%s', 'main')).toBe('chore(release): v0.4.6')
+    expect(git(origin, 'rev-parse', 'v0.4.6^{commit}')).toBe(git(origin, 'rev-parse', 'main'))
   })
 
   it('refuses a dirty tree and an existing tag without touching anything', () => {

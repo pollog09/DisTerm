@@ -35,8 +35,9 @@ export function bumpVersion(current, bump) {
 
 /**
  * @typedef {{ branch: string, clean: boolean, upToDate: boolean, tagExists: boolean }} RepoState
- * @typedef {{ ok: true, next: string, tag: string, steps: string[][] }
+ * @typedef {{ ok: true, next: string, tag: string, steps: string[][], undoPush: string[][] }
  *   | { ok: false, reason: string }} ReleasePlan
+ * `undoPush` takes back the commit and tag `steps` made locally, for when the push is refused.
  */
 
 /**
@@ -65,6 +66,11 @@ export function planRelease(current, bump, state) {
       ['git', 'tag', '-a', tag, '-m', tag],
       // Atomic: the tag never reaches the remote without the commit it points at, or the reverse.
       ['git', 'push', '--atomic', REMOTE, BRANCH, tag]
+    ],
+    undoPush: [
+      ['git', 'tag', '-d', tag],
+      ['git', 'reset', '--soft', 'HEAD~1'],
+      ['git', 'checkout', 'HEAD', '--', 'package.json', 'package-lock.json']
     ]
   }
 }
@@ -113,7 +119,44 @@ export function readRepoState(cwd, tag) {
   return { branch, clean, upToDate, tagExists: localTag || remoteTag.out !== '' }
 }
 
-const shellWord = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
+/**
+ * After a refused push, takes back the local commit and tag so a rerun starts clean, but only when they
+ * are this run's: HEAD is one commit past where the run started, the tag points at it, and `origin`
+ * does not have the tag (a push that errored after the remote took it must not be half undone).
+ * @param {string} cwd
+ * @param {Extract<ReleasePlan, { ok: true }>} plan
+ * @param {string} current
+ * @param {string} startHead
+ */
+function undoPush(cwd, plan, current, startHead) {
+  const head = git(cwd, ['rev-parse', 'HEAD']).out
+  const ours =
+    git(cwd, ['rev-parse', 'HEAD~1']).out === startHead && git(cwd, ['rev-parse', `${plan.tag}^{commit}`]).out === head
+  const remoteTag = git(cwd, ['ls-remote', '--tags', REMOTE, `refs/tags/${plan.tag}`])
+  const keep = !ours
+    ? 'they are not the ones this run made'
+    : !remoteTag.ok
+      ? `cannot ask ${REMOTE} whether the push landed`
+      : remoteTag.out !== ''
+        ? `${REMOTE} has ${plan.tag}, so the push may have landed`
+        : null
+  if (keep) {
+    console.error(`release: left the release commit and tag ${plan.tag} in place: ${keep}`)
+    return
+  }
+  console.error(`release: the push did not land; undoing this run's commit and tag ${plan.tag}:`)
+  for (const step of plan.undoPush) {
+    console.error(`  ${step.map(shellWord).join(' ')}`)
+    const r = git(cwd, step.slice(1))
+    if (!r.ok) {
+      console.error(`release: undo step failed: ${r.err}`)
+      return
+    }
+  }
+  console.error(`release: back at ${current} with no tag; fix the push and run it again`)
+}
+
+const shellWord =(w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
 function main() {
   const args = parseArgs(process.argv.slice(2), process.env)
@@ -137,7 +180,8 @@ function main() {
     return 1
   }
   console.log(`release: ${current} -> ${plan.next} (${plan.tag})${args.dryRun ? ', dry run, nothing will change' : ''}`)
-  for (const step of plan.steps) {
+  const startHead = git(cwd, ['rev-parse', 'HEAD']).out
+  for (const [i, step] of plan.steps.entries()) {
     console.log(`  ${step.map(shellWord).join(' ')}`)
     if (args.dryRun) continue
     const [cmd, ...rest] = step
@@ -145,6 +189,7 @@ function main() {
     const r = spawnSync(cmd, rest, { cwd, stdio: 'inherit', shell: process.platform === 'win32' && cmd === 'npm' })
     if (r.status !== 0) {
       console.error(`release: step failed (exit ${r.status}): ${step.join(' ')}`)
+      if (i === plan.steps.length - 1) undoPush(cwd, plan, current, startHead)
       return 1
     }
   }
