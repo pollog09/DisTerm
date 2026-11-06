@@ -6,9 +6,10 @@ name: Release
 # or promotes a release to "latest".
 #
 # Windows is not here: release-windows.yml builds it on the tag push and publishes that release as
-# the latest, which is the Windows update feed. Dispatching this for a tag that is already published
-# is not safe as written: release-linux's softprops step passes `prerelease: true` to an existing
-# release, which would drop it from /releases/latest and point the feed back at the previous version.
+# the latest, which is the Windows update feed. So no job here changes the flags of a release that
+# already exists: each only uploads to it, and creates the release as a prerelease when it is missing.
+# Marking a published release a prerelease would drop it from /releases/latest and point the feed back
+# at the previous version.
 on:
   workflow_dispatch:
 
@@ -208,18 +209,27 @@ jobs:
           npm run build
           npx electron-builder --linux --publish never
 
-      # Both jobs target the release for the same tag; softprops updates an existing
-      # release rather than failing, so mac/linux artifact sets merge. (A same-instant
-      # creation race is theoretically possible — rerunning the failed job resolves it.)
-      # prerelease: nothing in this workflow promotes it.
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          prerelease: true
-          files: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
+      # Same shape as release-mac's upload. Not softprops: it sends `prerelease: true` to a release
+      # that already exists, which takes a published Windows release off /releases/latest. An
+      # existing release only gets the assets; a missing one is created as a prerelease, and the
+      # `|| true` tolerates release-mac creating it first.
+      - name: Upload to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true
+          n=1
+          until gh release upload "$tag" dist/*.AppImage dist/*.deb dist/*.rpm --clobber --repo "$GITHUB_REPOSITORY"; do
+            if [ "$n" -ge 5 ]; then
+              echo "::error::asset upload failed after $n attempts"
+              exit 1
+            fi
+            echo "::warning::asset upload attempt $n failed (transient network?); retrying in 30s…"
+            n=$((n + 1))
+            sleep 30
+          done
 
   # Writes the release notes once the mac and linux jobs uploaded their assets.
   publish:

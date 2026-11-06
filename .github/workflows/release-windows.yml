@@ -16,8 +16,12 @@ on:
 permissions:
   contents: write # create the GitHub Release and upload its assets
 
+# One group for every tag, never per ref, so two releases cannot publish at once or out of order, and
+# a running release is never cancelled. GitHub keeps one waiting run per group: a third tag pushed
+# while one runs and one waits cancels the waiting one, and the gate below refuses it once a newer
+# version is out, so it simply never publishes.
 concurrency:
-  group: release-windows-${{ github.ref }}
+  group: release-windows
   cancel-in-progress: false
 
 env:
@@ -28,6 +32,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history, for the main-ancestry check
 
       - uses: actions/setup-node@v7
         with:
@@ -49,6 +55,24 @@ jobs:
             echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
             exit 1
           fi
+
+      # Anyone who can push a tag could otherwise ship an unreviewed branch to every install.
+      - name: Tag is on main
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::${GITHUB_REF_NAME} is not on main: releases are cut from main with npm run release"
+            exit 1
+          fi
+
+      # Fails a refused tag (already published, or older than a published release) in seconds instead
+      # of after the build. The publish step asks again, since the releases can change meanwhile.
+      - name: Release can be published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/release-win-gate.mjs "${GITHUB_REF_NAME}"
 
       - name: Install dependencies
         run: npm ci
@@ -75,7 +99,8 @@ jobs:
           grep -qx "path: ${installer}" <<<"$feed" || { echo "::error::latest.yml does not point at ${installer}"; exit 1; }
 
       # Created as a draft and published only after every asset is up, so /releases/latest never
-      # points at a release whose latest.yml or installer is missing. No *.blockmap: differential
+      # points at a release whose latest.yml or installer is missing. A draft left by a failed run is
+      # resumed (--clobber); the gate refuses a published one. No *.blockmap: differential
       # downloads are out of scope and electron-updater falls back to the full installer.
       - name: Publish the GitHub Release
         env:
@@ -84,6 +109,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           version=$(node -p "require('./package.json').version")
+          node scripts/release-win-gate.mjs "$tag"
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --draft --generate-notes
           n=1

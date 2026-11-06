@@ -79,6 +79,29 @@ describe('release-windows.yml', () => {
     expect(check).toBeLessThan(at('run: npm ci'))
   })
 
+  it('runs one release at a time across every tag, and never cancels a running one', () => {
+    expect(text).toMatch(/^concurrency:\n {2}group: release-windows\n {2}cancel-in-progress: false\n/m)
+    expect(text).not.toMatch(/group: .*github\.ref/)
+  })
+
+  it('refuses a tag that is not on main, with full history fetched, before installing anything', () => {
+    expect(jobBlock(text, 'release-win')).toMatch(/- uses: actions\/checkout@v7\n {8}with:\n {10}fetch-depth: 0\b/)
+    const fetch = at('git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main\n')
+    const ancestry = at('if ! git merge-base --is-ancestor HEAD origin/main; then')
+    expect(at('check-project-limit-deadline')).toBeLessThan(fetch)
+    expect(fetch).toBeLessThan(ancestry)
+    expect(ancestry).toBeLessThan(at('run: npm ci'))
+  })
+
+  it('asks the release gate before installing anything, and again right before the upload', () => {
+    const early = at('run: node scripts/release-win-gate.mjs "${GITHUB_REF_NAME}"\n')
+    const late = cmds.indexOf('node scripts/release-win-gate.mjs "$tag"\n')
+    expect(early).toBeLessThan(at('run: npm ci'))
+    expect(at('grep -qx "path: ${installer}"')).toBeLessThan(late)
+    expect(late).toBeLessThan(at('gh release create'))
+    expect(late).toBeLessThan(at('gh release upload'))
+  })
+
   it('builds dist:win with the feed in the app and in electron-builder’s publish config', () => {
     expect(cmds).toContain(
       'run: npm run dist:win -- "-c.extraMetadata.distermUpdateFeed=${FEED}" -c.publish.provider=generic "-c.publish.url=${FEED}"\n'
@@ -130,6 +153,23 @@ describe('release.yml', () => {
     for (const job of ['release-mac', 'release-linux']) {
       expect(firstRun(jobBlock(text, job)), job).toBe('run: node scripts/check-project-limit-deadline.mjs')
     }
+  })
+
+  it('never changes the flags of a release that exists: it uploads, and creates a missing one as a prerelease', () => {
+    const create =
+      'gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \\\n' +
+      '            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true\n'
+    for (const job of ['release-mac', 'release-linux']) {
+      const block = commands(jobBlock(text, job))
+      expect(block, job).toContain(create)
+      expect(block, job).toMatch(/until gh release upload "\$tag" .* --clobber --repo "\$GITHUB_REPOSITORY"; do\n/)
+      expect(block, job).not.toContain('gh release edit')
+      expect(block, job).not.toContain('softprops')
+      expect(block, job).not.toContain('prerelease: true')
+    }
+    expect(commands(jobBlock(text, 'release-linux'))).toContain(
+      'until gh release upload "$tag" dist/*.AppImage dist/*.deb dist/*.rpm --clobber --repo "$GITHUB_REPOSITORY"; do\n'
+    )
   })
 
   it('promotes nothing and talks to no upstream service', () => {

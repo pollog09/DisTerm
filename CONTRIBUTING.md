@@ -175,8 +175,9 @@ Windows updates: only `release-windows.yml` stamps the feed, so local packages s
 keep `publish: null` in package.json. It uploads the installer, the zip and `latest.yml` and never a
 `*.blockmap` (differential downloads are out of scope; the updater downloads the full installer).
 Do not make a Windows release a prerelease, or `/releases/latest` and every install go back a
-version, and do not dispatch `release.yml` for a tag already published: its Linux step marks the
-release a prerelease. A build stamped `nodeTermUpdates=manual` shows a passive "new version —
+version; that is why `release.yml` only uploads to a release that already exists and never edits its
+flags. A rerun of `release-windows.yml` on a published release, or on a tag older than one, refuses
+(`scripts/release-win-gate.mjs`). A build stamped `nodeTermUpdates=manual` shows a passive "new version —
 Download" card; it never downloads or installs, and main refuses restart-to-update for any
 non-self-installing build.
 

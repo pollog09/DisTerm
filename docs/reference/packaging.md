@@ -29,14 +29,25 @@ real release. The decision is the pure `planRelease`, table-
 tested in `scripts/release.test.ts` along with real runs against a local bare remote. The tag push
 starts `.github/workflows/release-windows.yml` on `windows-latest`, the one Windows release path
 (`release.yml` has no Windows job): the deadline guard first, then a check that the tag is
-`v<package.json version>`, `npm ci`, `npm run dist:win` with the feed flags below, a check that
-`latest.yml` names this version's installer, and a GitHub Release created as a draft, given the
-installer, the zip and `latest.yml`, then published as **latest and not a prerelease**. Publishing
-after the upload keeps `/releases/latest` from ever pointing at a release whose feed file is missing.
-`src/main/release-win-workflow.test.ts` pins that contract. Dispatching `release.yml` for a tag
-`release-windows.yml` already published is unsafe as written: `release-linux`'s softprops step passes
-`prerelease: true` to the existing release, which would take it off `/releases/latest` and point every
-Windows install back at the previous version.
+`v<package.json version>`, a check that the tagged commit is on `origin/main` (full-history checkout),
+the release gate, `npm ci`, `npm run dist:win` with the feed flags below, a check that `latest.yml`
+names this version's installer, the gate again, and a GitHub Release created as a draft (or a draft
+left by a failed run, resumed), given the installer, the zip and `latest.yml` with `--clobber`, then
+published as **latest and not a prerelease**. Publishing after the upload keeps `/releases/latest`
+from ever pointing at a release whose feed file is missing. The gate (`scripts/release-win-gate.mjs`,
+tested in `scripts/release-win-gate.test.ts`) refuses a tag whose release is already published, since
+a rerun would replace the installer people update from, and a tag older than a published release,
+since publishing it as latest would move every install back. It refuses rather than publishing without
+`--latest`: GitHub makes a newly published release latest unless told otherwise, and an out-of-order
+tag is a mistake to look at, not a release to ship. A draft, or a prerelease `release.yml` made for
+the mac and Linux packages, may be filled in. Every tag shares one concurrency group, so two Windows
+releases never run at once; GitHub keeps only one waiting run per group, so a third tag pushed while
+one runs and one waits cancels the waiting one, and the gate refuses that tag later once a newer one is
+out. `src/main/release-win-workflow.test.ts` pins that contract. `release.yml` never changes the flags
+of a release that already exists: its mac and Linux jobs only upload to it (`gh release upload
+--clobber`) and create it as a prerelease when it is missing, because marking a published release a
+prerelease takes it off `/releases/latest` and points every Windows install back at the previous
+version.
 
 **Every release job runs the project-limit deadline guard first**
 (`scripts/check-project-limit-deadline.mjs`: `release-mac`, `release-linux` and `release-win`). It
