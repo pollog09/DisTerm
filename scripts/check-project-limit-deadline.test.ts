@@ -317,14 +317,23 @@ describe('the CLI the release workflow runs', () => {
   it('is the first step that runs anything in every build job, right after checkout', () => {
     // First in all three: a refused tag must build and upload nothing anywhere — the Linux and
     // Windows jobs do not wait for the mac one, and each creates the release on its first upload.
-    const wf = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8')
-    const jobs = ['release-mac', 'release-linux', 'release-win', 'publish']
-    for (let i = 0; i < 3; i++) {
-      const job = wf.slice(wf.indexOf(`\n  ${jobs[i]}:\n`), wf.indexOf(`\n  ${jobs[i + 1]}:\n`))
+    // Windows lives in its own tag-triggered workflow, release-windows.yml, whose only job it is.
+    const read = (file: string) => fs.readFileSync(path.resolve(__dirname, '../.github/workflows', file), 'utf8')
+    const release = read('release.yml')
+    const windows = read('release-windows.yml')
+    const between = (wf: string, job: string, next: string | null) =>
+      wf.slice(wf.indexOf(`\n  ${job}:\n`), next === null ? undefined : wf.indexOf(`\n  ${next}:\n`))
+    const jobs: Array<[string, string]> = [
+      ['release-mac', between(release, 'release-mac', 'release-linux')],
+      ['release-linux', between(release, 'release-linux', 'publish')],
+      ['release-win', between(windows, 'release-win', null)]
+    ]
+    for (const [name, job] of jobs) {
+      expect(job.indexOf(`\n  ${name}:\n`), `${name} exists`).toBe(0)
       const guard = job.indexOf('run: node scripts/check-project-limit-deadline.mjs')
-      expect(guard, `${jobs[i]} runs the deadline guard`).toBeGreaterThan(-1)
-      expect(guard, `${jobs[i]}: after checkout`).toBeGreaterThan(job.indexOf('uses: actions/checkout@'))
-      expect(job.indexOf('run:'), `${jobs[i]}: no step runs before the guard`).toBe(guard)
+      expect(guard, `${name} runs the deadline guard`).toBeGreaterThan(-1)
+      expect(guard, `${name}: after checkout`).toBeGreaterThan(job.indexOf('uses: actions/checkout@'))
+      expect(job.indexOf('run:'), `${name}: no step runs before the guard`).toBe(guard)
     }
   })
 })

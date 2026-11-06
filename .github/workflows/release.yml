@@ -1,10 +1,14 @@
 name: Release
 
-# Build, code-sign, and notarize the macOS app, build the Linux and Windows packages, and attach
-# them all to a GitHub Release. Run by hand only, against a version tag: pick the tag as the ref when
-# dispatching, since the jobs name the release after GITHUB_REF_NAME. DisTerm has no update feed, so
-# nothing here publishes one and nothing promotes a release to "latest": it stays a prerelease until
-# someone promotes it by hand.
+# Build, code-sign, and notarize the macOS app, build the Linux packages, and attach them to a
+# GitHub Release. Run by hand only, against a version tag: pick the tag as the ref when dispatching,
+# since the jobs name the release after GITHUB_REF_NAME. Nothing here publishes a mac or Linux feed
+# or promotes a release to "latest".
+#
+# Windows is not here: release-windows.yml builds it on the tag push and publishes that release as
+# the latest, which is the Windows update feed. Dispatching this for a tag that is already published
+# is not safe as written: release-linux's softprops step passes `prerelease: true` to an existing
+# release, which would drop it from /releases/latest and point the feed back at the previous version.
 on:
   workflow_dispatch:
 
@@ -33,8 +37,9 @@ jobs:
       # in every release before the flip, or DO_NOT_TRACK users are gated before anyone else. This
       # refuses a tag whose deadline is under 30 days away (until it is frozen at the flip). Plain
       # node, no npm ci, so a refused release fails in seconds. It is the FIRST step that runs in
-      # every build job (mac, linux, win): those jobs do not wait for each other and each creates
-      # the release on its first upload, so a refused tag must stop all three before they build.
+      # every build job (mac, linux, and win in release-windows.yml): those jobs do not wait for each
+      # other and each creates the release on its first upload, so a refused tag must stop all three
+      # before they build.
       # See docs/project-limit.md.
       - name: Project-limit deadline guard
         run: node scripts/check-project-limit-deadline.mjs
@@ -216,66 +221,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
 
-  # Windows build: unsigned, on a plain GitHub runner. Publishes the NSIS installer + zip as assets on
-  # the same tag's GitHub Release. Best-effort: the `publish` job deliberately does not wait on it.
-  release-win:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      # Same guard as release-mac (see the comment there): first, so a refused tag uploads nothing.
-      - name: Project-limit deadline guard
-        run: node scripts/check-project-limit-deadline.mjs
-
-      # postinstall patches node-pty and rebuilds node-pty + smart-whisper against Electron's
-      # ABI — the same install win-package-smoke.yml and the quality-windows CI job prove green.
-      - name: Install dependencies
-        run: npm ci
-
-      # make-icon + build + electron-builder --win --x64 --publish never. Unsigned: no signing
-      # secrets exist for Windows; SmartScreen will warn.
-      - name: Build Windows packages (NSIS installer + zip, unsigned)
-        run: npm run dist:win
-
-      # The artifact names are the contract (same check as win-package-smoke.yml): a silent
-      # target/artifactName regression must fail here, before the upload step lies about it.
-      - name: Verify expected artifacts
-        shell: bash
-        run: |
-          ls -la dist
-          version=$(node -p "require('./package.json').version")
-          test -f "dist/DisTerm-Setup-${version}.exe" || { echo "::error::NSIS installer missing"; exit 1; }
-          ls dist/DisTerm-*-win.zip >/dev/null 2>&1 || { echo "::error::win zip missing"; exit 1; }
-
-      # Deliberately narrow globs: the installer + zip.
-      - name: Upload to GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          # Another platform job may already have created the release for this tag; tolerate
-          # the race. Created as PRERELEASE for the same reason the mac job does it.
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --prerelease --notes "" || true
-          n=1
-          until gh release upload "$tag" dist/DisTerm-Setup-*.exe dist/DisTerm-*-win.zip --clobber --repo "$GITHUB_REPOSITORY"; do
-            if [ "$n" -ge 5 ]; then
-              echo "::error::asset upload failed after $n attempts"
-              exit 1
-            fi
-            echo "::warning::asset upload attempt $n failed (transient network?); retrying in 30s…"
-            n=$((n + 1))
-            sleep 30
-          done
-
-  # Writes the release notes once the mac and linux jobs uploaded their assets. release-win is
-  # deliberately NOT in `needs`: its failure must never hold the notes back.
+  # Writes the release notes once the mac and linux jobs uploaded their assets.
   publish:
     runs-on: ubuntu-latest
     needs: [release-mac, release-linux]

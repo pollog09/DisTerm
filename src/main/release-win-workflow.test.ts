@@ -1,70 +1,140 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { updateDelivery } from '../shared/update-platform'
 
 /**
- * Release guard for the Windows job: it builds the ordinary package, publishes no update feed
- * (DisTerm has none) and never promotes a release. Text-level, like the job's own artifact-contract
- * step; no YAML parser needed for a job block this regular.
+ * Release guard for the one Windows release path, release-windows.yml: a tag push builds the
+ * installer with the update feed stamped in and publishes it as the latest, non-prerelease GitHub
+ * Release, which is the feed itself (docs/adr/0001-unsigned-windows-auto-update.md). Text-level
+ * (the repo carries no YAML parser), on workflows regular enough for it.
  */
-const WORKFLOW = path.resolve(__dirname, '../../.github/workflows/release.yml')
+const WORKFLOWS = path.resolve(__dirname, '../../.github/workflows')
+const FEED = 'https://github.com/pollog09/DisTerm/releases/latest/download'
 
+const read = (file: string): string =>
+  fs.readFileSync(path.join(WORKFLOWS, file), 'utf8').replace(/\r\n/g, '\n')
+
+/** Only the shell lines: comments explain the omissions and would match the negative checks. */
+const commands = (text: string): string =>
+  text
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n')
+
+/** One job's text, up to the next job. */
 function jobBlock(text: string, job: string): string {
   const start = text.indexOf(`\n  ${job}:\n`)
-  expect(start, `job ${job} not found in release.yml`).toBeGreaterThanOrEqual(0)
+  expect(start, `job ${job} not found`).toBeGreaterThanOrEqual(0)
   const rest = text.slice(start + 1)
-  // The next top-level job: a line indented exactly two spaces that names a key.
   const next = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n/)
   return next < 0 ? rest : rest.slice(0, next + 1)
 }
 
-/** Only the shell lines — comments explain the omissions and would match the negative checks. */
-function commands(block: string): string {
-  return block
+/** The first `run:` line of a job: the first command it executes. */
+const firstRun = (block: string): string | undefined =>
+  commands(block)
     .split('\n')
-    .filter((l) => !l.trim().startsWith('#'))
-    .join('\n')
-}
+    .find((l) => /^\s+run: /.test(l))
+    ?.trim()
 
-describe('release.yml release-win', () => {
-  const text = fs.readFileSync(WORKFLOW, 'utf8')
-  const job = commands(jobBlock(text, 'release-win'))
+/** Job names under `jobs:`. */
+const jobNames = (text: string): string[] =>
+  [...text.slice(text.indexOf('\njobs:\n')).matchAll(/^ {2}([a-z][\w-]*):$/gm)].map((m) => m[1])
 
-  it('builds the ordinary Windows package', () => {
-    expect(job).toMatch(/run: npm run dist:win\s*\n/)
+describe('release-windows.yml', () => {
+  const text = read('release-windows.yml')
+  const cmds = commands(text)
+  const at = (needle: string): number => {
+    const i = cmds.indexOf(needle)
+    expect(i, needle).toBeGreaterThanOrEqual(0)
+    return i
+  }
+
+  it('runs on a version tag push, and only then', () => {
+    expect(text).toMatch(/^on:\n {2}push:\n {4}tags:\n {6}- 'v\*'\n\n/m)
+    expect(text).not.toContain('workflow_dispatch')
   })
 
-  it('uploads the installer and zip by their DisTerm names, and no feed file', () => {
-    const upload = job.split('\n').find((l) => l.includes('gh release upload'))
-    expect(upload).toBeDefined()
-    expect(upload).toContain('dist/DisTerm-Setup-*.exe')
-    expect(upload).toContain('dist/DisTerm-*-win.zip')
-    expect(upload).not.toContain('latest.yml')
+  it('may write the release', () => {
+    expect(text).toMatch(/^permissions:\n {2}contents: write\b/m)
   })
 
-  it('uploads no blockmap and no broad yml glob', () => {
-    expect(job).not.toContain('blockmap')
-    expect(job).not.toContain('dist/*.yml')
+  it('stamps the GitHub latest-release feed, and that feed makes a Windows build self-install', () => {
+    const feed = /^ {2}FEED: (\S+)$/m.exec(text)?.[1]
+    expect(feed).toBe(FEED)
+    expect(
+      updateDelivery({ isPackaged: true, updateMode: undefined, feed, platform: 'win32', hasAppImage: false })
+    ).toBe('self-install')
   })
 
-  it('is still not a gate on the mac+linux publish', () => {
-    const publish = commands(jobBlock(text, 'publish'))
-    expect(publish).toMatch(/needs: \[release-mac, release-linux\]/)
-    expect(publish).not.toContain('release-win')
+  it('has one job, and it runs the project-limit deadline guard as its first command', () => {
+    expect(jobNames(text)).toEqual(['release-win'])
+    expect(firstRun(jobBlock(text, 'release-win'))).toBe('run: node scripts/check-project-limit-deadline.mjs')
+  })
+
+  it('refuses a tag that is not package.json’s version, before installing anything', () => {
+    const check = at('if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then')
+    expect(at('check-project-limit-deadline')).toBeLessThan(check)
+    expect(check).toBeLessThan(at('run: npm ci'))
+  })
+
+  it('builds dist:win with the feed in the app and in electron-builder’s publish config', () => {
+    expect(cmds).toContain(
+      'run: npm run dist:win -- "-c.extraMetadata.distermUpdateFeed=${FEED}" -c.publish.provider=generic "-c.publish.url=${FEED}"\n'
+    )
+    expect(at('run: npm ci')).toBeLessThan(at('npm run dist:win'))
+  })
+
+  it('checks latest.yml names this version’s installer before uploading', () => {
+    const verify = at('grep -qx "path: ${installer}"')
+    expect(cmds).toContain('grep -qx "version: ${version}"')
+    expect(at('npm run dist:win')).toBeLessThan(verify)
+    expect(verify).toBeLessThan(at('gh release upload'))
+  })
+
+  it('uploads the installer, the zip and latest.yml, and no blockmap', () => {
+    const upload = cmds.split('\n').find((l) => l.includes('gh release upload'))!
+    expect(upload).toContain('"dist/DisTerm-Setup-${version}.exe" dist/DisTerm-*-win.zip dist/latest.yml --clobber')
+    expect(cmds).not.toContain('blockmap')
+    expect(cmds).not.toContain('dist/*.yml')
+  })
+
+  it('publishes the draft only after the upload, as latest and not a prerelease', () => {
+    expect(at('--verify-tag --draft')).toBeLessThan(at('gh release upload'))
+    expect(at('gh release upload')).toBeLessThan(at('--draft=false --prerelease=false --latest'))
+    expect(cmds).not.toMatch(/--prerelease(?!=false)/)
+  })
+
+  it('talks to no upstream service', () => {
+    expect(text).not.toContain('nodeterm.dev')
+    expect(text).not.toContain('verify-feed')
   })
 })
 
-describe('release.yml as a whole', () => {
-  const text = fs.readFileSync(WORKFLOW, 'utf8')
+describe('release.yml', () => {
+  const text = read('release.yml')
 
   it('runs by hand only', () => {
     expect(text).toMatch(/^on:\n {2}workflow_dispatch:\n/m)
     expect(text).not.toMatch(/^ {2}push:/m)
   })
 
-  it('verifies no feed and promotes nothing', () => {
-    expect(text).not.toContain('verify-feed')
-    expect(text).not.toContain('nodeterm.dev')
+  it('builds no Windows package, so release-windows.yml is the one Windows path', () => {
+    expect(jobNames(text)).toEqual(['release-mac', 'release-linux', 'publish'])
+    expect(commands(text)).not.toContain('dist:win')
+    expect(commands(text)).not.toContain('--win')
+  })
+
+  it('runs the deadline guard first in every build job', () => {
+    for (const job of ['release-mac', 'release-linux']) {
+      expect(firstRun(jobBlock(text, job)), job).toBe('run: node scripts/check-project-limit-deadline.mjs')
+    }
+  })
+
+  it('promotes nothing and talks to no upstream service', () => {
     expect(commands(text)).not.toContain('--latest')
+    expect(text).not.toContain('nodeterm.dev')
+    expect(text).not.toContain('verify-feed')
   })
 })

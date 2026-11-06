@@ -1,0 +1,99 @@
+name: Release (Windows)
+
+# The one Windows release path. `npm run release` (scripts/release.mjs) pushes a vX.Y.Z tag, and this
+# builds the unsigned NSIS installer with the update feed stamped in, then publishes it as the LATEST
+# GitHub Release. That release is the feed: installed DisTerm reads latest.yml from FEED, which
+# GitHub redirects to the latest release, and downloads the installer it names, checked against the
+# sha512 inside. docs/reference/packaging.md and docs/adr/0001-unsigned-windows-auto-update.md.
+#
+# A separate workflow rather than a job in release.yml: that one is dispatch-only and its mac job
+# needs the self-hosted signing Mac, which a tag push must not wait on.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create the GitHub Release and upload its assets
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FEED: https://github.com/pollog09/DisTerm/releases/latest/download
+
+jobs:
+  release-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Same guard as release.yml's jobs, and first for the same reason: a refused tag must build
+      # and upload nothing. See docs/project-limit.md.
+      - name: Project-limit deadline guard
+        run: node scripts/check-project-limit-deadline.mjs
+
+      # latest.yml carries package.json's version; a tag that disagrees would publish a feed that
+      # names a different version than the release it sits in.
+      - name: Tag matches package.json version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      # dist:win is make-icon + build + electron-builder --win --x64 --publish never; the flags land
+      # on electron-builder. The publish flags make it write latest.yml (and app-update.yml) and
+      # distermUpdateFeed is what the app reads. package.json keeps `publish: null`, so local builds
+      # stay feed-less. Unsigned: SmartScreen warns on a first manual install.
+      - name: Build Windows packages with the update feed (NSIS installer + zip, unsigned)
+        shell: bash
+        run: npm run dist:win -- "-c.extraMetadata.distermUpdateFeed=${FEED}" -c.publish.provider=generic "-c.publish.url=${FEED}"
+
+      - name: Verify expected artifacts
+        shell: bash
+        run: |
+          ls -la dist
+          version=$(node -p "require('./package.json').version")
+          installer="DisTerm-Setup-${version}.exe"
+          test -f "dist/${installer}" || { echo "::error::NSIS installer missing"; exit 1; }
+          ls dist/DisTerm-*-win.zip >/dev/null 2>&1 || { echo "::error::win zip missing"; exit 1; }
+          test -f dist/latest.yml || { echo "::error::latest.yml missing: the feed flags did not reach electron-builder"; exit 1; }
+          feed=$(tr -d '\r' < dist/latest.yml)
+          grep -qx "version: ${version}" <<<"$feed" || { echo "::error::latest.yml does not name ${version}"; exit 1; }
+          grep -qx "path: ${installer}" <<<"$feed" || { echo "::error::latest.yml does not point at ${installer}"; exit 1; }
+
+      # Created as a draft and published only after every asset is up, so /releases/latest never
+      # points at a release whose latest.yml or installer is missing. No *.blockmap: differential
+      # downloads are out of scope and electron-updater falls back to the full installer.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version=$(node -p "require('./package.json').version")
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --verify-tag --draft --generate-notes
+          n=1
+          until gh release upload "$tag" "dist/DisTerm-Setup-${version}.exe" dist/DisTerm-*-win.zip dist/latest.yml --clobber --repo "$GITHUB_REPOSITORY"; do
+            if [ "$n" -ge 5 ]; then
+              echo "::error::asset upload failed after $n attempts"
+              exit 1
+            fi
+            echo "::warning::asset upload attempt $n failed (transient network?); retrying in 30s…"
+            n=$((n + 1))
+            sleep 30
+          done
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
