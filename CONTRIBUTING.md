@@ -345,7 +345,7 @@ Four things to know before touching a view:
   keeps the window at display rate, so a line moves only while something is passing along it.
 
 Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
-and `release` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
+and `release:mac` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
 work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
 
 **Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two

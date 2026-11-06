@@ -100,7 +100,7 @@ jobs:
           # the runner — GitHub then marks the job "cancelled" (bit v0.2.16 and v0.2.18). Assert
           # no-sleep for exactly as long as the release command runs.
           n=1
-          until caffeinate -dims npm run release; do
+          until caffeinate -dims npm run release:mac; do
             if [ "$n" -ge 3 ]; then
               echo "::error::release failed after $n attempts"
               exit 1

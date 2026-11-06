@@ -10,7 +10,7 @@ import path from 'path'
  * host (`host:build`) and the standalone Codex relay (`build:codex-relay` →
  * `out/main/codex-relay.js`, which `loadCodexRelayBundle` in src/main/index.ts uploads to an SSH
  * host for managed Codex accounts). The packaging scripts used to spell the steps out themselves,
- * and the list drifted: `dist`, `dist:linux`, `dist:win` and `release` all ran
+ * and the list drifted: `dist`, `dist:linux`, `dist:win` and `release` (now `release:mac`) all ran
  * `electron-vite build && npm run host:build` and never built the relay. MEASURED on the published
  * v0.3.7 artifacts: the macOS and Windows `app.asar` carry no `out/main/codex-relay.js` at all,
  * while the Linux `.deb` — built by release.yml with `npm run build` — does. Nothing reported it:
@@ -29,7 +29,7 @@ describe('packaging scripts', () => {
   it('finds the packaging scripts it is guarding', () => {
     // An empty list would make every assertion below vacuously green.
     expect(packaging.map(([name]) => name).sort()).toEqual(
-      expect.arrayContaining(['dist', 'dist:linux', 'dist:win', 'release'])
+      expect.arrayContaining(['dist', 'dist:linux', 'dist:win', 'release:mac'])
     )
   })
 
