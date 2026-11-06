@@ -292,6 +292,15 @@ import {
 } from '../lib/projectLimitGate'
 import { countOpenProjects, decideOpen } from '@shared/project-limit'
 import { opensProject, type OpenAction } from '../lib/projectOpens'
+import { disInvoiceCanvas } from '../lib/disInvoiceCanvas'
+import {
+  disInvoiceStickyFactory,
+  registerDisInvoiceProject,
+  runDisInvoiceSync,
+  type DisInvoiceProjectAdd,
+  type DisInvoiceSyncReport
+} from '../lib/disInvoiceSync'
+import type { DisInvoiceSyncControl } from '../components/kanban/DisInvoiceSyncButton'
 import { LiveLinkDialog } from '../components/LiveLinkDialog'
 import { requireProOr } from '../state/upgradeGate'
 import { startWatchLinkSync, useWatchLinks } from '../state/watchLinks'
@@ -840,7 +849,9 @@ import type {
   TranscriptHit
 } from '@shared/types'
 import type { KanbanCreateChoice, KanbanSession } from '../components/kanban/KanbanView'
-import { assignNode, defaultKanban, labelsForCard, migrateProjectTags, resolveColumnRef } from '../lib/kanban'
+import { assignNode, columnForNode, defaultKanban, labelsForCard, migrateProjectTags, resolveColumnRef } from '../lib/kanban'
+import { normalizeDisInvoiceRef } from '@shared/dis-invoice'
+import { disInvoiceBriefFile } from '../lib/disInvoiceBrief'
 import { registerWorkspaceDirty } from '../state/workspaceDirty'
 import { snapNodeToGrid } from '../lib/nodeSizing'
 import { snapResizeChanges } from '../lib/resizeSnap'
@@ -6455,6 +6466,80 @@ export function Canvas() {
     [commitActiveToStore, writeDisk]
   )
 
+  const disInvoiceCanvasWrites = useMemo(
+    () =>
+      disInvoiceCanvas({
+        flowProjectId: () => nodesProjectIdRef.current,
+        flowNodes: () => nodesRef.current,
+        setFlowNodes: (next) => {
+          nodesRef.current = next
+          setNodes(next)
+        },
+        castNewNode: castNewNodeNow,
+        markDirty
+      }),
+    [nodesProjectIdRef, nodesRef, setNodes, castNewNodeNow, markDirty]
+  )
+
+  const disInvoiceSyncRef = useRef<Promise<DisInvoiceSyncReport> | null>(null)
+
+  /** Not the deciding ask: `addDisInvoiceProject` asks again, last, because its own awaits come after
+   *  this one. */
+  const precheckDisInvoiceProject = useCallback(
+    async (): Promise<boolean> => {
+      const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
+      if (g !== true && !(await g)) return false
+      return true
+    },
+    []
+  )
+
+  /** `onRepoCloned` without its tab switch: Sync adds projects in the background. */
+  const addDisInvoiceProject = useCallback(
+    async (name: string, folder: string): Promise<DisInvoiceProjectAdd> => {
+      const probed = await api.workspace.probeFolder(folder).catch(() => null)
+      const g = opensProject(useProjects.getState().projects, { kind: 'new' }) ? gateProjectOpen() : true
+      if (g !== true && !(await g)) return { kind: 'refused' }
+      commitActiveToStore()
+      return registerDisInvoiceProject(useProjects.getState(), name, folder, probed)
+    },
+    [commitActiveToStore]
+  )
+
+  const syncDisInvoice = useCallback(
+    (): Promise<DisInvoiceSyncReport> => {
+      // Both boards have the button, and a second run could add a project the first is adding.
+      if (disInvoiceSyncRef.current) return disInvoiceSyncRef.current
+      const run = runDisInvoiceSync({
+        disInvoice: api.disInvoice,
+        projects: () => useProjects.getState().projects,
+        ...disInvoiceCanvasWrites,
+        stickyFactory: disInvoiceStickyFactory,
+        persist,
+        gateNewProject: precheckDisInvoiceProject,
+        addProject: addDisInvoiceProject
+      }).finally(() => {
+        disInvoiceSyncRef.current = null
+      })
+      disInvoiceSyncRef.current = run
+      return run
+    },
+    [disInvoiceCanvasWrites, persist, precheckDisInvoiceProject, addDisInvoiceProject]
+  )
+
+  const disInvoiceSyncControl = useMemo(
+    (): DisInvoiceSyncControl => ({
+      status: () => api.disInvoice.status(),
+      run: syncDisInvoice,
+      openSettings: () => {
+        setSettingsSection('dis-invoice')
+        setSettingsNonce((n) => n + 1)
+        setSettingsOpen(true)
+      }
+    }),
+    [syncDisInvoice]
+  )
+
   /**
    * Open a file-manager node. It starts at the group's worktree cwd if it is being created inside
    * a bound frame, else the project's own root — for an SSH project that is the REMOTE root, and
@@ -11258,6 +11343,9 @@ export function Canvas() {
     return node.selected && selected.length > 0 ? selected : [node.id]
   }, [])
 
+  // Assigned beside `startDisInvoiceWork`, which needs callbacks declared after the contexts below.
+  const disInvoiceStartItemsRef = useRef<(projectId: string, nodeId: string) => MenuItem[]>(() => [])
+
   /** Everything the node action rows (lib/nodeActionItems) read from, or do through, the LIVE
    *  canvas. Built fresh on every menu open, like the rows themselves. */
   const liveNodeActionCtx = useCallback(
@@ -11284,6 +11372,7 @@ export function Canvas() {
       toggleMarkdown,
       reloadTerminals,
       liveLinkMenuItems: (nodeId) => liveLinkMenuItems(nodeId),
+      disInvoiceStartItems: (nodeId) => disInvoiceStartItemsRef.current(useProjects.getState().activeProjectId, nodeId),
       branchClaude,
       transferConversation,
       restartAgentNode,
@@ -11342,12 +11431,14 @@ export function Canvas() {
     (projectId: string): NodeActionCtx => {
       const writes = nodeWritesFor(projectId)
       const liveLink = (nodeId: string): MenuItem[] => liveLinkMenuItems(nodeId, projectId)
+      const disInvoiceStart = (nodeId: string): MenuItem[] => disInvoiceStartItemsRef.current(projectId, nodeId)
       if (liveCanvasHolds(nodesProjectIdRef.current, useProjects.getState().activeProjectId, projectId)) {
         return {
           ...liveNodeActionCtx(),
           setNodesColor: writes.setColor,
           pickNodeIcon: writes.pickIcon,
-          liveLinkMenuItems: liveLink
+          liveLinkMenuItems: liveLink,
+          disInvoiceStartItems: disInvoiceStart
         }
       }
       const project = useProjects.getState().getProject(projectId)
@@ -11361,6 +11452,7 @@ export function Canvas() {
         cursorModels: () => cursorModelList(),
         writes,
         liveLinkMenuItems: liveLink,
+        disInvoiceStartItems: disInvoiceStart,
         connectedProjectIdForHost,
         refuse: () =>
           window.dispatchEvent(
@@ -11455,6 +11547,9 @@ export function Canvas() {
       pick?: {
         onPick: (agentId: AgentId, accountId?: string | null) => void
         label?: (agentLabel: string) => string
+        // An Omni lane's card starts in a project that need not be the active one, and only that
+        // project's accounts survive the launch.
+        projectId?: string
       }
     ): AgentAddEntry[] => {
       const create = (aid: AgentId, acct?: string | null): void => {
@@ -11468,7 +11563,7 @@ export function Canvas() {
       // after a `switchProject` — e.g. the sessions-sidebar "+" opening this menu on a non-active
       // project — resolves accounts against the project the user clicked, not the one that was
       // active when this callback was created. `switchProject` sets the store synchronously.
-      const project = useProjects.getState().getProject(useProjects.getState().activeProjectId)
+      const project = useProjects.getState().getProject(pick?.projectId ?? useProjects.getState().activeProjectId)
       const accounts = accountsForProject(useSettings.getState().settings.claudeAccounts, project)
       // The system entry shows the user's custom label / detected email so it stays
       // distinguishable from managed accounts (falls back to "System account").
@@ -12308,7 +12403,9 @@ export function Canvas() {
                 undefined,
                 wslShell
               )
-      const node = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
+      const shelled = wslShell ? { ...made, data: { ...made.data, shell: wslShell } } : made
+      const node =
+        choice.kind === 'terminal' && choice.title ? { ...shelled, data: { ...shelled.data, title: choice.title } } : shelled
       setNodes((ns) => [...ns, node])
       const board = project?.kanban ?? defaultKanban(targetProjectId)
       if (columnId) {
@@ -12345,20 +12442,16 @@ export function Canvas() {
 
   // ---- GitHub issue → agent session ("Start with agent ▸") ----
   /**
-   * What every issue start does once its agent node exists: file the new session card under the
-   * issue card's column (board metadata only — the same unpruned direct write `createNodeInColumn`
-   * uses, for the same reason: the fresh node is not in the derived session list yet), log its
-   * `card-created`, and record `run-started` on the issue card's history. ONE place for both
-   * "Start with agent" and "Start with agent in a new worktree", so the two cannot file a run
-   * differently.
+   * File a new agent session card under a board column (board metadata only — the same unpruned
+   * direct write `createNodeInColumn` uses, for the same reason: the fresh node is not in the derived
+   * session list yet) and log its `card-created`. Returns the card's title.
    */
-  const fileIssueSession = useCallback(
+  const fileAgentSession = useCallback(
     (
       columnId: string | null,
-      ref: IssueRef,
       created: { node: CanvasNode; placed: CanvasNode; projectId: string },
       agentId: AgentId
-    ) => {
+    ): string => {
       const { node, projectId: targetProjectId } = created
       const nodeId = node.id
       // The project addAgentNode charged the node to (its guarded, live read) — not a second read.
@@ -12381,17 +12474,36 @@ export function Canvas() {
         nodeId,
         event: { type: 'card-created', to: column?.title ?? 'Ungrouped', title }
       })
+      return title
+    },
+    [markDirty, castNewNodeNow]
+  )
+
+  /**
+   * What every issue start does once its agent node exists: `fileAgentSession` under the issue
+   * card's column, then `run-started` on the issue card's history. ONE place for both "Start with
+   * agent" and "Start with agent in a new worktree", so the two cannot file a run differently.
+   */
+  const fileIssueSession = useCallback(
+    (
+      columnId: string | null,
+      ref: IssueRef,
+      created: { node: CanvasNode; placed: CanvasNode; projectId: string },
+      agentId: AgentId
+    ) => {
+      const title = fileAgentSession(columnId, created, agentId)
+      const { node, projectId: targetProjectId } = created
       // …and the issue card's history records the run (with the session id nodeterm minted, when
       // the agent's CLI takes one — otherwise none, never a guess).
       const started = runStartedEntry(ref, {
-        id: nodeId,
+        id: node.id,
         title,
         agentId,
         agentSessionId: node.data.agentSessionId as string | undefined
       })
       if (started) useBoardLog.getState().append(sessionForProject(targetProjectId).api, targetProjectId, started)
     },
-    [markDirty, castNewNodeNow]
+    [fileAgentSession]
   )
 
   /** The reference + first prompt of an issue start, or a notice saying why nothing started. The
@@ -12443,6 +12555,66 @@ export function Canvas() {
       }).map((entry) => entry.item),
     [agentCreationEntries, startIssueAgent]
   )
+
+  /** An agent's brief goes in a prompt file, and only its path is typed: the task is client text. */
+  const startDisInvoiceWork = useCallback(
+    (projectId: string, nodeId: string, how: { agentId: AgentId; accountId?: string | null } | null): void => {
+      const refuse = (text: string): void => setNotice({ kind: 'error', text })
+      const start = async (): Promise<void> => {
+        if (!disInvoiceCanvasWrites.flowOwnsProject(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        const node = nodesRef.current.find((n) => n.id === nodeId)
+        const ref = normalizeDisInvoiceRef(node?.data.disInvoiceRef)
+        const project = useProjects.getState().getProject(projectId)
+        if (!node || !ref || !project) return refuse('That task’s note is no longer on this canvas.')
+        const columnId = columnForNode(project.kanban, nodeId)?.id ?? null
+        const title = toKanbanSession(node)?.title
+        if (!how) return createNodeInColumn({ kind: 'terminal', title }, columnId)
+        const brief = await disInvoiceBriefFile(
+          {
+            text: (node.data.text as string) ?? '',
+            taskId: ref.taskId,
+            ssh: !!project.ssh,
+            paneShell: trustedProjectShell(projectId) || useSettings.getState().settings.defaultShell
+          },
+          {
+            saveUpload: (name, data) => api.files.saveUpload(name, data),
+            encodeBase64: encodeUtf8Base64,
+            readableBriefPathInWsl: api.disInvoice.readableBriefPathInWsl
+          }
+        )
+        if (!brief.ok) return refuse(brief.notice)
+        if (!disInvoiceCanvasWrites.flowOwnsProject(projectId)) return refuse(CANVAS_NOT_ACTIVE_NOTICE)
+        const created = addAgentNode(how.agentId, undefined, undefined, how.accountId, undefined, { promptFile: brief.path, title })
+        if (created) fileAgentSession(columnId, created, how.agentId)
+      }
+      if (projectId === useProjects.getState().activeProjectId) {
+        void start()
+        return
+      }
+      // The Omni lane's path (`nodeterm:create-node`): the switch's React Flow load lands on a later tick.
+      switchProject(projectId)
+      setTimeout(() => void start(), 50)
+    },
+    [disInvoiceCanvasWrites, nodesRef, createNodeInColumn, addAgentNode, fileAgentSession, switchProject]
+  )
+
+  disInvoiceStartItemsRef.current = (projectId, nodeId) =>
+    sessionForProject(projectId).source === 'relay'
+      ? []
+      : [
+          {
+            type: 'submenu',
+            label: 'Start with agent',
+            icon: <IconPlay />,
+            children: agentCreationEntries(undefined, undefined, {
+              onPick: (agentId, accountId) => startDisInvoiceWork(projectId, nodeId, { agentId, accountId }),
+              label: (agentLabel) => agentLabel,
+              projectId
+            }).map((entry) => entry.item)
+          },
+          { label: 'Open terminal', icon: <IconTerminal />, onClick: () => startDisInvoiceWork(projectId, nodeId, null) },
+          { type: 'separator' }
+        ]
 
   // ---- Board dispatch: a card THIS person moves into the dispatch column starts its own run ----
   // Decisions are lib/boardDispatch (pure, tested); consent is machine-local settings
@@ -20054,6 +20226,7 @@ export function Canvas() {
           onAiName={aiNameFromKanban}
           onSetColor={setCardColor}
           onRunQueued={runQueuedFromOmni}
+          disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}
         />
       ) : perProjectKanbanOpen && (
         <KanbanView
@@ -20073,6 +20246,7 @@ export function Canvas() {
           onAiName={aiNameFromActiveKanban}
           onSetColor={setActiveCardColor}
           onRunQueued={runActiveQueuedFromBoard}
+          disInvoiceSync={sessionForProject(activeProjectId).source === 'relay' ? undefined : disInvoiceSyncControl}
           onAutoMoveFromPulls={autoMoveCardFromPulls}
           issueAgentMenu={issueAgentMenu}
           issueWorktreeMenu={issueWorktreeMenu}

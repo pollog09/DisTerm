@@ -155,6 +155,7 @@ import { makeSshSetupRunner } from './remote-ssh/ssh-setup-runner'
 import { createShareTeamHandlers, SHARE_INSTALL_TIMEOUT_MS } from './remote-ssh/share-team'
 import { registerShareTeamIpc } from './remote-ssh/share-team-ipc'
 import { registerGitHubIntegration } from '../core/github/integration'
+import { DIS_INVOICE_SECRET_FILE, registerDisInvoice } from '../core/dis-invoice/service'
 import {
   answerGitHubRead,
   GITHUB_READ_VERBS,
@@ -2187,6 +2188,11 @@ app.whenReady().then(async () => {
     run: runGitHubCliCommand
   })
   dropGitHubClient = (id) => github.service.dropClient(id)
+  registerDisInvoice({
+    platform: corePlatform,
+    secret: new ElectronSecretStore(app.getPath('userData'), safeStorage, DIS_INVOICE_SECRET_FILE),
+    git: gitService
+  })
   // What the renderer's board dispatch holds, reported for the `issues` control verb (display only).
   const boardDispatchReports = registerBoardDispatchReportIpc(corePlatform)
   // Machine-local record of what has already been reported, per project — never git-shared, or a

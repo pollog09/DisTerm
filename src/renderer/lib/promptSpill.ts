@@ -110,11 +110,18 @@ export async function spillPromptToFile(
   prompt: string,
   io: PromptSpillIo
 ): Promise<string | null> {
+  return writePromptFile(flattenPrompt(prompt), io)
+}
+
+/** A brief that was always going to be a file, so its structure is kept: `--prompt-file`'s behavior.
+ *  Same machine, name and sweep as a spill, and the same refusal on an SSH project's pane, which
+ *  cannot read this machine's files. Null if it could not be written. */
+export async function writePromptFile(text: string, io: PromptSpillIo): Promise<string | null> {
   try {
     // The prefix is what makes the core keep this file out of the 7-day uploads sweep
     // (@shared/launch-prompt): it is read at LAUNCH, which for a cold open can be weeks away.
     const name = `${LAUNCH_PROMPT_FILE_PREFIX}${Date.now().toString(36)}-${(spillSeq++).toString(36)}.txt`
-    const path = await io.saveUpload(name, io.encodeBase64(flattenPrompt(prompt)))
+    const path = await io.saveUpload(name, io.encodeBase64(text))
     return path || null
   } catch {
     return null

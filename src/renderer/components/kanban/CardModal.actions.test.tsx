@@ -84,6 +84,38 @@ function render(extra: Partial<Parameters<typeof CardModal>[0]> = {}): void {
 const button = (label: string): HTMLButtonElement | null =>
   document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
 
+describe('CardModal — start rows on a sticky mirroring a dis-invoice task', () => {
+  const mirror: KanbanSession = {
+    id: 's1',
+    title: 'Migrar el DNS',
+    color: '#fff',
+    kind: 'sticky',
+    text: 'Migrar el DNS',
+    spawn: {},
+    disInvoiceRef: { taskId: 1, columnaId: 1, textHash: 'abc' }
+  }
+  const OPEN = 'Start work on this task'
+
+  it('opens the rows it is handed, and a row runs and closes the card', () => {
+    const onClick = vi.fn()
+    const onClose = vi.fn()
+    render({ session: mirror, onClose, sessionActions: () => [{ label: 'Open terminal', onClick }] })
+    act(() => button(OPEN)!.click())
+    const row = [...document.body.querySelectorAll('button')].find((b) => b.textContent === 'Open terminal')
+    act(() => row!.click())
+    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('an ordinary note has no such button, and neither does a mirror with no rows', () => {
+    const { disInvoiceRef: _ref, ...plain } = mirror
+    render({ session: plain, sessionActions: () => [{ label: 'Open terminal', onClick: vi.fn() }] })
+    expect(button(OPEN)).toBeNull()
+    render({ session: mirror, sessionActions: () => [] })
+    expect(button(OPEN)).toBeNull()
+  })
+})
+
 describe('CardModal — node actions in the header', () => {
   it('opens on the live terminal by default', () => {
     render()

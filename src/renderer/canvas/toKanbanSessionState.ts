@@ -1,4 +1,5 @@
 import type { CanvasNodeState } from '@shared/types'
+import { normalizeDisInvoiceRef } from '@shared/dis-invoice'
 import { SYSTEM_NODE_COLORS } from '../state/workspace'
 import type { KanbanSession } from '../components/kanban/KanbanView'
 import type { ModalSpawn } from '../components/kanban/ModalTerminal'
@@ -37,6 +38,7 @@ export function toKanbanSessionState(n: CanvasNodeState): KanbanSession | null {
       text: txt,
       textUpdatedAt: n.textUpdatedAt,
       textUpdatedBy: n.textUpdatedBy,
+      disInvoiceRef: normalizeDisInvoiceRef(n.disInvoiceRef),
       spawn: {} as ModalSpawn
     }
   }

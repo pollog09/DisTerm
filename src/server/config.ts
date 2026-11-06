@@ -9,6 +9,7 @@ import {
   type TrustProxyConfig
 } from './proxy-trust'
 import type { RelayTransport } from '../core/relay/relay-socket'
+import type { DisInvoiceOverrides } from '../core/dis-invoice/overrides'
 
 /**
  * Fully-resolved server configuration. Produced by {@link resolveConfig} from the
@@ -40,6 +41,9 @@ export type ServerConfig = {
    * the run, which is exactly how a machine ends up with hooks that quietly do nothing.
    */
   installHooks?: boolean
+  /** Set only by `scripts/dis-invoice-server.ts`: `resolveConfig` reads no flag or variable for it,
+   *  so a real server always talks to the production connector and its own Documents folder. */
+  disInvoice?: DisInvoiceOverrides
   /**
    * Enable the Server Edition `/control/*` canvas runtime. Defaults OFF so an upgrade cannot
    * silently grant agents a new local execution surface. Environment:

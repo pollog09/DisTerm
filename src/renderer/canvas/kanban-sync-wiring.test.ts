@@ -86,7 +86,7 @@ describe('kanban sync wiring', () => {
     expect(helper).toContain('publisherRef.current?.publish(publishableLater(nodesRef.current))')
     for (const [start, cast] of [
       ['const createNodeInColumn = useCallback(', 'castNewNodeNow(targetProjectId, node)'],
-      ['const fileIssueSession = useCallback(', 'castNewNodeNow(targetProjectId, created.placed)']
+      ['const fileAgentSession = useCallback(', 'castNewNodeNow(targetProjectId, created.placed)']
     ]) {
       const body = between(canvas, start, 'useBoardLog.getState().append(')
       expect(body.indexOf(cast), start).toBeGreaterThan(-1)

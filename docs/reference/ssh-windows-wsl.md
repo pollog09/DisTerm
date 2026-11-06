@@ -185,7 +185,8 @@ the Windows one, got nothing, and the pill vanished.
   distro is asked at startup if it is already running. No gateway model and no account: neither's env crosses
   `wsl.exe` (WSLENV is an allowlist). Picking a managed account for a pane that would land in WSL is refused by name
   (`WSL_ACCOUNT_REFUSED`); a project's default account simply does not apply there. Not on "Start with agent": a long
-  prompt spills to a Windows file the distro's shell cannot read.
+  prompt spills to a Windows file the distro's shell cannot read. A dis-invoice task's start translates its brief's
+  path instead (`docs/reference/kanban.md`).
 - **What a pane in a distribution cannot do.** The pane probes see `wsl.exe` whatever runs inside, so Restart, Pause,
   Restart on subscription and Switch account are disabled with the reason (they poll for a shell taking back over,
   so the CLI would quit and nothing would resume it), and the session memory panel offers no Pause. Its transcript is

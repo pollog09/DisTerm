@@ -109,17 +109,19 @@ export async function listTerminalProfiles(
   ]
 }
 
-async function translateCwd(distro: string, cwd: string, exec: ProfileExec): Promise<string> {
-  if (cwd.startsWith('/')) return cwd
+/** `path` as `distro` spells it, from `wslpath` in there, so a custom automount root comes out right.
+ *  Throws with the real reason when it has no answer. */
+export async function wslLinuxPath(distro: string, path: string, exec: ProfileExec): Promise<string> {
+  if (path.startsWith('/')) return path
   const result = await exec(
     wslExe(),
-    ['-d', distro, '--exec', 'wslpath', '-a', '-u', cwd],
+    ['-d', distro, '--exec', 'wslpath', '-a', '-u', path],
     WSL_TRANSLATE_TIMEOUT_MS
   )
   const linuxPath = decodeWslOutput(result.stdout).trim()
   if (result.code !== 0 || !linuxPath.startsWith('/')) {
     const reason = decodeWslOutput(result.stderr).trim() || linuxPath || `exit ${result.code}`
-    throw new Error(`WSL could not open "${cwd}" in ${distro}: ${reason}`)
+    throw new Error(`WSL could not open "${path}" in ${distro}: ${reason}`)
   }
   return linuxPath
 }
@@ -133,7 +135,7 @@ export async function resolveWslLaunch(
   cwd: string | undefined,
   exec: ProfileExec = defaultExec
 ): Promise<WslLaunchPlan> {
-  const linuxCwd = cwd ? await translateCwd(distro, cwd, exec) : undefined
+  const linuxCwd = cwd ? await wslLinuxPath(distro, cwd, exec) : undefined
   return {
     file: wslExe(),
     args: [

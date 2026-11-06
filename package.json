@@ -29,6 +29,8 @@
     "server:build": "esbuild src/server/main.ts --bundle --platform=node --format=cjs --outfile=out/server/main.cjs --external:node-pty --external:ws --external:smart-whisper --external:ssh2 --tsconfig=tsconfig.node.json",
     "host:build": "esbuild src/session-host/host.ts --bundle --platform=node --format=cjs --outfile=out/session-host/host.cjs --external:node-pty --tsconfig=tsconfig.node.json",
     "server:start": "node out/server/main.cjs",
+    "fake:dis-invoice": "esbuild scripts/dis-invoice-fake.ts --bundle --platform=node --format=cjs --outfile=out/dis-invoice-fake.cjs --log-level=warning && node out/dis-invoice-fake.cjs",
+    "server:dis-invoice-proof": "esbuild scripts/dis-invoice-server.ts --bundle --platform=node --format=cjs --outfile=out/server/dis-invoice-proof.cjs --external:node-pty --external:ws --external:smart-whisper --external:ssh2 --tsconfig=tsconfig.node.json --log-level=warning && node out/server/dis-invoice-proof.cjs",
     "server:dev": "npm run build && npm run server:build && node out/server/main.cjs",
     "make-icon": "node scripts/make-icon.mjs",
     "make-social": "node scripts/make-social.mjs",

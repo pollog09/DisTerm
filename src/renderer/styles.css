@@ -14915,6 +14915,14 @@ button.pull-checks__name {
     padding: 2px 6px;
   }
 }
+/* Here the controls cluster (top 62px, 34px tall) spans most of the strip, so clearing it sideways
+   leaves no room: the strip moves below it instead. */
+@media (max-width: 640px) {
+  .kanban-header {
+    margin-top: 58px;
+    padding-right: 18px;
+  }
+}
 
 /* ── Board label filter (header) ── */
 .kanban-header__filter {
@@ -14937,6 +14945,40 @@ button.pull-checks__name {
 .kanban-filter-btn--on {
   border-color: var(--accent);
   color: var(--text-strong);
+}
+/* Pinned to the window's edge, not the button: each board puts the button somewhere else in its
+   header, and a menu hanging off it runs off screen. Below the floating top-right controls. */
+.kanban-filter-menu.kanban-sync__report {
+  position: fixed;
+  top: 96px;
+  right: 16px;
+  left: auto;
+  width: min(360px, calc(100vw - 32px));
+  gap: 8px;
+  padding: 10px;
+}
+/* Above the Omni board's sticky lane headers, which rank 1 and come later in the document. */
+.global-kanban > .kanban-header {
+  z-index: 2;
+}
+.kanban-sync__line {
+  margin: 0;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+.kanban-sync__line--warn {
+  color: var(--warn);
+}
+.kanban-sync__line--error {
+  color: var(--danger);
+}
+.kanban-sync__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .kanban-filter-menu {
   position: absolute;

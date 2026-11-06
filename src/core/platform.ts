@@ -19,6 +19,9 @@ export interface CorePlatform {
    *  than copied beside it. OPTIONAL for the same reason as `resourcesPath`: an Electron notion
    *  the Server Edition omits. */
   readonly appPath?: string
+  /** Electron's `app.getPath('documents')`, which follows a redirected Documents folder such as
+   *  OneDrive's. OPTIONAL: the Server Edition omits it and uses `~/Documents` on the server host. */
+  readonly documentsDir?: string
   /** Seal / unseal a secret at rest, byte-in byte-out. Present together on a shell that can
    *  encrypt (Desktop: Electron safeStorage). Their ABSENCE is a supported configuration, not a
    *  degradation: the Server Edition runs headless with no OS keychain and deliberately stores

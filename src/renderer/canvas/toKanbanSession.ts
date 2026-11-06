@@ -2,6 +2,7 @@ import type { SshConnection } from '@shared/ssh'
 import { groupBoundBranch, nearestBoundBranch } from '@shared/pull-card-links'
 import type { NodeIcon } from '@shared/node-icon'
 import { normalizeIssueRef } from '@shared/github-issue-ref'
+import { normalizeDisInvoiceRef } from '@shared/dis-invoice'
 import { SYSTEM_NODE_COLORS, type CanvasNode } from '../state/workspace'
 import type { KanbanSession } from '../components/kanban/KanbanView'
 import type { PendingLaunch } from '@shared/types'
@@ -37,6 +38,7 @@ export function toKanbanSession(n: CanvasNode): KanbanSession | null {
       text,
       textUpdatedAt: n.data.textUpdatedAt as number | undefined,
       textUpdatedBy: n.data.textUpdatedBy as string | undefined,
+      disInvoiceRef: normalizeDisInvoiceRef(n.data.disInvoiceRef),
       // Sticky cards never open a live terminal — the modal reads no spawn info.
       spawn: {}
     }

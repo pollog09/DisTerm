@@ -1,0 +1,718 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { CanvasNodeState, Project, ProjectKanban } from '@shared/types'
+import type { DisInvoiceApi, DisInvoiceColumn, DisInvoiceFetchResult, DisInvoiceLinks, DisInvoiceTask } from '@shared/dis-invoice'
+import { useProjects } from '../state/projects'
+import { flowToNodeStates, nodeStatesToFlow } from '../state/workspace'
+import {
+  disInvoiceStickyFactory,
+  registerDisInvoiceProject,
+  runDisInvoiceSync,
+  summarizeDisInvoiceSync,
+  type DisInvoiceSyncDeps,
+  type DisInvoiceSyncReport
+} from './disInvoiceSync'
+import type { ReconcileReport } from '@shared/dis-invoice-reconcile'
+
+const COLUMNS: DisInvoiceColumn[] = [
+  { id: 1, nombre: 'Por hacer', orden: 1, alFacturar: false, terminada: false },
+  { id: 2, nombre: 'En progreso', orden: 2, alFacturar: false, terminada: false },
+  { id: 3, nombre: 'Hecho', orden: 3, alFacturar: false, terminada: true },
+  { id: 4, nombre: 'Facturado', orden: 4, alFacturar: true, terminada: true }
+]
+
+const task = (id: number, proyectoId: number | null = 7, over: Partial<DisInvoiceTask> = {}): DisInvoiceTask => ({
+  id,
+  titulo: `Tarea ${id}`,
+  descripcion: null,
+  prioridad: 'MEDIA',
+  fechaLimite: null,
+  columnaId: 1,
+  proyecto: proyectoId === null ? null : { id: proyectoId, nombre: `P${proyectoId}`, githubRepo: null },
+  cliente: { id: 4, nombre: 'Exotic Garage' },
+  ...over
+})
+
+function harness(result: DisInvoiceFetchResult, links: DisInvoiceLinks, projects: Project[]) {
+  const log: string[] = []
+  const nodes = new Map(projects.map((p) => [p.id, p.nodes]))
+  const boards = new Map<string, ProjectKanban | undefined>(projects.map((p) => [p.id, p.kanban]))
+  const disInvoice: DisInvoiceApi = {
+    status: async () => ({ hasKey: true, storage: 'encrypted' }),
+    saveConfig: async () => ({ ok: true }),
+    clearKey: async () => {},
+    fetch: async () => {
+      log.push('fetch')
+      return result
+    },
+    links: async () => links,
+    saveLink: async (id, projectId) => {
+      log.push(`saveLink ${id} ${projectId}`)
+      return true
+    },
+    plannedFolder: async (id) => links[id]?.folder ?? `/docs/${id}`,
+    ensureFolder: async (id) => {
+      log.push(`ensure ${id}`)
+      return { ok: true, folder: links[id]?.folder ?? `/docs/${id}`, empty: true, isRepo: false }
+    },
+    clone: async () => ({ ok: true }),
+    inspectFolder: async () => ({ originRepo: null, canvasExposed: false }),
+    readableBriefPathInWsl: async () => ({ ok: false, message: 'this test starts no agent' })
+  }
+  const deps: DisInvoiceSyncDeps = {
+    disInvoice,
+    projects: () => projects,
+    nodesOf: (id) => nodes.get(id) ?? [],
+    boardOf: (id) => boards.get(id),
+    stickyFactory: disInvoiceStickyFactory,
+    applyProject: (id, upserts, board) => {
+      if (upserts.length > 0) {
+        log.push(`nodes ${id} ${upserts.map((n) => n.id).join(',')}`)
+        const merged = new Map((nodes.get(id) ?? []).map((n) => [n.id, n]))
+        for (const upsert of upserts) merged.set(upsert.id, upsert)
+        nodes.set(id, [...merged.values()])
+      }
+      if (board) {
+        log.push(`board ${id}`)
+        boards.set(id, board)
+      }
+    },
+    persist: async () => {
+      log.push('persist')
+    },
+    gateNewProject: async () => {
+      log.push('gate')
+      return true
+    },
+    addProject: async () => {
+      throw new Error('this test adds no project')
+    }
+  }
+  return { deps, log, nodes, boards }
+}
+
+const project = (id: string, over: Partial<Project> = {}): Project => ({
+  id,
+  name: id,
+  color: '#111',
+  viewport: { x: 0, y: 0, zoom: 1 },
+  nodes: [],
+  cwd: `/work/${id}`,
+  storeInAppData: true,
+  ...over
+})
+
+const ok = (tasks: DisInvoiceTask[], columns = COLUMNS): DisInvoiceFetchResult => ({ ok: true, columns, tasks })
+
+describe('runDisInvoiceSync over linked projects', () => {
+  it('writes each project’s nodes before its board, then persists exactly once, last', async () => {
+    const { deps, log } = harness(
+      ok([task(1, 7), task(2, 8)]),
+      { 7: { projectId: 'a', folder: '/work/a' }, 8: { projectId: 'b', folder: '/work/b' } },
+      [project('a'), project('b')]
+    )
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'nodes a sticky-dis-7-1', 'board a', 'nodes b sticky-dis-8-2', 'board b', 'persist'])
+    expect(report.projects.map((p) => [p.projectId, p.reconcile.created])).toEqual([
+      ['a', [1]],
+      ['b', [2]]
+    ])
+  })
+
+  it('applies every project with no await between them', async () => {
+    const { deps } = harness(
+      ok([task(1, 7), task(2, 8)]),
+      { 7: { projectId: 'a', folder: '/work/a' }, 8: { projectId: 'b', folder: '/work/b' } },
+      [project('a'), project('b')]
+    )
+    const events: string[] = []
+    const applyProject = deps.applyProject
+    deps.applyProject = (id, upserts, board) => {
+      events.push(`apply ${id}`)
+      void Promise.resolve().then(() => events.push('microtask ran'))
+      applyProject(id, upserts, board)
+    }
+    await runDisInvoiceSync(deps)
+    expect(events.slice(0, 2)).toEqual(['apply a', 'apply b'])
+  })
+
+  it.each([
+    [{ ok: false, reason: 'unauthorized', message: 'nope' } as DisInvoiceFetchResult, { reason: 'unauthorized', message: 'nope' }],
+    [{ ok: false, reason: 'server', message: 'page 2' } as DisInvoiceFetchResult, { reason: 'server', message: 'page 2' }],
+    [{ ok: false, reason: 'no-key', message: 'add one' } as DisInvoiceFetchResult, { reason: 'no-key', message: 'add one' }]
+  ])('a failed fetch changes nothing and is reported', async (result, failure) => {
+    const { deps, log } = harness(result, { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    const report = await runDisInvoiceSync(deps)
+    expect(report.failure).toEqual(failure)
+    expect(log).toEqual(['fetch'])
+    expect(summarizeDisInvoiceSync(report)).toEqual([{ tone: 'error', text: failure.message }])
+  })
+
+  it('no columns changes nothing, and says so', async () => {
+    const { deps, log } = harness(ok([task(1)], []), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch'])
+    expect(summarizeDisInvoiceSync(report)).toEqual([
+      { tone: 'warn', text: 'dis-invoice has no columns yet. Open its board once, then sync again. Nothing was changed.' }
+    ])
+  })
+
+  it('a second sync writes nothing and does not persist', async () => {
+    const { deps, log } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    await runDisInvoiceSync(deps)
+    log.length = 0
+    const second = await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch'])
+    expect(summarizeDisInvoiceSync(second)).toEqual([{ tone: 'ok', text: 'Already up to date across 1 project.' }])
+  })
+
+  it('finishes the stickies of a linked project with nothing pending any more', async () => {
+    const { deps, boards, nodes } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    await runDisInvoiceSync(deps)
+    const report = await (async () => {
+      deps.disInvoice.fetch = async () => ok([])
+      return runDisInvoiceSync(deps)
+    })()
+    expect(report.projects[0].reconcile.finished).toEqual([1])
+    expect(boards.get('a')?.assignments).toEqual([expect.objectContaining({ nodeId: 'sticky-dis-7-1', columnId: 'dis-invoice:3' })])
+    expect(nodes.get('a')?.[0].disInvoiceRef?.movedToFinished).toBe(true)
+  })
+
+  it('two dis-invoice projects on one DisTerm project do not warn about each other, or twice about one task', async () => {
+    const links = { 7: { projectId: 'a', folder: '/work/a' }, 8: { projectId: 'a', folder: '/work/a' } }
+    const { deps } = harness(ok([task(1, 7), task(2, 8)]), links, [project('a')])
+    await runDisInvoiceSync(deps)
+    const quiet = await runDisInvoiceSync(deps)
+    expect(quiet.projects.map((p) => p.reconcile.reassigned)).toEqual([[], []])
+    expect(summarizeDisInvoiceSync(quiet)).toEqual([{ tone: 'ok', text: 'Already up to date across 2 projects.' }])
+
+    deps.disInvoice.fetch = async () => ok([task(1, 9), task(2, 8)])
+    deps.disInvoice.links = async () => links
+    deps.disInvoice.ensureFolder = async () => ({ ok: false, message: 'no folder in this test' })
+    const moved = await runDisInvoiceSync(deps)
+    expect(summarizeDisInvoiceSync(moved)).toContainEqual({
+      tone: 'warn',
+      text: '1 task moved to another project in dis-invoice. The old notes were left in place.'
+    })
+  })
+
+  it('says when a finished task has no column to go to, and moves it once one exists', async () => {
+    const { deps, boards, nodes } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    await runDisInvoiceSync(deps)
+    deps.disInvoice.fetch = async () => ok([], COLUMNS.filter((c) => !c.terminada))
+    const stuck = await runDisInvoiceSync(deps)
+    expect(summarizeDisInvoiceSync(stuck)).toEqual([
+      { tone: 'ok', text: 'Already up to date across 1 project.' },
+      { tone: 'warn', text: '1 task left the pending list, but dis-invoice lists no finished column, so no card was moved. They move once it has one.' }
+    ])
+    expect(nodes.get('a')?.[0].disInvoiceRef?.movedToFinished).toBeUndefined()
+
+    deps.disInvoice.fetch = async () => ok([])
+    const landed = await runDisInvoiceSync(deps)
+    expect(landed.projects[0].reconcile.finished).toEqual([1])
+    expect(boards.get('a')?.assignments).toEqual([expect.objectContaining({ nodeId: 'sticky-dis-7-1', columnId: 'dis-invoice:3' })])
+  })
+
+  it('counts tasks without a project and syncs the rest', async () => {
+    const { deps } = harness(ok([task(1), task(2, null), task(3, null)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a')])
+    const report = await runDisInvoiceSync(deps)
+    expect(report.withoutProject).toBe(2)
+    expect(report.projects[0].reconcile.created).toEqual([1])
+    expect(summarizeDisInvoiceSync(report)[1]).toEqual({
+      tone: 'warn',
+      text: '2 tasks skipped because they have no project in dis-invoice. Assign one and sync again.'
+    })
+  })
+
+  it('skips a relay tab and reports it', async () => {
+    const { deps, log } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a', { remote: {} as never })])
+    const report = await runDisInvoiceSync(deps)
+    expect(report.skippedRemote).toEqual(['P7'])
+    expect(log).toEqual(['fetch'])
+  })
+
+  it('writes into a closed linked project without reopening it', async () => {
+    const closed = project('a', { closed: true })
+    const { deps, log } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [closed])
+    await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'nodes a sticky-dis-7-1', 'board a', 'persist'])
+    expect(closed.closed).toBe(true)
+  })
+
+  it('reports client text git can see in a folder-backed project', async () => {
+    const { deps } = harness(ok([task(1)]), { 7: { projectId: 'a', folder: '/work/a' } }, [project('a', { storeInAppData: undefined })])
+    deps.disInvoice.inspectFolder = async () => ({ originRepo: null, canvasExposed: true })
+    const report = await runDisInvoiceSync(deps)
+    expect(report.projects[0].canvasExposed).toBe(true)
+    expect(summarizeDisInvoiceSync(report)[1].text).toBe(
+      "P7: client task text is in .nodeterm/project.json and git can see it. Ignore .nodeterm/ or store this project's canvas in app data before you commit."
+    )
+  })
+})
+
+describe('runDisInvoiceSync resolving a project', () => {
+  const withRepo = (id: number, repo: string | null, nombre = `P${id}`): DisInvoiceTask =>
+    task(id, id, { proyecto: { id, nombre, githubRepo: repo } })
+
+  function creating(tasks: DisInvoiceTask[], links: DisInvoiceLinks = {}, projects: Project[] = []) {
+    const h = harness(ok(tasks), links, projects)
+    h.deps.addProject = async (name, folder) => {
+      h.log.push(`add ${name} ${folder}`)
+      const added = project(`new-${name}`, { name, cwd: folder })
+      projects.push(added)
+      return { kind: 'added', project: added }
+    }
+    return { ...h, projects }
+  }
+
+  it('prefers the saved link and does no folder work', async () => {
+    const { deps, log } = creating([withRepo(7, 'o/r')], { 7: { projectId: 'a', folder: '/x' } }, [project('a')])
+    await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'nodes a sticky-dis-7-7', 'board a', 'persist'])
+  })
+
+  it('links an open local project whose origin matches, before any folder work', async () => {
+    const { deps, log } = creating([withRepo(7, 'o/r')], {}, [project('other'), project('match'), project('closed', { closed: true })])
+    deps.disInvoice.inspectFolder = async (cwd) => ({ originRepo: cwd === '/work/match' || cwd === '/work/closed' ? 'o/r' : 'x/y', canvasExposed: false })
+    await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'saveLink 7 match', 'nodes match sticky-dis-7-7', 'board match', 'persist'])
+  })
+
+  it('never reuses a remote or SSH project through its origin', async () => {
+    const { deps, log } = creating([withRepo(7, 'o/r')], {}, [
+      project('relay', { remote: {} as never }),
+      project('ssh', { ssh: {} as never })
+    ])
+    deps.disInvoice.inspectFolder = async () => ({ originRepo: 'o/r', canvasExposed: false })
+    await runDisInvoiceSync(deps)
+    expect(log).toContain('add P7 /docs/7')
+    expect(log).not.toContain('saveLink 7 relay')
+  })
+
+  it('links a project already at the target folder, closed or not, and does not reopen it', async () => {
+    const closed = project('there', { cwd: '/docs/7', closed: true })
+    const { deps, log } = creating([withRepo(7, null)], {}, [closed])
+    await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'saveLink 7 there', 'nodes there sticky-dis-7-7', 'board there', 'persist'])
+    expect(closed.closed).toBe(true)
+  })
+
+  it('creates: gate, clone, add, link, then applies', async () => {
+    const { deps, log } = creating([withRepo(7, 'o/r')])
+    const cloned: number[] = []
+    deps.disInvoice.clone = async (id) => {
+      cloned.push(id)
+      log.push(`clone ${id}`)
+      return { ok: true }
+    }
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'gate', 'ensure 7', 'clone 7', 'add P7 /docs/7', 'saveLink 7 new-P7', 'nodes new-P7 sticky-dis-7-7', 'board new-P7', 'persist'])
+    expect(report.projects[0].created).toBe(true)
+    expect(summarizeDisInvoiceSync(report)[0]).toEqual({ tone: 'ok', text: '1 project added, 1 repository cloned, 3 columns added, 1 task added.' })
+  })
+
+  it('creates without a repository: no clone', async () => {
+    const { deps, log } = creating([withRepo(7, null)])
+    await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch', 'gate', 'ensure 7', 'add P7 /docs/7', 'saveLink 7 new-P7', 'nodes new-P7 sticky-dis-7-7', 'board new-P7', 'persist'])
+  })
+
+  it('a refused gate stops further creation, reports what was left, and linked projects still update', async () => {
+    const { deps, log } = creating(
+      [withRepo(1, null), withRepo(2, null), withRepo(3, null), withRepo(9, null)],
+      { 9: { projectId: 'kept', folder: '/work/kept' } },
+      [project('kept')]
+    )
+    let asks = 0
+    deps.gateNewProject = async () => {
+      asks++
+      log.push('gate')
+      return asks === 1
+    }
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toEqual([
+      'fetch',
+      'gate',
+      'ensure 1',
+      'add P1 /docs/1',
+      'saveLink 1 new-P1',
+      'gate',
+      'nodes new-P1 sticky-dis-1-1',
+      'board new-P1',
+      'nodes kept sticky-dis-9-9',
+      'board kept',
+      'persist'
+    ])
+    expect(report.stopped).toEqual(['P2', 'P3'])
+    expect(summarizeDisInvoiceSync(report)).toContainEqual({
+      tone: 'warn',
+      text: 'Stopped before adding: P2, P3. No more projects can be opened right now, so their tasks did not sync.'
+    })
+  })
+
+  it('a refusal at the final ask stops too, after the one folder it could not spare, and makes no more', async () => {
+    const { deps, log } = creating([withRepo(1, 'o/r'), withRepo(2, null)])
+    deps.addProject = async () => ({ kind: 'refused' })
+    const report = await runDisInvoiceSync(deps)
+    expect(report.stopped).toEqual(['P1', 'P2'])
+    expect(log).toEqual(['fetch', 'gate', 'ensure 1'])
+  })
+
+  it('a refusal at the first ask makes no folder at all', async () => {
+    const { deps, log } = creating([withRepo(1, null), withRepo(2, null)])
+    deps.gateNewProject = async () => {
+      log.push('gate')
+      return false
+    }
+    const report = await runDisInvoiceSync(deps)
+    expect(report.stopped).toEqual(['P1', 'P2'])
+    expect(log).toEqual(['fetch', 'gate'])
+  })
+
+  it('after a refusal a project already at its folder still links, without asking again', async () => {
+    const { deps, log } = creating([withRepo(1, null), withRepo(2, null)], {}, [project('there', { cwd: '/docs/2' })])
+    deps.gateNewProject = async () => {
+      log.push('gate')
+      return false
+    }
+    const report = await runDisInvoiceSync(deps)
+    expect(report.stopped).toEqual(['P1'])
+    expect(log).toEqual(['fetch', 'gate', 'saveLink 2 there', 'nodes there sticky-dis-2-2', 'board there', 'persist'])
+  })
+
+  it.each([
+    ['relay', { remote: true }],
+    ['SSH', { ssh: {} as never }]
+  ] as Array<[string, Partial<Project>]>)('a %s project at the target folder changes nothing and is reported', async (_kind, over) => {
+    const held = project('held', { cwd: '/docs/7', closed: true, ...over })
+    const before = { ...held }
+    const { deps, log } = creating([withRepo(7, 'o/r')], {}, [held])
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toEqual(['fetch'])
+    expect(report.skippedRemote).toEqual(['P7'])
+    expect(report.projects).toEqual([])
+    expect(held).toEqual(before)
+    expect(summarizeDisInvoiceSync(report)[1]).toEqual({ tone: 'warn', text: 'Skipped, because the project runs on another machine: P7.' })
+  })
+
+  it('a relay project that takes the folder during the clone is reported the same way, with no link', async () => {
+    const { deps, log } = creating([withRepo(7, null)])
+    deps.addProject = async () => ({ kind: 'foreign' })
+    const report = await runDisInvoiceSync(deps)
+    expect(report.skippedRemote).toEqual(['P7'])
+    expect(report.stopped).toEqual([])
+    expect(log).toEqual(['fetch', 'gate', 'ensure 7'])
+  })
+
+  it('a saved link to an SSH project changes nothing and is reported', async () => {
+    const { deps, log } = creating([withRepo(7, 'o/r')], { 7: { projectId: 'a', folder: '/work/a' } }, [project('a', { ssh: {} as never })])
+    const report = await runDisInvoiceSync(deps)
+    expect(report.skippedRemote).toEqual(['P7'])
+    expect(log).toEqual(['fetch'])
+  })
+
+  describe('a linked project whose repository was named later', () => {
+    const linked = { 7: { projectId: 'a', folder: '/work/a' } }
+
+    it('is cloned into its empty folder, and says so', async () => {
+      const { deps, log } = creating([withRepo(7, 'o/r')], linked, [project('a')])
+      deps.disInvoice.clone = async (id) => {
+        log.push(`clone ${id}`)
+        return { ok: true }
+      }
+      const report = await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch', 'ensure 7', 'clone 7', 'nodes a sticky-dis-7-7', 'board a', 'persist'])
+      expect(report.projects[0].cloned).toBe(true)
+      expect(report.projects[0].created).toBe(false)
+    })
+
+    it('leaves a folder with other files alone and reports the skip', async () => {
+      const { deps } = creating([withRepo(7, 'o/r')], linked, [project('a')])
+      deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/work/a', empty: false, isRepo: false })
+      deps.disInvoice.clone = async () => {
+        throw new Error('must not clone over a folder with files')
+      }
+      const report = await runDisInvoiceSync(deps)
+      expect(report.projects[0].cloneSkipped).toBe(true)
+      expect(report.projects[0].reconcile.created).toEqual([7])
+      expect(summarizeDisInvoiceSync(report)).toContainEqual({
+        tone: 'warn',
+        text: 'P7: its folder already has other files and is not a repository, so nothing was cloned. Its tasks still synced.'
+      })
+    })
+
+    it('never touches an existing repository, whatever its origin', async () => {
+      const { deps } = creating([withRepo(7, 'o/r')], linked, [project('a')])
+      deps.disInvoice.inspectFolder = async () => ({ originRepo: 'someone/else', canvasExposed: false })
+      deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/work/a', empty: false, isRepo: true })
+      deps.disInvoice.clone = async () => {
+        throw new Error('must not clone over a repository')
+      }
+      const report = await runDisInvoiceSync(deps)
+      expect(report.projects[0]).toMatchObject({ cloned: false, cloneSkipped: false, cloneFailed: null })
+    })
+
+    it('does no folder work once the origin already matches, or with no repository named', async () => {
+      const matched = creating([withRepo(7, 'o/r')], linked, [project('a')])
+      matched.deps.disInvoice.inspectFolder = async () => ({ originRepo: 'o/r', canvasExposed: false })
+      await runDisInvoiceSync(matched.deps)
+      expect(matched.log).toEqual(['fetch', 'nodes a sticky-dis-7-7', 'board a', 'persist'])
+
+      const none = creating([withRepo(7, null)], linked, [project('a')])
+      await runDisInvoiceSync(none.deps)
+      expect(none.log).toEqual(['fetch', 'nodes a sticky-dis-7-7', 'board a', 'persist'])
+    })
+
+    it('does not clone into a folder the project has moved away from', async () => {
+      const { deps, log } = creating([withRepo(7, 'o/r')], linked, [project('a', { cwd: '/moved/a' })])
+      const report = await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch', 'nodes a sticky-dis-7-7', 'board a', 'persist'])
+      expect(report.projects[0]).toMatchObject({ cloned: false, cloneSkipped: false, cloneFailed: null })
+    })
+
+    it('still syncs its tasks when the clone fails, reports it, and tries again next sync', async () => {
+      const { deps, log } = creating([withRepo(7, 'o/r')], linked, [project('a')])
+      deps.disInvoice.clone = async (id) => {
+        log.push(`clone ${id}`)
+        return { ok: false, message: 'fatal: could not read Username' }
+      }
+      const report = await runDisInvoiceSync(deps)
+      expect(report.failed).toEqual([])
+      expect(report.projects[0].cloneFailed).toBe('fatal: could not read Username')
+      expect(report.projects[0].reconcile.created).toEqual([7])
+      expect(summarizeDisInvoiceSync(report)).toContainEqual({
+        tone: 'error',
+        text: 'P7: its tasks synced, but its repository could not be cloned and will be retried next sync. fatal: could not read Username'
+      })
+      log.length = 0
+      await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch', 'ensure 7', 'clone 7'])
+    })
+  })
+
+  describe('an unavailable project', () => {
+    it('gets no stickies, because a save never writes a placeholder’s nodes', async () => {
+      const { deps, log } = creating([withRepo(7, 'o/r')], { 7: { projectId: 'a', folder: '/work/a' } }, [project('a', { unavailable: true })])
+      const report = await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch'])
+      expect(report.unavailable).toEqual(['P7'])
+      expect(report.projects).toEqual([])
+      expect(summarizeDisInvoiceSync(report)[1]).toEqual({
+        tone: 'warn',
+        text: "Skipped, because the project's folder is unavailable: P7. Restore it and sync again."
+      })
+    })
+
+    it('is not linked when it merely sits at the target folder', async () => {
+      const { deps, log } = creating([withRepo(7, null)], {}, [project('there', { cwd: '/docs/7', unavailable: true })])
+      const report = await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch'])
+      expect(report.unavailable).toEqual(['P7'])
+    })
+
+    it('keeps its finished stickies waiting too, and says so', async () => {
+      const { deps, log } = creating([], { 7: { projectId: 'a', folder: '/work/a' } }, [project('a', { unavailable: true, name: 'Vieja' })])
+      const report = await runDisInvoiceSync(deps)
+      expect(log).toEqual(['fetch'])
+      expect(report.unavailable).toEqual(['Vieja'])
+    })
+  })
+
+  it('a failed clone skips that project, reports it, and continues with the next', async () => {
+    const { deps, log } = creating([withRepo(1, 'o/r'), withRepo(2, null)])
+    deps.disInvoice.clone = async () => ({ ok: false, message: 'fatal: could not read Username' })
+    const report = await runDisInvoiceSync(deps)
+    expect(report.failed).toEqual([{ nombre: 'P1', message: 'fatal: could not read Username' }])
+    expect(log).toContain('add P2 /docs/2')
+    expect(log).not.toContain('add P1 /docs/1')
+    expect(summarizeDisInvoiceSync(report)).toContainEqual({
+      tone: 'error',
+      text: 'P1 was skipped and will be retried next sync. fatal: could not read Username'
+    })
+  })
+
+  it('a folder that is not a repository keeps its files: no clone, and the tasks still sync', async () => {
+    const { deps, log } = creating([withRepo(1, 'o/r')])
+    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', empty: false, isRepo: false })
+    const report = await runDisInvoiceSync(deps)
+    expect(log).toContain('add P1 /docs/1')
+    expect(log.join()).not.toContain('clone')
+    expect(report.projects[0].cloneSkipped).toBe(true)
+    expect(report.projects[0].reconcile.created).toEqual([1])
+  })
+
+  it('an existing repository is used as it is: never cloned over', async () => {
+    const { deps, log } = creating([withRepo(1, 'o/r')])
+    deps.disInvoice.ensureFolder = async () => ({ ok: true, folder: '/docs/1', empty: false, isRepo: true })
+    const report = await runDisInvoiceSync(deps)
+    expect(log.join()).not.toContain('clone')
+    expect(report.projects[0].cloneSkipped).toBe(false)
+  })
+
+  it('a link whose project is gone falls through and makes a new one', async () => {
+    const { deps, log } = creating([withRepo(7, null)], { 7: { projectId: 'deleted', folder: '/docs/7' } })
+    await runDisInvoiceSync(deps)
+    expect(log).toContain('add P7 /docs/7')
+  })
+})
+
+describe('summarizeDisInvoiceSync', () => {
+  const outcome = (over: Partial<DisInvoiceSyncReport['projects'][number]>, reconcile: Partial<ReconcileReport> = {}) => ({
+    proyectoId: 7,
+    nombre: 'P7',
+    projectId: 'a',
+    created: false,
+    cloned: false,
+    cloneSkipped: false,
+    cloneFailed: null,
+    canvasExposed: false,
+    reconcile: {
+      created: [],
+      textUpdated: [],
+      moved: [],
+      metaUpdated: [],
+      finished: [],
+      noFinishedColumn: [],
+      reassigned: [],
+      unplaced: [],
+      columnsAdded: 0,
+      duplicatesCleared: 0,
+      ...reconcile
+    },
+    ...over
+  })
+  const report = (project: ReturnType<typeof outcome>): DisInvoiceSyncReport => ({
+    noColumns: false,
+    projects: [project],
+    withoutProject: 0,
+    stopped: [],
+    failed: [],
+    skippedRemote: [],
+    unavailable: []
+  })
+  const first = (project: ReturnType<typeof outcome>): string => summarizeDisInvoiceSync(report(project))[0].text
+
+  it.each([
+    [outcome({}, { columnsAdded: 2 }), '2 columns added.'],
+    [outcome({}, { columnsAdded: 1 }), '1 column added.'],
+    [outcome({}, { duplicatesCleared: 1 }), '1 duplicate note unlinked.'],
+    [outcome({}, { duplicatesCleared: 2 }), '2 duplicate notes unlinked.'],
+    [outcome({ cloned: true }), '1 repository cloned.']
+  ])('names a change instead of saying it is up to date: %#', (project, text) => {
+    expect(first(project)).toBe(text)
+  })
+
+  it('still says up to date when nothing changed', () => {
+    expect(first(outcome({}))).toBe('Already up to date across 1 project.')
+  })
+})
+
+describe('registerDisInvoiceProject', () => {
+  beforeEach(() => {
+    useProjects.setState({ projects: [project('open', { cwd: '/work/open', storeInAppData: undefined })], activeProjectId: 'open' })
+  })
+  const store = () => useProjects.getState()
+
+  it('adds a new project storing its canvas in app data, without taking the tab', () => {
+    const added = registerDisInvoiceProject(store(), 'Web', '/docs/Web', null)
+    expect(added).toMatchObject({ kind: 'added', project: { name: 'Web', cwd: '/docs/Web', storeInAppData: true } })
+    expect(store().activeProjectId).toBe('open')
+    expect(store().projects.map((p) => p.cwd)).toEqual(['/work/open', '/docs/Web'])
+  })
+
+  it('adopts a folder that ships its own canvas as it is', () => {
+    const probed = project('shipped', { cwd: '/docs/Web', storeInAppData: undefined })
+    expect(registerDisInvoiceProject(store(), 'Web', '/docs/Web', probed)).toMatchObject({ kind: 'added', project: { id: 'shipped' } })
+    expect(store().getProject('shipped')?.storeInAppData).toBeUndefined()
+  })
+
+  it('does not move an existing local project’s canvas', () => {
+    expect(registerDisInvoiceProject(store(), 'Web', '/work/open', null)).toMatchObject({ kind: 'added', project: { id: 'open' } })
+    expect(store().getProject('open')?.storeInAppData).toBeUndefined()
+  })
+
+  it.each([
+    ['relay', { remote: true }],
+    ['SSH', { ssh: {} as never }]
+  ] as Array<[string, Partial<Project>]>)('refuses a %s project at that path and leaves it exactly as it was', (_kind, over) => {
+    const held = project('held', { cwd: '/docs/Web', closed: true, storeInAppData: undefined, ...over })
+    useProjects.setState({ projects: [held], activeProjectId: 'held' })
+    expect(registerDisInvoiceProject(store(), 'Web', '/docs/Web/', null)).toEqual({ kind: 'foreign' })
+    expect(store().projects).toEqual([held])
+  })
+})
+
+describe('disInvoiceStickyFactory', () => {
+  const REF = { taskId: 1, columnaId: 1, textHash: 'abc' }
+
+  it('builds a persisted sticky with the deterministic id, text and reference', () => {
+    const state = disInvoiceStickyFactory([])({ id: 'sticky-dis-7-1', text: 'Tarea', ref: REF })
+    expect(state).toMatchObject({ id: 'sticky-dis-7-1', kind: 'sticky', text: 'Tarea', disInvoiceRef: REF, position: { x: 32, y: 32 } })
+  })
+
+  it('wraps a grid below everything that is not a mirror', () => {
+    const other = { id: 'term', kind: 'terminal', position: { x: 0, y: 100 }, size: { width: 10, height: 50 } } as CanvasNodeState
+    const mirror = { id: 'old', kind: 'sticky', position: { x: 0, y: 9000 }, size: { width: 10, height: 50 }, disInvoiceRef: REF } as CanvasNodeState
+    const make = disInvoiceStickyFactory([other, mirror])
+    const made = [1, 2, 3, 4, 5].map((n) => make({ id: `s${n}`, text: 'x', ref: REF }))
+    const { width, height } = made[0].size
+    expect(made.map((s) => s.position)).toEqual([
+      { x: 32, y: 182 },
+      { x: 32 + (width + 32), y: 182 },
+      { x: 32 + 2 * (width + 32), y: 182 },
+      { x: 32 + 3 * (width + 32), y: 182 },
+      { x: 32, y: 182 + height + 32 }
+    ])
+  })
+
+  it('a sticky recreated after an earlier one was deleted takes the free slot, not a later one’s', () => {
+    const make = disInvoiceStickyFactory([])
+    const [first, second, third] = ['a', 'b', 'c'].map((id) => make({ id, text: id, ref: REF }))
+    const fresh = disInvoiceStickyFactory([second, third])
+    expect(fresh({ id: 'back', text: 'back', ref: REF }).position).toEqual(first.position)
+    expect(fresh({ id: 'next', text: 'next', ref: REF }).position).toEqual({ x: third.position.x + (third.position.x - second.position.x), y: 32 })
+  })
+
+  it('a slot is free again once its mirror has been dragged elsewhere', () => {
+    const made = disInvoiceStickyFactory([])({ id: 'a', text: 'a', ref: REF })
+    const dragged = { ...made, position: { x: 5000, y: 5000 } }
+    expect(disInvoiceStickyFactory([dragged])({ id: 'b', text: 'b', ref: REF }).position).toEqual(made.position)
+  })
+})
+
+describe('open questions, answered against the real store', () => {
+  const sticky = (id: string): CanvasNodeState => ({
+    id,
+    kind: 'sticky',
+    position: { x: 0, y: 0 },
+    size: { width: 1, height: 1 },
+    title: 'Note',
+    color: '#fff',
+    group: null,
+    text: id
+  })
+
+  beforeEach(() => {
+    useProjects.setState({
+      projects: [project('open', { nodes: [] }), project('shut', { nodes: [sticky('old')], closed: true, closedAt: 1 })],
+      activeProjectId: 'open'
+    })
+  })
+
+  it('a closed project accepts applyOwnNodeMutations, stays closed, and is saved with its new node', () => {
+    const accepted = useProjects.getState().applyOwnNodeMutations('shut', [{ op: 'upsert', node: sticky('new') }])
+    const shut = useProjects.getState().getProject('shut')!
+    expect(accepted).toBe(true)
+    expect(shut.closed).toBe(true)
+    expect(shut.nodes.map((n) => n.id)).toEqual(['old', 'new'])
+    expect(useProjects.getState().toWorkspace().projects.find((p) => p.id === 'shut')?.nodes.map((n) => n.id)).toEqual(['old', 'new'])
+    expect(useProjects.getState().activeProjectId).toBe('open')
+  })
+
+  it('a store write to the project React Flow holds does not survive the next commit, so that case must write live', () => {
+    const inLoad = nodeStatesToFlow([sticky('loaded')])
+    useProjects.getState().applyOwnNodeMutations('open', [{ op: 'upsert', node: sticky('from-sync') }])
+    expect(useProjects.getState().getProject('open')!.nodes.map((n) => n.id)).toEqual(['from-sync'])
+    useProjects.getState().commitCanvas('open', flowToNodeStates(inLoad), { x: 0, y: 0, zoom: 1 })
+    expect(useProjects.getState().getProject('open')!.nodes.map((n) => n.id)).toEqual(['loaded'])
+  })
+})

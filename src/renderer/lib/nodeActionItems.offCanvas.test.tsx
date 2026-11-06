@@ -39,6 +39,7 @@ function input(nodes: CanvasNodeState[], over: Partial<OffCanvasCtxInput> = {}):
     cursorModels: () => [],
     writes: { setColor: vi.fn(), pickIcon: vi.fn() },
     liveLinkMenuItems: () => [],
+    disInvoiceStartItems: () => [],
     connectedProjectIdForHost: () => undefined,
     refuse: vi.fn(),
     ...over

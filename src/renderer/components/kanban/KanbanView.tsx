@@ -62,6 +62,8 @@ import { pullsClosingIssue, pullsForCard, pullStatusByNumber } from '../../lib/p
 import { usePullAutoMove, usePullChase } from './usePullAutoMove'
 import { mentionCandidatesFrom } from '../../lib/boardMentions'
 import { NO_STATIONS, type TeamStation } from '../../lib/teamProgress'
+import type { DisInvoiceRef } from '@shared/dis-invoice'
+import { DisInvoiceSyncButton, type DisInvoiceSyncControl } from './DisInvoiceSyncButton'
 
 /** One session node shown as a board card — derived LIVE from the canvas nodes; the board
  *  itself stores only column assignments. */
@@ -71,6 +73,7 @@ export interface KanbanSession {
   color: string
   kind: 'terminal' | 'sticky' | 'browser'
   agentId?: string
+  disInvoiceRef?: DisInvoiceRef
   /** Sticky note body — shown in the expanded detail row. */
   text?: string
   /** Sticky-only: last canvas-control `sticky` write (cleared on hand edits) — the modal's stamp. */
@@ -106,7 +109,7 @@ export interface KanbanSession {
 
 /** What the per-column "+ New" menu can create. */
 export type KanbanCreateChoice =
-  | { kind: 'terminal'; shell?: string }
+  | { kind: 'terminal'; shell?: string; title?: string }
   | { kind: 'sticky' }
   | { kind: 'browser' }
   | { kind: 'agent'; agentId: AgentId; shell?: string }
@@ -157,6 +160,8 @@ export interface KanbanViewProps {
   onSetColor?: (nodeId: string, color: string) => void
   /** Start a card's held launch now (its QUEUED chip's ▶) — Canvas's `run` path. */
   onRunQueued?: (nodeId: string) => void
+  /** The dis-invoice Sync button. Absent on a relay tab, whose board belongs to another machine. */
+  disInvoiceSync?: DisInvoiceSyncControl
   /** The board moving a session card itself because its linked pull requests merged (Canvas owns
    *  the compare-and-set + board-log line). Optional: without it nothing ever auto-moves. */
   onAutoMoveFromPulls?: (
@@ -256,7 +261,7 @@ function useCanvasCovered(): void {
 
 export const KanbanView = memo(function KanbanView({
   board, sessions, onChange, onOpenNode, onCreateNode, onRenameNode, onEditSticky, onDeleteNode,
-  onModalNodeChange, onBrowserNav, onSetIcon, nodeActionItems, sessionActionItems, onAiName, onSetColor, onRunQueued, onAutoMoveFromPulls, issueAgentMenu,
+  onModalNodeChange, onBrowserNav, onSetIcon, nodeActionItems, sessionActionItems, onAiName, onSetColor, onRunQueued, disInvoiceSync, onAutoMoveFromPulls, issueAgentMenu,
   issueWorktreeMenu, teams, onIssueMoved
 }: KanbanViewProps) {
   useCanvasCovered()
@@ -1091,6 +1096,7 @@ export const KanbanView = memo(function KanbanView({
             {progress.complete}/{progress.total} done
           </span>
         )}
+        {disInvoiceSync && <DisInvoiceSyncButton control={disInvoiceSync} />}
         {closedCount > 0 && (
           <button
             className={`kanban-filter-btn kanban-closed-toggle${showClosed ? ' kanban-filter-btn--on' : ''}`}

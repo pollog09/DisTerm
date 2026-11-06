@@ -294,6 +294,19 @@ const api: NodeTerminalApi = {
     saveToken: (token) => ipcRenderer.invoke(IPC.githubControlSaveToken, token),
     clearToken: () => ipcRenderer.invoke(IPC.githubControlClearToken)
   },
+  disInvoice: {
+    status: () => ipcRenderer.invoke(IPC.disInvoiceStatus),
+    saveConfig: (key) => ipcRenderer.invoke(IPC.disInvoiceSaveConfig, key),
+    clearKey: () => ipcRenderer.invoke(IPC.disInvoiceClearKey),
+    fetch: () => ipcRenderer.invoke(IPC.disInvoiceFetch),
+    links: () => ipcRenderer.invoke(IPC.disInvoiceLinks),
+    saveLink: (proyectoId, projectId, folder) => ipcRenderer.invoke(IPC.disInvoiceSaveLink, proyectoId, projectId, folder),
+    plannedFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoicePlannedFolder, proyectoId),
+    ensureFolder: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceEnsureFolder, proyectoId),
+    clone: (proyectoId) => ipcRenderer.invoke(IPC.disInvoiceClone, proyectoId),
+    inspectFolder: (cwd) => ipcRenderer.invoke(IPC.disInvoiceInspectFolder, cwd),
+    readableBriefPathInWsl: (shell, file) => ipcRenderer.invoke(IPC.disInvoiceBriefPathInWsl, shell, file)
+  },
   speech: {
     // IPC carries the raw Float32 samples as an ArrayBuffer (structured clone; decodePcmPayload's
     // ArrayBuffer branch reads it directly, no re-encoding). A Float32Array view doesn't always

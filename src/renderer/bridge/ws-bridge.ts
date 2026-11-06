@@ -522,6 +522,27 @@ export function buildRealApi(
   return { pty, workspace, projectSettings, projectSetup, worktree, settings, integrations, agent, userDataDir }
 }
 
+/** Server Edition only: a relay tab keeps the local preload's, and the host refuses these to peers. */
+export function buildDisInvoiceApi(client: RpcClient): Pick<NodeTerminalApi, 'disInvoice'> {
+  type Api = NodeTerminalApi['disInvoice']
+  return {
+    disInvoice: {
+      status: () => client.request(IPC.disInvoiceStatus) as ReturnType<Api['status']>,
+      saveConfig: (key) => client.request(IPC.disInvoiceSaveConfig, key) as ReturnType<Api['saveConfig']>,
+      clearKey: () => client.request(IPC.disInvoiceClearKey) as ReturnType<Api['clearKey']>,
+      fetch: () => client.request(IPC.disInvoiceFetch) as ReturnType<Api['fetch']>,
+      links: () => client.request(IPC.disInvoiceLinks) as ReturnType<Api['links']>,
+      saveLink: (proyectoId, projectId, folder) =>
+        client.request(IPC.disInvoiceSaveLink, proyectoId, projectId, folder) as ReturnType<Api['saveLink']>,
+      plannedFolder: (proyectoId) => client.request(IPC.disInvoicePlannedFolder, proyectoId) as ReturnType<Api['plannedFolder']>,
+      ensureFolder: (proyectoId) => client.request(IPC.disInvoiceEnsureFolder, proyectoId) as ReturnType<Api['ensureFolder']>,
+      clone: (proyectoId) => client.request(IPC.disInvoiceClone, proyectoId) as ReturnType<Api['clone']>,
+      inspectFolder: (cwd) => client.request(IPC.disInvoiceInspectFolder, cwd) as ReturnType<Api['inspectFolder']>,
+      readableBriefPathInWsl: (shell, file) => client.request(IPC.disInvoiceBriefPathInWsl, shell, file) as ReturnType<Api['readableBriefPathInWsl']>
+    }
+  }
+}
+
 export function buildGitHubApi(
   client: RpcClient
 ): Pick<NodeTerminalApi, 'githubIssues' | 'githubControl'> {
@@ -1519,6 +1540,7 @@ export async function installWsBridge(): Promise<boolean> {
     ...buildRunConfigApi(client),
     ...buildTriggersApi(client),
     ...buildGitHubApi(client),
+    ...buildDisInvoiceApi(client),
     ...buildClaudeAccountsApi(client),
     codex: buildCodexApi(client),
     // `claude` is assembled from two builders: `cliCaps` from the relay-shared one, and the

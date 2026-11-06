@@ -1640,6 +1640,13 @@ a suite run from inside a DisTerm agent session inherits them and code under tes
 LIVE agent config dir from them — a scratch `HOME` alone did not stop a test from rewriting the
 running session's own skills and hooks (#744). A test that needs one sets it itself.
 
+**Booting the Server Edition to try something rewrites your real agent configs.** `node
+out/server/main.cjs` merges managed hooks and skills into `~/.codex`, `~/.gemini`, `~/.grok`,
+`~/.copilot`, `~/.cursor` and `~/.claude/skills`, and points `~/.nodeterm/agent-hooks/*.sh` at that
+run's `--data-dir`. A scratch `--data-dir` does not contain it. For a throwaway run use an entry
+point that passes `installHooks: false`, such as `npm run server:dis-invoice-proof` (it exits unless
+`DISTERM_DIS_INVOICE_URL` is loopback and `DISTERM_DIS_INVOICE_DOCUMENTS` is set), or a scratch `HOME`.
+
 **Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
 pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not
 proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
