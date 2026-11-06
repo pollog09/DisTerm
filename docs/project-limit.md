@@ -283,7 +283,8 @@ with "Up to N open projects", lists "Unlimited open projects" under Pro, and the
    from it. An unfrozen release is not checked.
 
 **The guard**: `scripts/check-project-limit-deadline.mjs` is the first step that runs in each build
-job of `.github/workflows/release.yml` — `release-mac`, `release-linux` and `release-win` — right
+job — `release-mac` and `release-linux` in `.github/workflows/release.yml`, and `release-win` in
+`.github/workflows/release-windows.yml` (started by the tag push from `npm run release`) — right
 after checkout and setup-node, before `npm ci` (plain node). It exits 1 when the deadline is less
 than 30 days away and not frozen, or when it cannot read the constants; and for a **frozen** (flip)
 release also when `PROJECT_ALLOWANCE_PUBLIC_KEY` (`src/core/project-allowance-key.ts`) is empty,
