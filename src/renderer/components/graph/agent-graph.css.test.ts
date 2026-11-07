@@ -58,17 +58,36 @@ describe('agent-graph.css', () => {
 
   it('a session glows by status in the role colours; working and needs-you pulse four times, idle is still', () => {
     expect(rule(".agent-graph-node[data-glow='working']")).toContain('--agent-graph-glow: var(--state-working)')
-    expect(rule(".agent-graph-node[data-glow='working']")).toContain('animation: agent-graph-glow 2.6s ease-in-out 4')
+    expect(rule(".agent-graph-node[data-glow='working']")).toContain('animation: agent-graph-glow-working 2.6s ease-in-out 4')
     expect(rule(".agent-graph-node[data-glow='attention']")).toContain('--agent-graph-glow: var(--state-attention)')
-    expect(rule(".agent-graph-node[data-glow='attention']")).toContain('animation: agent-graph-glow 2s ease-in-out 4')
+    expect(rule(".agent-graph-node[data-glow='attention']")).toContain('animation: agent-graph-glow-attention 2s ease-in-out 4')
     expect(rule(".agent-graph-node[data-glow='idle']")).toContain('--agent-graph-glow: var(--state-success)')
     expect(rule(".agent-graph-node[data-glow='idle']")).not.toContain('animation')
   })
 
   it('the glow starts and ends at its resting value, so it settles without a jump', () => {
     expect(rule('.agent-graph-node[data-glow]')).toContain('box-shadow: var(--agent-graph-glow-rest)')
-    const at = CSS.indexOf('@keyframes agent-graph-glow {')
-    expect(CSS.slice(at, CSS.indexOf('\n}', at))).toContain('0%, 100% { box-shadow: var(--agent-graph-glow-rest); }')
+    for (const name of ['agent-graph-glow-working', 'agent-graph-glow-attention']) {
+      const at = CSS.indexOf(`@keyframes ${name} {`)
+      expect(at, name).toBeGreaterThanOrEqual(0)
+      expect(CSS.slice(at, CSS.indexOf('\n}', at)), name).toContain('0%, 100% { box-shadow: var(--agent-graph-glow-rest); }')
+    }
+  })
+
+  it('working and needs-you name different keyframes, so a change between them restarts the pulse', () => {
+    // The box element survives a status change and an animation keeps running while its name is the
+    // same: with one shared name, working to needs-you after the first pulse ended would never pulse.
+    const name = (sel: string): string => /animation:\s*([\w-]+)/.exec(rule(sel))?.[1] ?? ''
+    const working = name(".agent-graph-node[data-glow='working']")
+    const attention = name(".agent-graph-node[data-glow='attention']")
+    expect(working).toBe('agent-graph-glow-working')
+    expect(attention).toBe('agent-graph-glow-attention')
+    expect(working).not.toBe(attention)
+    const frames = (n: string): string => {
+      const at = CSS.indexOf(`@keyframes ${n} {`)
+      return CSS.slice(CSS.indexOf('{', at), CSS.indexOf('\n}', at))
+    }
+    expect(frames(working)).toBe(frames(attention))
   })
 
   it('reduced motion stops the entrance and the glow pulse, and an idle window holds the glow lit', () => {

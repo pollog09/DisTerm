@@ -367,24 +367,30 @@
 
 /* A session's status glow: working, needs you, idle. Working and needs-you pulse four times and rest
    lit at the base value, which is also where the keyframes start and end, so the settle is seamless.
-   Idle is lit and still. */
+   Idle is lit and still. Each pulsing status has its own keyframes: React Flow keeps the box when only
+   `data-glow` changes, and an animation whose name stays the same is not restarted, so with one shared
+   name a session that went from working to needs-you after its pulse ended would never pulse again. */
 .agent-graph-node[data-glow] {
   --agent-graph-glow-rest: 0 0 0 1px color-mix(in srgb, var(--agent-graph-glow) 45%, transparent), 0 0 12px -3px color-mix(in srgb, var(--agent-graph-glow) 60%, transparent);
   box-shadow: var(--agent-graph-glow-rest);
 }
 .agent-graph-node[data-glow='working'] {
   --agent-graph-glow: var(--state-working);
-  animation: agent-graph-glow 2.6s ease-in-out 4;
+  animation: agent-graph-glow-working 2.6s ease-in-out 4;
 }
 .agent-graph-node[data-glow='attention'] {
   --agent-graph-glow: var(--state-attention);
-  animation: agent-graph-glow 2s ease-in-out 4;
+  animation: agent-graph-glow-attention 2s ease-in-out 4;
 }
 .agent-graph-node[data-glow='idle'] {
   --agent-graph-glow: var(--state-success);
   --agent-graph-glow-rest: 0 0 0 1px color-mix(in srgb, var(--agent-graph-glow) 25%, transparent), 0 0 10px -4px color-mix(in srgb, var(--agent-graph-glow) 40%, transparent);
 }
-@keyframes agent-graph-glow {
+@keyframes agent-graph-glow-working {
+  0%, 100% { box-shadow: var(--agent-graph-glow-rest); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-graph-glow) 70%, transparent), 0 0 22px 1px color-mix(in srgb, var(--agent-graph-glow) 55%, transparent); }
+}
+@keyframes agent-graph-glow-attention {
   0%, 100% { box-shadow: var(--agent-graph-glow-rest); }
   50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-graph-glow) 70%, transparent), 0 0 22px 1px color-mix(in srgb, var(--agent-graph-glow) 55%, transparent); }
 }

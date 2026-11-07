@@ -101,15 +101,17 @@ describe('the agent graph view joins the gate', () => {
     // A glow is a frame loop while it pulses, the same as the canvas's working glow, so it is bounded
     // like that one and an idle window holds it at its resting value rather than freezing it mid-pulse.
     for (const [sel, shorthand] of [
-      [".agent-graph-node[data-glow='working']", /animation:\s*agent-graph-glow\s+2\.6s\s+ease-in-out\s+4\b/],
-      [".agent-graph-node[data-glow='attention']", /animation:\s*agent-graph-glow\s+2s\s+ease-in-out\s+4\b/]
+      [".agent-graph-node[data-glow='working']", /animation:\s*agent-graph-glow-working\s+2\.6s\s+ease-in-out\s+4\b/],
+      [".agent-graph-node[data-glow='attention']", /animation:\s*agent-graph-glow-attention\s+2s\s+ease-in-out\s+4\b/]
     ] as const) {
       const rule = ruleBody(stripped, sel)
       expect(rule).toMatch(shorthand)
       expect(rule).not.toMatch(/infinite/)
     }
     expect(ruleBody(stripped, '.agent-graph-node[data-glow]')).toMatch(/box-shadow:\s*var\(--agent-graph-glow-rest\)/)
-    expect(keyframesBody(stripped, 'agent-graph-glow')).toMatch(/0%,\s*100%\s*\{\s*box-shadow:\s*var\(--agent-graph-glow-rest\)/)
+    for (const name of ['agent-graph-glow-working', 'agent-graph-glow-attention']) {
+      expect(keyframesBody(stripped, name), name).toMatch(/0%,\s*100%\s*\{\s*box-shadow:\s*var\(--agent-graph-glow-rest\)/)
+    }
     expect(stripped).toMatch(/:root\[data-nt-window='idle'\] \.agent-graph-node\[data-glow\] \{\s*animation: none/)
     expect(stripped).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.agent-graph-node\[data-glow\] \{\s*animation: none/)
   })

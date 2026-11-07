@@ -180,7 +180,9 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   never replays it. The box grows in with `scale`, not `transform`, which React Flow owns on the wrapper.
   A session's status glow (`data-glow` from `sessionGlow`: working, needs you, idle) pulses four times
   (2.6 s working, 2 s needs you) and rests at the base `box-shadow`, which is where its keyframes start
-  and end. Idle is lit and still. An
+  and end. Idle is lit and still. **Each pulsing status has its own keyframes**, with the same frames:
+  the box survives a status change, and an animation whose name is unchanged is not restarted, so with
+  one shared name a session going from working to needs you after its pulse ended never pulsed again. An
   idle window sets `animation: none` on the glows, so they rest lit rather than freeze mid-pulse. The
   entrance has no window gate, because it is short and runs once. Reduce Motion sets `animation: none`
   on the entrance and the glows. None of it reads `--nt-anim-state`. `agent-graph.css.test.ts` and
