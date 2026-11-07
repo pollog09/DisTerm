@@ -18,6 +18,22 @@ vi.mock('../kanban/ModalTerminal', () => ({
   ModalTerminal: ({ nodeId }: { nodeId: string }) => <div data-testid="modal-terminal">{nodeId}</div>
 }))
 
+// The 3D view needs WebGL, which jsdom has not got; its own suite drives it against a stand-in library.
+// Here it is a stand-in itself, so what is checked is the switch, the remembered choice and the fallbacks.
+const graph3d = vi.hoisted(() => ({ throws: false }))
+vi.mock('./AgentGraph3D', () => ({
+  default: ({ nodes, shown, onNodeClick }: { nodes: { id: string }[]; shown: boolean; onNodeClick: (n: unknown) => void }) => {
+    if (graph3d.throws) throw new Error('chunk failed')
+    return (
+      <div data-testid="graph-3d" data-shown={shown}>
+        {nodes.map((n) => (
+          <button key={n.id} data-node={n.id} onClick={() => onNodeClick(n)}>{n.id}</button>
+        ))}
+      </div>
+    )
+  }
+}))
+
 const relationListeners: Array<(e: AgentGraphEvent) => void> = []
 const snapshotResult: { current: AgentGraphSnapshot } = {
   current: { events: [], dropped: 0, capacity: 2000, history: 'board-log', historyTruncated: false }
@@ -49,6 +65,7 @@ let MessageCounts: typeof import('./AgentGraphView').MessageCounts
 let GraphEdgeLine: typeof import('./AgentGraphView').GraphEdgeLine
 let useEdgesInTransit: typeof import('./useAgentGraphData').useEdgesInTransit
 let useViewMode: typeof import('../../state/viewMode').useViewMode
+let useAgentGraphDisplay: typeof import('../../state/agentGraphDisplay').useAgentGraphDisplay
 let canvasCoveredDepth: typeof import('../../lib/canvasCovered').canvasCoveredDepth
 let resetCanvasCoveredForTest: typeof import('../../lib/canvasCovered').resetCanvasCoveredForTest
 
@@ -66,6 +83,7 @@ beforeAll(async () => {
   ;({ AgentGraphView, graphEdgeLabel, graphEdgeColor, MessageCounts, GraphEdgeLine } = await import('./AgentGraphView'))
   ;({ useEdgesInTransit } = await import('./useAgentGraphData'))
   ;({ useViewMode } = await import('../../state/viewMode'))
+  ;({ useAgentGraphDisplay } = await import('../../state/agentGraphDisplay'))
   ;({ canvasCoveredDepth, resetCanvasCoveredForTest } = await import('../../lib/canvasCovered'))
 })
 
@@ -135,6 +153,8 @@ beforeEach(() => {
   snapshotResult.current = { events: [], dropped: 0, capacity: 2000, history: 'board-log', historyTruncated: false }
   shipResult.current = { ok: false, reason: 'unset' }
   useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', requestedCardNodeId: null })
+  useAgentGraphDisplay.setState({ dimension: '2d' })
+  graph3d.throws = false
 })
 
 afterEach(async () => {
@@ -777,5 +797,132 @@ describe('setting a project up from the empty graph', () => {
     expect(document.querySelector('.agent-graph__template-note')).toBeNull()
     expect(api.agentGraph.readShipConfig.mock.calls.length).toBe(reads)
     expect(button()?.disabled).toBe(false)
+  })
+})
+
+describe('the 2D / 3D switch', () => {
+  const headerButton = (text: string) =>
+    [...document.querySelectorAll('.agent-graph__switch .agent-graph__button')].find((b) => b.textContent === text) as HTMLButtonElement
+  const flush = async () => {
+    for (let i = 0; i < 3; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+  }
+  const withWebgl = (works: boolean) =>
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => (works ? { getExtension: () => ({ loseContext: () => {} }) } : null)) as never)
+  afterEach(() => vi.restoreAllMocks())
+
+  it('opens in 2D, with the switch beside the other header buttons', async () => {
+    await mount()
+    expect(headerButton('2D').getAttribute('aria-pressed')).toBe('true')
+    expect(headerButton('3D').getAttribute('aria-pressed')).toBe('false')
+    expect(document.querySelector('.react-flow')).not.toBeNull()
+    expect(document.querySelector('[data-testid="graph-3d"]')).toBeNull()
+  })
+
+  it('3D draws the same nodes, and the choice is remembered on this machine', async () => {
+    withWebgl(true)
+    await mount()
+    await act(async () => headerButton('3D').click())
+    await flush()
+    expect(document.querySelector('.react-flow')).toBeNull()
+    const ids = [...document.querySelectorAll('[data-testid="graph-3d"] [data-node]')].map((b) => b.getAttribute('data-node'))
+    expect(ids.sort()).toEqual(['harness:local:this computer', 'session:a', 'session:b'])
+    expect(headerButton('3D').getAttribute('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('nodeterm.agentGraphView')).toBe('3d')
+    // The legend and the panels are the view's, not the renderer's, so both views keep them.
+    await act(async () => headerButton('2D').click())
+    expect(localStorage.getItem('nodeterm.agentGraphView')).toBe('2d')
+    expect(document.querySelector('.react-flow')).not.toBeNull()
+  })
+
+  it('a remembered 3D opens in 3D', async () => {
+    withWebgl(true)
+    useAgentGraphDisplay.setState({ dimension: '3d' })
+    await mount()
+    await flush()
+    expect(document.querySelector('[data-testid="graph-3d"]')).not.toBeNull()
+  })
+
+  it('a click on a session in 3D opens its terminal, and the 3D view knows it is covered', async () => {
+    withWebgl(true)
+    useAgentGraphDisplay.setState({ dimension: '3d' })
+    await mount()
+    await flush()
+    await act(async () => (document.querySelector('[data-node="session:b"]') as HTMLButtonElement).click())
+    expect(document.querySelector('[data-testid="modal-terminal"]')?.textContent).toBe('b')
+    expect(document.querySelector('[data-testid="graph-3d"]')?.getAttribute('data-shown')).toBe('false')
+  })
+
+  it('no WebGL: the 2D view with a notice, never a blank pane, and the choice is kept', async () => {
+    withWebgl(false)
+    useAgentGraphDisplay.setState({ dimension: '3d' })
+    await mount()
+    await flush()
+    expect(document.querySelector('[data-testid="graph-3d"]')).toBeNull()
+    expect(document.querySelector('.react-flow')).not.toBeNull()
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('needs WebGL')
+    expect(headerButton('2D').getAttribute('aria-pressed')).toBe('true')
+    expect(useAgentGraphDisplay.getState().dimension).toBe('3d')
+  })
+
+  it('no WebGL when switching: the same notice, and 2D stays drawn', async () => {
+    withWebgl(false)
+    await mount()
+    await act(async () => headerButton('3D').click())
+    await flush()
+    expect(document.querySelector('.react-flow')).not.toBeNull()
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('needs WebGL')
+    await act(async () => headerButton('2D').click())
+    expect(document.querySelector('.agent-graph__notices')?.textContent ?? '').not.toContain('needs WebGL')
+  })
+
+  it('a 3D view that fails to load or throws hands back to 2D with a notice', async () => {
+    withWebgl(true)
+    graph3d.throws = true
+    // React reports the caught render error on the console and on window; both are expected here.
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const swallow = (e: ErrorEvent) => e.preventDefault()
+    window.addEventListener('error', swallow)
+    useAgentGraphDisplay.setState({ dimension: '3d' })
+    try {
+      await mount()
+      await flush()
+    } finally {
+      window.removeEventListener('error', swallow)
+      quiet.mockRestore()
+    }
+    expect(document.querySelector('.react-flow')).not.toBeNull()
+    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('could not be loaded')
+  })
+})
+
+describe('motion on the 2D boxes and lines', () => {
+  it('a session box carries its status glow: working, needs you, idle, or none before any signal', async () => {
+    const { useAgentStatus } = await import('../../state/agentStatus')
+    useAgentStatus.setState({ byId: { a: { state: 'working', unread: false }, b: { state: 'waiting', unread: false }, c: { state: 'done', unread: false } } } as never)
+    try {
+      await mount([...defaultNodes(), node('c', 'Reviewer', 'claude'), node('d', 'Fresh', 'claude')])
+      const glow = (title: string) =>
+        [...document.querySelectorAll<HTMLElement>('.agent-graph-node--session')].find((n) => n.textContent?.includes(title))?.dataset.glow ?? null
+      expect([glow('Orchestrator'), glow('Worker'), glow('Reviewer'), glow('Fresh')]).toEqual(['working', 'attention', 'idle', null])
+      expect(document.querySelector('.agent-graph-node--harness')?.hasAttribute('data-glow')).toBe(false)
+    } finally {
+      useAgentStatus.setState({ byId: {} } as never)
+    }
+  })
+
+  it('a line and its dots sit in one group, which is what fades in', async () => {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    const Line = GraphEdgeLine as unknown as (p: { id: string; data: object }) => React.JSX.Element
+    await act(async () => root.render(
+      <ReactFlowProvider>
+        <svg><Line id="e" data={{ edge: { id: 'e', source: 'a', target: 'b', kind: 'message', latest: 'delivered' }, route: [{ x: 0, y: 0 }, { x: 100, y: 0 }], pulseKey: 5, inTransit: false }} /></svg>
+      </ReactFlowProvider>
+    ))
+    const group = document.querySelector('g.agent-graph-edge')!
+    expect(group).not.toBeNull()
+    expect(group.querySelector('.agent-graph-edge__dot')).not.toBeNull()
+    expect((group.querySelector('.agent-graph-edge__dot') as SVGElement).style.color).toBe('var(--state-success)')
   })
 })

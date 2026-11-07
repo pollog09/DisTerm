@@ -1,4 +1,4 @@
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { Component, lazy, memo, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   Background,
   BaseEdge,
@@ -19,7 +19,6 @@ import {
 } from '@xyflow/react'
 import { useStore as useZustandStore } from 'zustand'
 import type { DeliveryClass } from '@shared/agent-graph'
-import { AGENT_CONFIG, type BuiltinAgentId } from '@shared/agents/config'
 import { IconCanvasView, IconGraph } from '../icons'
 import { isWaitRope } from '../../lib/edgeModel'
 import { edgeToBridge } from '../../lib/noteLink'
@@ -37,12 +36,14 @@ import {
   type GraphRopeInput,
   type GraphSessionInput
 } from '../../lib/agentGraphModel'
-import { DELIVERY_COLOR, graphEdgeColor, graphEdgeLabel, graphEdgeTitle, graphLegend } from '../../lib/agentGraphEdgeText'
+import { DELIVERY_COLOR, graphEdgeColor, graphEdgeDashed, graphEdgeLabel, graphEdgeTitle, graphLegend } from '../../lib/agentGraphEdgeText'
+import { graphNodeBadges, sessionGlow } from '../../lib/agentGraphNodeText'
 import {
   agentGraphNodeSize,
   chevronDuration,
   chevronStops,
   layoutAgentGraph,
+  MAX_FLOW_DOTS,
   routeLength,
   routeMidpoint,
   routeToPath,
@@ -56,6 +57,8 @@ import { useProjects } from '../../state/projects'
 import { useStationHandovers, isHandedOver } from '../../state/stationHandovers'
 import { useStationOutcomes } from '../../state/stationOutcomes'
 import { showCanvas, useViewMode } from '../../state/viewMode'
+import { useAgentGraphDisplay, type AgentGraphDimension } from '../../state/agentGraphDisplay'
+import { GRAPH_3D_LOAD_FAILED_NOTICE, WEBGL_UNAVAILABLE_NOTICE, webglAvailable } from '../../lib/webgl'
 import type { CanvasNode } from '../../state/workspace'
 import { integrationsOf } from '@shared/agent-integrations'
 import { sshHostKey as sshHostKeyOf } from '@shared/ssh'
@@ -81,13 +84,6 @@ import './agent-graph.css'
  * (CLAUDE.md, "Idle energy"), and an open graph with nothing happening must idle like a closed one.
  */
 
-const STATE_LABEL: Readonly<Record<string, string>> = {
-  working: 'working',
-  waiting: 'needs you',
-  blocked: 'needs you',
-  done: 'idle'
-}
-
 /** The room a label needs. A message line gets its largest size up front: its words change as counts
  *  do, and the layout deliberately does not. */
 function graphEdgeLabelWidth(edge: GraphEdge): number {
@@ -99,22 +95,6 @@ function graphEdgeLabelWidth(edge: GraphEdge): number {
 type GraphFlowNode = Node<{ node: GraphNode; pulseKey: number; showMachine: boolean }, 'graphNode'>
 type GraphFlowEdge = Edge<{ edge: GraphEdge; route: GraphPoint[]; pulseKey: number; inTransit: boolean }, 'graphEdge'>
 
-function agentLabel(agentId: string): string {
-  return AGENT_CONFIG[agentId as BuiltinAgentId]?.label ?? agentId
-}
-
-/** What the Harness box says. A figure the config could not state is not there, never a zero. */
-function HarnessFacts({ facts }: { facts: NonNullable<GraphNode['harness']> }) {
-  return (
-    <>
-      <span className="agent-graph-badge">{facts.sessions} session{facts.sessions === 1 ? '' : 's'}</span>
-      <span className="agent-graph-badge">{facts.running} running</span>
-      {facts.skillsInstalled !== undefined && <span className="agent-graph-badge">{facts.skillsInstalled} skills installed</span>}
-      {facts.mcpConfigured !== undefined && <span className="agent-graph-badge">{facts.mcpConfigured} MCP configured</span>}
-    </>
-  )
-}
-
 const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNode>) {
   const { node, pulseKey, showMachine } = data
   const activity = node.state === 'working' ? 'running' : node.activity
@@ -125,6 +105,7 @@ const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNod
       data-state={node.state}
       data-color={node.color}
       data-reentered={node.reentered || undefined}
+      data-glow={sessionGlow(node)}
       title={node.description}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} className="agent-graph-node__handle" />
@@ -137,16 +118,11 @@ const GraphNodeBox = memo(function GraphNodeBox({ data }: NodeProps<GraphFlowNod
       </div>
       {node.subtitle && <div className="agent-graph-node__subtitle">{node.subtitle}</div>}
       <div className="agent-graph-node__badges">
-        {node.harness && <HarnessFacts facts={node.harness} />}
-        {node.agentId && <span className="agent-graph-badge">{agentLabel(node.agentId)}</span>}
-        {showMachine && node.machine && node.kind !== 'harness' && <span className="agent-graph-badge" data-machine={node.machine.kind}>{node.machine.label}</span>}
-        {node.state && <span className="agent-graph-badge" data-role="state">{STATE_LABEL[node.state] ?? node.state}</span>}
-        {node.handedOver && <span className="agent-graph-badge">handed work</span>}
-        {node.outcome && <span className="agent-graph-badge" data-outcome={node.outcome}>{node.outcome}</span>}
-        {node.activity === 'stale' && <span className="agent-graph-badge">no recent signal</span>}
-        {node.reentered && <span className="agent-graph-badge" data-role="loop">re-entered</span>}
-        {node.maybeRuns ? <span className="agent-graph-badge" data-role="warning" title="Hooks cannot tell whether this run was this stage or another, so it is not counted.">maybe ×{node.maybeRuns}</span> : null}
-        {node.missingAgent && <span className="agent-graph-badge" data-role="warning" title="Built-in and plugin agents have no file, so this does not mean it cannot run.">no agent file found</span>}
+        {graphNodeBadges(node, showMachine).map((b, i) => (
+          <span key={`${i}:${b.text}`} className="agent-graph-badge" data-role={b.role} data-machine={b.machine} data-outcome={b.outcome} title={b.title}>
+            {b.text}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -168,8 +144,7 @@ export function MessageCounts({ counts }: { counts: DeliveryCounts }) {
   )
 }
 
-/** At most this many dots on one line at once: a burst of calls is a few dots, not a queue. */
-export const MAX_FLOW_DOTS = 3
+export { MAX_FLOW_DOTS }
 
 /**
  * One dot travels along a line per REAL event, once, and stops. Motion means data moved, so there is
@@ -200,7 +175,7 @@ export function FlowDots({ ts, path, color, reverse }: { ts: number; path: strin
           r={3.5}
           className="agent-graph-edge__dot"
           data-reverse={reverse || undefined}
-          style={{ fill: color, offsetPath: `path("${path}")` }}
+          style={{ fill: color, color, offsetPath: `path("${path}")` }}
           onAnimationEnd={() => setDots((d) => d.filter((x) => x !== k))}
         />
       ))}
@@ -245,18 +220,20 @@ export const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }
   const mid = routeMidpoint(route)
   const color = graphEdgeColor(edge)
   const label = graphEdgeLabel(edge)
-  const dashed = edge.kind === 'dependency' || edge.kind === 'context' || edge.kind === 'ship-reject' || edge.undeclared || edge.loop || !!edge.maybe
+  const dashed = graphEdgeDashed(edge)
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={path}
-        markerEnd={markerEnd}
-        style={{ stroke: color, strokeWidth: edge.loop ? 2.25 : 1.5, strokeDasharray: dashed ? '5 4' : undefined }}
-      />
-      {edgeShowsDirection(edge) && routeLength(route) > 0 && <EdgeChevrons path={path} route={route} color={color} moving={inTransit} />}
-      {pulseKey > 0 && <path key={pulseKey} d={path} className="agent-graph-edge__pulse" style={{ stroke: color }} />}
-      <FlowDots ts={pulseKey} path={path} color={color} reverse={edge.flow === 'reverse'} />
+      <g className="agent-graph-edge">
+        <BaseEdge
+          id={id}
+          path={path}
+          markerEnd={markerEnd}
+          style={{ stroke: color, strokeWidth: edge.loop ? 2.25 : 1.5, strokeDasharray: dashed ? '5 4' : undefined }}
+        />
+        {edgeShowsDirection(edge) && routeLength(route) > 0 && <EdgeChevrons path={path} route={route} color={color} moving={inTransit} />}
+        {pulseKey > 0 && <path key={pulseKey} d={path} className="agent-graph-edge__pulse" style={{ stroke: color }} />}
+        <FlowDots ts={pulseKey} path={path} color={color} reverse={edge.flow === 'reverse'} />
+      </g>
       {label && (
         <EdgeLabelRenderer>
           <div
@@ -277,6 +254,25 @@ export const GraphEdgeLine = memo(function GraphEdgeLine({ id, data, markerEnd }
 export const SHIP_LOOP_HINT =
   'Loops are inferred from hook order. A clean second run in one turn reads as a rejection if a reject edge is declared, and a rejection from the last stage to the first is not drawn if only next edges are. Where a stage has a next and a reject edge to the same agent, hooks cannot tell which ran, so both are marked maybe.'
 const FIT_OPTIONS = { maxZoom: 1, padding: 0.12 }
+
+/** three.js is most of the 3D view's weight, so it is fetched when that view first opens, never at
+ *  startup or for the 2D view. */
+const AgentGraph3D = lazy(() => import('./AgentGraph3D'))
+
+/** A 3D chunk that fails to load, or a 3D view that throws, hands back to the 2D view with a notice,
+ *  never a blank pane. */
+class Graph3DBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true }
+  }
+  componentDidCatch(): void {
+    this.props.onError()
+  }
+  render(): ReactNode {
+    return this.state.failed ? null : this.props.children
+  }
+}
 
 const NODE_TYPES: NodeTypes = { graphNode: GraphNodeBox as NodeTypes[string] }
 const EDGE_TYPES: EdgeTypes = { graphEdge: GraphEdgeLine as EdgeTypes[string] }
@@ -332,6 +328,21 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const integrations = useSettings((st) => st.settings.agentIntegrations)
   const [modalId, setModalId] = useState<string | null>(null)
   const ship = shipResult?.ok ? shipResult.config : null
+
+  // A remembered 3D on a machine that cannot draw it opens in 2D, saying why; the choice is kept, so a
+  // machine that can draw it again needs nothing done. WebGL is probed before the 3D code is fetched.
+  const dimension = useAgentGraphDisplay((s) => s.dimension)
+  const setDimension = useAgentGraphDisplay((s) => s.setDimension)
+  const [fallback, setFallback] = useState<string | null>(() => (dimension === '3d' && !webglAvailable() ? WEBGL_UNAVAILABLE_NOTICE : null))
+  const chooseDimension = useCallback(
+    (d: AgentGraphDimension) => {
+      setDimension(d)
+      setFallback(d === '3d' && !webglAvailable() ? WEBGL_UNAVAILABLE_NOTICE : null)
+    },
+    [setDimension]
+  )
+  const drawn: AgentGraphDimension = dimension === '3d' && !fallback ? '3d' : '2d'
+  const on3dLoadFailed = useCallback(() => setFallback(GRAPH_3D_LOAD_FAILED_NOTICE), [])
 
   const machineOf = useCallback(
     (node: CanvasNode): GraphMachine => {
@@ -481,15 +492,15 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
     else onShowOnCanvas(requested)
   }, [requested, terminals, onShowOnCanvas])
 
-  const onNodeClick = useCallback(
-    (_e: unknown, flowNode: Node) => {
-      const node = (flowNode as GraphFlowNode).data.node
+  const openNode = useCallback(
+    (node: GraphNode) => {
       if (node.kind === 'harness' || node.kind === 'skill' || node.kind === 'mcp') setPanel('harness')
       else if (node.sessionId) setModalId(node.sessionId)
       else if (node.kind === 'note') onShowOnCanvas(node.id.replace(/^session:/, ''))
     },
     [onShowOnCanvas]
   )
+  const onNodeClick = useCallback((_e: unknown, flowNode: Node) => openNode((flowNode as GraphFlowNode).data.node), [openNode])
 
   const openFile = useCallback((path: string, ssh: boolean) => {
     window.dispatchEvent(new CustomEvent('nodeterm:open-file', { detail: { path, ssh } }))
@@ -501,7 +512,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const offer = isEmpty ? shipTemplateOffer(shipResult) : ({ kind: 'none' } as const)
   const templateFailure = template.result && !template.result.ok ? template.result.message : null
   // What the model notes is about what is drawn, so with nothing drawn only a config failure is left.
-  const notices = [...(shipNotice ? [shipNotice] : []), ...(isEmpty ? [] : model.notices)]
+  const notices = [...(fallback ? [fallback] : []), ...(shipNotice ? [shipNotice] : []), ...(isEmpty ? [] : model.notices)]
   const legend = useMemo(() => graphLegend(model.edges), [model.edges])
   const headerRef = useRef<HTMLDivElement>(null)
   useControlsClearance(headerRef)
@@ -526,6 +537,14 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           )}
         </div>
         <span className="agent-graph__spacer" />
+        <div className="agent-graph__switch" role="group" aria-label="Graph view">
+          <button className="agent-graph__button" aria-pressed={drawn === '2d'} onClick={() => chooseDimension('2d')}>
+            2D
+          </button>
+          <button className="agent-graph__button" aria-pressed={drawn === '3d'} onClick={() => chooseDimension('3d')}>
+            3D
+          </button>
+        </div>
         <button className="agent-graph__button" aria-pressed={panel === 'harness'} onClick={() => setPanel((p) => (p === 'harness' ? null : 'harness'))}>
           Harness
         </button>
@@ -574,6 +593,20 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
               {offer.kind === 'disabled' && <p className="agent-graph__empty-note" data-role="reason">{offer.reason}</p>}
               {templateFailure && <p className="agent-graph__empty-note" data-role="failure" role="alert">{templateFailure}</p>}
             </div>
+          ) : drawn === '3d' ? (
+            <Graph3DBoundary onError={on3dLoadFailed}>
+              <Suspense fallback={<div className="agent-graph-3d agent-graph-3d--loading">Loading the 3D view…</div>}>
+                <AgentGraph3D
+                  nodes={model.nodes}
+                  edges={model.edges}
+                  pulseOf={pulseOf}
+                  showMachine={showMachine}
+                  shown={!modalSession}
+                  onNodeClick={openNode}
+                  onUnsupported={setFallback}
+                />
+              </Suspense>
+            </Graph3DBoundary>
           ) : (
             <ReactFlow
               nodes={flowNodes}

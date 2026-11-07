@@ -175,6 +175,42 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `1` iteration and must not read `--nt-anim-state`. The Harness line points harness to session so the
   layout ranks the harness left, and carries `flow: 'reverse'` so its dot runs the way hooks flow. An idle graph
   runs no animation. `agent-graph.css.test.ts` pins it.
+- **2D motion is finite, and the glows rest lit.** A box (`.agent-graph .react-flow__node`) and a line
+  (`g.agent-graph-edge`, its label) fade in once: React Flow keeps each element by id, so a status change
+  never replays it, and `scale` is used rather than `transform`, which React Flow owns on the wrapper. A
+  session's status glow (`data-glow` from `sessionGlow`: working, needs you, idle) pulses four times and
+  rests at the base `box-shadow`, which is where its keyframes start and end; idle is lit and still. An
+  idle window and Reduce Motion set `animation: none` on all of it. None reads `--nt-anim-state`.
+  `agent-graph.css.test.ts` and `styles.animation-gate.test.ts` pin the shorthands, the rest and the gates.
+  What a box says lives in `lib/agentGraphNodeText.ts`, so the 3D tooltip cannot word it differently.
+- **The 3D view renders the same model, and is its own chunk** (`components/graph/AgentGraph3D.tsx`,
+  `lazy()` from the view; pure shape in `lib/agentGraph3d.ts`). `toGraph3dData` returns the SAME object
+  while `agentGraphStructureKey` is unchanged and keeps every surviving node object otherwise: the force
+  layout writes positions onto those objects, so new ones throw the graph back to the start. Content
+  (status, counts, colours) is restyled in place. Colours are the 2D tokens resolved against the live
+  theme through a probe element (`parseCssColor` reads what Chromium computes, `color(srgb …)` included)
+  and re-resolved on a `data-theme`/`data-nt-glass`/`style` change; the WebGL canvas is transparent, so the
+  view's background is the theme's. A dashed 2D line is a fainter tube (`DASHED_LINK_ALPHA`): a tube has
+  no dash. Particles are the 2D dots' stream: `pulseOf` per line, seeded at 3D mount so nothing replays,
+  at most `MAX_FLOW_DOTS` in flight per line, none under Reduce Motion or while nobody can see them.
+- **The 3D frame loop runs only while something can change and somebody can see it**
+  (`graph3dLoopShouldRun`): the layout moving, a particle in flight, the pointer over the view, or a
+  camera move asked for; never while the window is idle or hidden (`data-nt-window`, the CSS gate's own
+  signal) or the terminal modal covers it. 3d-force-graph's own loop is a rAF every frame forever, so a
+  settled graph nobody points at would otherwise hold the window at display rate. Reduce Motion: the
+  layout is warmed up before the first frame (`cooldownTicks` 0), the camera jumps (`zoomToFit(0)`), no
+  particles. Unmount calls `_destructor` (scene, controls, renderer) and then `forceContextLoss`, because
+  `dispose` keeps the context and Chromium evicts the oldest one past its cap, which can be a terminal's
+  (the budget in `terminal/webgl-budget.ts` leaves 4 under the browser's 16; this view takes one). It
+  also deletes the `window.scene` global the library sets. WebGL is probed before the chunk is fetched
+  (`lib/webgl.ts`, the probe context released at once); no WebGL, a lost context, or a chunk that fails to
+  load shows 2D with a notice, never a blank pane, and keeps the person's choice. The choice is a display
+  preference (`state/agentGraphDisplay.ts`, `nodeterm.agentGraphView`, one for all projects, 2D first).
+  `three` ships no types: `src/renderer/three-subset.d.ts` declares only what the view calls, and
+  `three/webgpu` is aliased to a stub (`three-webgpu-stub.ts`) because three-render-objects imports the
+  WebGPU renderer it never builds here, half the chunk (3.24 MB to 1.63 MB). **Not verified:** real WebGL
+  rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the Server
+  Edition in a browser, Liquid Glass. Mobile N/A.
 - **The Harness box is per machine and only for session boxes**, never a note, ghost or template. A figure the
   config cannot state for that machine (`shipDescribes`) is left off, not zero. Which box a subagent's call
   leaves (`subBox`) is certain or it is the session: a guessed, uncertain, twice-drawn or unknown run falls back.

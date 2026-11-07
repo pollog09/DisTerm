@@ -35,6 +35,11 @@ export function graphEdgeColor(edge: GraphEdge): string {
   return OTHER_LINE
 }
 
+/** Drawn dashed: a relation that is read, awaited or uncertain rather than a move that happened. */
+export function graphEdgeDashed(edge: GraphEdge): boolean {
+  return edge.kind === 'dependency' || edge.kind === 'context' || edge.kind === 'ship-reject' || !!edge.undeclared || !!edge.loop || !!edge.maybe
+}
+
 export interface GraphLegendEntry {
   label: string
   color: string

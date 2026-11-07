@@ -34,6 +34,50 @@ describe('agent-graph.css', () => {
     expect(CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\n  \.agent-graph-edge__dot \{\n    display: none;/)
   })
 
+  it('a dot grows in and out with a halo in its line\'s colour, still once per event', () => {
+    const dot = rule('.agent-graph-edge__dot')
+    expect(dot).toContain('scale: 0.45')
+    expect(dot).toContain('filter: drop-shadow(0 0 2.5px currentColor)')
+    for (const name of ['agent-graph-dot {', 'agent-graph-dot-back {']) {
+      const at = CSS.indexOf(`@keyframes ${name}`)
+      const body = CSS.slice(at, CSS.indexOf('\n}', at))
+      expect(body).toMatch(/14% \{ opacity: 1; scale: 1; \}/)
+      expect(body).toMatch(/86% \{ opacity: 1; scale: 1; \}/)
+    }
+  })
+
+  it('a box and a line come in once when they first appear, and nothing new is gated', () => {
+    expect(rule('.agent-graph .react-flow__node')).toContain('animation: agent-graph-enter 340ms cubic-bezier(0.2, 0.8, 0.2, 1) 1 both')
+    const edgeEnter = CSS.slice(CSS.indexOf('.agent-graph-edge,\n.agent-graph-edge__label {'), CSS.indexOf('@keyframes agent-graph-enter'))
+    expect(edgeEnter).toContain('animation: agent-graph-edge-enter 420ms ease-out 1 both')
+    for (const sel of ['.agent-graph .react-flow__node', ".agent-graph-node[data-glow='working']", ".agent-graph-node[data-glow='attention']"]) {
+      expect(rule(sel), sel).not.toContain('infinite')
+      expect(rule(sel), sel).not.toContain('--nt-anim-state')
+    }
+  })
+
+  it('a session glows by status in the role colours; working and needs-you pulse four times, idle is still', () => {
+    expect(rule(".agent-graph-node[data-glow='working']")).toContain('--agent-graph-glow: var(--state-working)')
+    expect(rule(".agent-graph-node[data-glow='working']")).toContain('animation: agent-graph-glow 2.6s ease-in-out 4')
+    expect(rule(".agent-graph-node[data-glow='attention']")).toContain('--agent-graph-glow: var(--state-attention)')
+    expect(rule(".agent-graph-node[data-glow='attention']")).toContain('animation: agent-graph-glow 2s ease-in-out 4')
+    expect(rule(".agent-graph-node[data-glow='idle']")).toContain('--agent-graph-glow: var(--state-success)')
+    expect(rule(".agent-graph-node[data-glow='idle']")).not.toContain('animation')
+  })
+
+  it('the glow starts and ends at its resting value, so it settles without a jump', () => {
+    expect(rule('.agent-graph-node[data-glow]')).toContain('box-shadow: var(--agent-graph-glow-rest)')
+    const at = CSS.indexOf('@keyframes agent-graph-glow {')
+    expect(CSS.slice(at, CSS.indexOf('\n}', at))).toContain('0%, 100% { box-shadow: var(--agent-graph-glow-rest); }')
+  })
+
+  it('reduced motion stops the entrance and the glow pulse, and an idle window holds the glow lit', () => {
+    expect(CSS).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{\n  \.agent-graph \.react-flow__node,\n  \.agent-graph-edge,\n  \.agent-graph-edge__label,\n  \.agent-graph-node\[data-glow\] \{\n    animation: none;/
+    )
+    expect(rule(":root[data-nt-window='idle'] .agent-graph-node[data-glow]")).toContain('animation: none')
+  })
+
   it('only a moving chevron loops, and it reads the animation gate', () => {
     const rules = CSS.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^{}]*infinite[^{}]*\}/g) ?? []
     expect(rules).toHaveLength(1)
