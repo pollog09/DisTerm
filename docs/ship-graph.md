@@ -192,7 +192,8 @@ they actually reached for, drawn with the sessions and subagents that used them.
 - **A dot per call.** Each time a call happens, one dot travels along its line, once, and stops. Dots
   on the Harness line run from the session to the Harness box, because that is the way hooks flow. A
   burst shows at most three dots at once. An idle graph has no animation running, and with reduced
-  motion on the dots are not drawn at all. Opening the view does not replay what already happened.
+  motion on the dots are not drawn at all. Opening the view, or switching back to 2D from 3D, does not
+  replay what already happened.
 
 **The Harness panel** (the Harness button, or a click on a Harness, skill or MCP box) is the inventory:
 
@@ -259,7 +260,7 @@ first time. After that it opens in the view you used last, for every project. Th
 this computer, or in this browser for the Server Edition.
 
 **2D** is the layout described above. A box or a line fades in when it first appears, and not again
-when its status changes. A session's box glows in its status colour: working, needs you or idle.
+when its status changes. Everything fades in again when you switch back from 3D. A session's box glows in its status colour: working, needs you or idle.
 Working and needs you pulse four times and then stay lit, and pulse again each time a session moves
 into either one. Idle is lit and still. Dots grow in and out
 with a soft halo in their line's colour. Glows stop pulsing while the window is unfocused or hidden.
@@ -278,7 +279,8 @@ it.
   frames the whole graph. The camera also frames it by itself each time the layout settles after a box
   or a line comes or goes. The view never rotates on its own.
 - A click does what it does in 2D. A session opens its terminal. A Harness, skill or MCP shape opens
-  the Harness panel. A note is shown on the canvas.
+  the Harness panel. A note is shown on the canvas. A shape and its name take a click or a hover, but
+  the halo around it does not, so a line beside a glowing session can still be hovered.
 - One particle travels along a line per event, as the 2D dots do, at most three on a line at once.
   Harness particles run from the session to the Harness, as in 2D. Opening the view does not replay
   what already happened.

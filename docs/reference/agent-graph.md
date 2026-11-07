@@ -64,8 +64,12 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
 - **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
   `registerShipConfigHandlers`). A crashed renderer or a dropped relay peer sends no unsubscribe, and an
   SSH project's route changes when its master connects. Both shapes leaked real work before.
-- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element, and only an event
-  newer than the view's mount pulses, so opening the view does not flash the past.
+- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element. Only an event newer
+  than `max(mountedAt, shown2d.since)` pulses or sends a dot (`pulseOf`), so opening the view does not
+  flash the past. `shown2d.since` is when 2D was last drawn again after 3D. Coming back from 3D remounts
+  every box and line, and a remounted dot or pulse cannot tell an event it already played from a new one.
+  The floor is set during render, not in an effect, because the boxes mount in that same render and must
+  not see the old floor. The boxes and lines do fade in again on that return; their events do not replay.
 - **The one loop is the direction marks, and only motion that is true may run** (`edgeInTransit`,
   `TRANSIT_WINDOW_MS` = 15 s). Every line but a context link has three chevrons (`edgeShowsDirection`).
   They move for a delivered message for 15 s after it lands, and for a used line while the run it led to
@@ -197,7 +201,11 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   are re-resolved on a `data-theme`, `data-nt-glass`, `style` or `class` change on the root. The WebGL
   canvas is transparent, so the view's background is the theme's. A dashed 2D line is a fainter tube
   (`DASHED_LINK_ALPHA`), because a tube has no dash. A status glow is a still halo, never a pulse, so a
-  settled graph needs no frames. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
+  settled graph needs no frames. **The halo and aura shells never take the pointer** (`raycast = noPick`).
+  three's raycaster ignores `visible`, and 3d-force-graph ranks any node hit above any line hit. A
+  pickable shell, even a hidden one, would take hovers from nearby lines, whose words show only on hover,
+  and clicks meant for the node behind it. The core shape and the name label stay pickable, as a click on
+  a 2D box's title opens it. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
   seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. None is emitted under
   Reduce Motion or while nobody can see the view, and an event missed then is not replayed later.
 - **The 3D frame loop runs only while something can change and somebody can see it**
