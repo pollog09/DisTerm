@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DisInvoiceSyncReport } from '../../lib/disInvoiceSync'
-import { useDisInvoiceSyncRun } from '../../state/disInvoiceSyncRun'
+import { DIS_INVOICE_KEY_CHANGED, useDisInvoiceSyncRun } from '../../state/disInvoiceSyncRun'
 import { DisInvoiceSyncButton, type DisInvoiceSyncControl } from './DisInvoiceSyncButton'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -61,6 +61,33 @@ describe('DisInvoiceSyncButton', () => {
     expect(control.openSettings).toHaveBeenCalledTimes(1)
     expect(control.run).toHaveBeenCalledTimes(0)
     expect(host.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('with no key, says Connect dis-invoice and opens Settings', async () => {
+    const control = render({ status: vi.fn(async () => ({ hasKey: false })) })
+    await act(async () => {})
+    expect(button('Sync')).toBeUndefined()
+    await press('Connect dis-invoice')
+    expect(control.openSettings).toHaveBeenCalledTimes(1)
+    expect(control.run).toHaveBeenCalledTimes(0)
+  })
+
+  it('turns back into Sync once Settings saves a key', async () => {
+    let hasKey = false
+    render({ status: vi.fn(async () => ({ hasKey })) })
+    await act(async () => {})
+    expect(button('Connect dis-invoice')).toBeDefined()
+    hasKey = true
+    await act(async () => {
+      window.dispatchEvent(new Event(DIS_INVOICE_KEY_CHANGED))
+    })
+    expect(button('Sync')).toBeDefined()
+  })
+
+  it('a status that rejects keeps the Sync label', async () => {
+    render({ status: vi.fn(() => Promise.reject(new Error('E_DISCONNECTED'))) })
+    await act(async () => {})
+    expect(button('Sync')).toBeDefined()
   })
 
   it('shows the report, then dismisses it', async () => {
