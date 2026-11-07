@@ -71,7 +71,7 @@ export async function locateCopilotTranscript(sessionId: string | undefined): Pr
  *  the `command-` / `schedule-` / `autopilot-` families. Anything else (`skill-*` injections,
  *  `agent-*` inter-agent prompts, a non-string) is hidden there, so it is hidden here. */
 const SHOWN_SOURCE_PREFIXES = ['command-', 'schedule-', 'autopilot-']
-function shownSource(source: unknown): boolean {
+export function shownSource(source: unknown): boolean {
   if (source === undefined || source === null || source === 'user') return true
   return typeof source === 'string' && SHOWN_SOURCE_PREFIXES.some((p) => source.startsWith(p))
 }
@@ -83,7 +83,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 /** A sub-agent's event, by the CLI's own test (`_d`/`oa` in its app bundle): a non-empty `agentId`
  *  on the envelope or in `data`, or a `data.parentToolCallId`. Its turns belong to the `task` call
  *  whose result the main thread already shows. */
-function isSubAgentEvent(o: Record<string, unknown>, data: Record<string, unknown>): boolean {
+export function isSubAgentEvent(o: Record<string, unknown>, data: Record<string, unknown>): boolean {
   return nonEmptyString(o.agentId) || nonEmptyString(data.agentId) || nonEmptyString(data.parentToolCallId)
 }
 

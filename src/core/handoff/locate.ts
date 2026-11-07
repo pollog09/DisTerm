@@ -7,6 +7,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { resolveTranscriptPath } from '../transcript-reader'
+import { locateCopilotTranscript } from '../copilot-chat'
 
 // claude: ~/.claude/projects/<proj>/<sessionId>.jsonl — already implemented (searches all
 // project dirs for the exact <sessionId>.jsonl). `accountId` scopes to a managed account's
@@ -64,6 +65,13 @@ export async function locateGrok(sessionId: string): Promise<string | undefined>
   } catch {
     return undefined
   }
+}
+
+// copilot: `<COPILOT_HOME>/session-state/<sessionId>/events.jsonl`, keyed strictly by the id, which
+// is validated before it touches a path (no `/`, no `.`: no traversal). The one definition lives with
+// the ⌘M reader (`copilot-chat.ts`) so both views resolve the same file.
+export function locateCopilot(sessionId: string): Promise<string | undefined> {
+  return locateCopilotTranscript(sessionId)
 }
 
 // gemini: <home>/.gemini/tmp/<proj>/chats/session-*.jsonl — find the file whose first-line

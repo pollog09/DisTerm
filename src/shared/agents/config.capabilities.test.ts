@@ -98,11 +98,11 @@ describe('copilot capabilities', () => {
     expect(canResume('copilot')).toBe(true)
     expect(canControlCanvas('copilot')).toBe(true)
     expect(canSwitchModel('copilot')).toBe(true)
+    expect(canContextLink('copilot')).toBe(true)
   })
 
   it('does not claim integrations whose Copilot-specific leaf is not implemented', () => {
     for (const can of [
-      canContextLink,
       canSubagent,
       canRecur,
       canBranch,

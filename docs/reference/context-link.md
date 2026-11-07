@@ -4,8 +4,16 @@ Reference split out of `CLAUDE.md`, which holds the rules every change needs. Wo
 
 ## Context Link
 
-- **Context Link** — a node action gated by `CONTEXT_LINK_CAPABLE` (claude/codex/gemini/opencode/grok;
-  custom agents + plain terminals excluded). **grok joined in 2026-09, and the file matters:** its
+- **Context Link** — a node action gated by `CONTEXT_LINK_CAPABLE` (claude/codex/gemini/opencode/grok/cursor/antigravity/copilot;
+  custom agents + plain terminals excluded). **copilot joined in 2026-11:** its conversation is
+  `<COPILOT_HOME>/session-state/<sessionId>/events.jsonl`, located strictly by session id
+  (`locateCopilot`, which reuses the ⌘M reader's validated locator, so a malformed id never reaches a
+  path) and rendered by `linesFromCopilot`: `user.message` / `assistant.message` text, one `$` line per
+  `tool.execution_start` and one `=` line per `tool.execution_complete`; system prompt, reasoning,
+  usage and unknown events render nothing, and sub-agent events and the user messages copilot's own
+  timeline hides are skipped. The `get-linked-context` skill is installed in `<COPILOT_HOME>/skills`
+  under the same consent as the other agents; copilot gets no discovery note (not
+  `SCREEN_DIALOG_READABLE`). **grok joined in 2026-09, and the file matters:** its
   readable conversation is `chat_history.jsonl`, NOT the `updates.jsonl` its own hook payloads
   advertise and this line used to name. Routing through the advertised path does not error — it opens
   a real file, parses nothing, and hands the linked agent an EMPTY transcript with no diagnostic, so
