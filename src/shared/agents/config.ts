@@ -310,6 +310,9 @@ export const BRANCH_CAPABLE = ['claude'] as const
 // in the `<agent_skills>` block of a real chat's own context (measured in its store.db), i.e. it reads
 // `~/.claude/skills` like grok. Its transcript is a SQLite store read by `core/cursor-chat.ts`.
 // UNVERIFIED: a user setting that switches that Claude-compat scan off.
+// copilot joins WITH an installer: `skillRootsFor` already names `~/.copilot/skills`. Its transcript
+// is `session-state/<id>/events.jsonl`, located strictly by session id (`locateCopilot`) and rendered
+// by `linesFromCopilot`.
 export const CONTEXT_LINK_CAPABLE = [
   'claude',
   'codex',
@@ -317,7 +320,8 @@ export const CONTEXT_LINK_CAPABLE = [
   'opencode',
   'grok',
   'cursor',
-  'antigravity'
+  'antigravity',
+  'copilot'
 ] as const
 // Agents whose per-node context meter we can fill. Each needs BOTH numbers: a used count and a
 // TRUSTWORTHY window.

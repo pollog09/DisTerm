@@ -44,6 +44,7 @@ import {
   locateAntigravity,
   locateClaude,
   locateCodex,
+  locateCopilot,
   locateGemini,
   locateGrok
 } from './handoff/locate'
@@ -111,6 +112,7 @@ const LINK_LOCATORS = {
   codex: locateCodex,
   gemini: locateGemini,
   grok: locateGrok,
+  copilot: locateCopilot,
   antigravity: locateAntigravity,
   cursor: (sessionId: string) => locateCursorChat(sessionId)
 }

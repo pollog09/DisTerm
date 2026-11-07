@@ -145,7 +145,7 @@ describe('discovery: every capable agent still finds canvas control and context 
       [path.join(home, 'codex-home', 'skills')]: ['codex', true, true],
       [path.join(home, '.gemini', 'skills')]: ['gemini', true, true],
       [path.join(home, 'grok-home', 'skills')]: ['grok', true, true],
-      [path.join(home, 'copilot-home', 'skills')]: ['copilot', true, false], // copilot: canvas control only
+      [path.join(home, 'copilot-home', 'skills')]: ['copilot', true, true],
       [path.join(home, 'xdg', 'opencode', 'skills')]: ['opencode', true, true]
     }
     for (const [dir, [agent, hasCanvas, hasContext]] of Object.entries(dirs)) {
