@@ -16,6 +16,19 @@ declare module 'three' {
     getHexString(): string
   }
 
+  export class Vector3 implements Vector3Like {
+    constructor(x?: number, y?: number, z?: number)
+    x: number
+    y: number
+    z: number
+    set(x: number, y: number, z: number): this
+  }
+
+  export interface Intersection {
+    distance: number
+    object: Object3D
+  }
+
   export class Object3D {
     position: Vector3Like
     scale: Vector3Like
@@ -25,10 +38,22 @@ declare module 'three' {
     children: Object3D[]
     add(...objects: Object3D[]): this
     remove(...objects: Object3D[]): this
+    /** Picking. Replaced with a no-op on objects a pointer must go through. */
+    raycast(raycaster: Raycaster, intersects: Intersection[]): void
+    updateMatrixWorld(force?: boolean): void
   }
   export class Group extends Object3D {}
   export class Scene extends Object3D {}
   export class Camera extends Object3D {}
+  export class PerspectiveCamera extends Camera {
+    constructor(fov?: number, aspect?: number, near?: number, far?: number)
+  }
+
+  export class Raycaster {
+    constructor(origin?: Vector3, direction?: Vector3, near?: number, far?: number)
+    camera: Camera | null
+    intersectObject(object: Object3D, recursive?: boolean): Intersection[]
+  }
 
   export class BufferGeometry {
     dispose(): void

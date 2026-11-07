@@ -164,6 +164,8 @@ interface NodeVisual {
   labelKey: string
 }
 
+const noPick = (): void => {}
+
 function disposeSprite(sprite: Sprite): void {
   sprite.material.map?.dispose()
   sprite.material.dispose()
@@ -302,6 +304,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       const core = new Mesh(geometryFor(look.shape, look.radius), new MeshLambertMaterial({ flatShading: look.shape !== 'sphere' }))
       const halo = new Mesh(new SphereGeometry(look.radius * 1.55, 24, 16), new MeshBasicMaterial({ transparent: true, opacity: 0.26, depthWrite: false, side: BackSide }))
       const aura = new Mesh(new SphereGeometry(look.radius * 2.2, 24, 16), new MeshBasicMaterial({ transparent: true, opacity: 0.09, depthWrite: false, side: BackSide }))
+      // The raycaster ignores `visible`, and the library ranks any node hit above any line hit, so a
+      // glow shell left pickable would take hovers from the lines near it (whose words show only on
+      // hover) and clicks meant for the node behind it. Only what is drawn solid takes the pointer.
+      halo.raycast = noPick
+      aura.raycast = noPick
       group.add(core, halo, aura)
       const visual: NodeVisual = { group, core, halo, aura, label: null, labelKey: '' }
       visuals.current.set(n3.id, visual)

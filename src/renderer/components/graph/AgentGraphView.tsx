@@ -342,6 +342,11 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
     [setDimension]
   )
   const drawn: AgentGraphDimension = dimension === '3d' && !fallback ? '3d' : '2d'
+  // Coming back from 3D remounts every box and line, and a remounted dot or pulse cannot tell an event
+  // it already played from a new one. So the 2D view plays only what happened since it was last shown.
+  // Set during render, not in an effect: the boxes mount in this same render and must not see the old floor.
+  const [shown2d, setShown2d] = useState<{ drawn: AgentGraphDimension; since: number }>({ drawn, since: 0 })
+  if (shown2d.drawn !== drawn) setShown2d({ drawn, since: drawn === '2d' ? Date.now() : shown2d.since })
   const on3dLoadFailed = useCallback(() => setFallback(GRAPH_3D_LOAD_FAILED_NOTICE), [])
 
   const machineOf = useCallback(
@@ -441,7 +446,8 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
 
   const moving = useEdgesInTransit(model.edges)
 
-  const pulseOf = useCallback((ts: number | undefined): number => (ts !== undefined && ts > mountedAt ? ts : 0), [mountedAt])
+  const pulseFloor = Math.max(mountedAt, shown2d.since)
+  const pulseOf = useCallback((ts: number | undefined): number => (ts !== undefined && ts > pulseFloor ? ts : 0), [pulseFloor])
 
   const flowNodes = useMemo(
     (): GraphFlowNode[] => model.nodes.map((node) => ({

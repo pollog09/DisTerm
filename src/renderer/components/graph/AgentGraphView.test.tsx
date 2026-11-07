@@ -896,6 +896,36 @@ describe('the 2D / 3D switch', () => {
 })
 
 describe('motion on the 2D boxes and lines', () => {
+  // React Flow draws no edge in jsdom (it measures no handles), so the line's dot cannot be seen here.
+  // A box's pulse and a line's dot and pulse are all keyed by the same `pulseOf`, so the box stands for
+  // both; `FlowDots` itself is pinned in its own block above.
+  it('coming back from 3D replays nothing that already happened, and a new event still plays', async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 5))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({ getExtension: () => ({ loseContext: () => {} }) })) as never)
+    try {
+      await mount()
+      await act(async () => { await tick() })
+      await act(async () => {
+        for (const l of relationListeners) l({ kind: 'delivery', id: 'x', ts: Date.now(), from: 'a', to: 'b', outcome: 'delivered' })
+      })
+      expect(document.querySelector('.agent-graph-node__pulse')).not.toBeNull()
+      const button = (text: string) => [...document.querySelectorAll('.agent-graph__switch .agent-graph__button')].find((b) => b.textContent === text) as HTMLButtonElement
+      await act(async () => button('3D').click())
+      for (let i = 0; i < 3; i++) await act(async () => { await tick() })
+      expect(document.querySelector('[data-testid="graph-3d"]')).not.toBeNull()
+      await act(async () => button('2D').click())
+      expect(document.querySelector('.react-flow')).not.toBeNull()
+      expect(document.querySelector('.agent-graph-node__pulse')).toBeNull()
+      await act(async () => { await tick() })
+      await act(async () => {
+        for (const l of relationListeners) l({ kind: 'delivery', id: 'y', ts: Date.now(), from: 'a', to: 'b', outcome: 'delivered' })
+      })
+      expect(document.querySelector('.agent-graph-node__pulse')).not.toBeNull()
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it('a session box carries its status glow: working, needs you, idle, or none before any signal', async () => {
     const { useAgentStatus } = await import('../../state/agentStatus')
     useAgentStatus.setState({ byId: { a: { state: 'working', unread: false }, b: { state: 'waiting', unread: false }, c: { state: 'done', unread: false } } } as never)

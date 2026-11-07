@@ -6,6 +6,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PerspectiveCamera, Raycaster, Vector3, type Mesh, type MeshLambertMaterial, type Object3D } from 'three'
 import type { GraphEdge, GraphNode } from '../../lib/agentGraphModel'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -140,8 +141,24 @@ afterEach(async () => {
   await act(async () => root?.unmount())
   host?.remove()
   vi.useRealTimers()
+  vi.restoreAllMocks()
   Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+  document.documentElement.removeAttribute('data-theme')
 })
+
+/** jsdom draws no canvas. Labels need only a context that answers; `null` means no label. */
+const canvas2d = (works: boolean) =>
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) =>
+    works && kind === '2d'
+      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {} }
+      : null) as never)
+/** What the library would build for a node: the component's own `nodeThreeObject`. */
+const nodeGroup = (fake: Fake, id: string): Object3D => (fake.props.nodeThreeObject as (n: { id: string; kind: string }) => Object3D)({ id, kind: 'session' })
+/** Children in the order the component adds them: core, halo, aura, then the label when there is one. */
+const parts = (group: Object3D) => {
+  const [core, halo, aura, label] = group.children
+  return { core: core as Mesh<never, MeshLambertMaterial>, halo, aura, label }
+}
 
 describe('AgentGraph3D', () => {
   it('feeds the library the same nodes and lines, and turns the camera by drag, not the nodes', async () => {
@@ -158,6 +175,39 @@ describe('AgentGraph3D', () => {
     const fed = named(fake, 'graphData').length
     await act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], state: 'waiting' }, NODES[1]] })))
     expect(named(fake, 'graphData').length).toBe(fed)
+  })
+
+  it('a status change shows on the drawn nodes and lines, without rebuilding them', async () => {
+    canvas2d(false)
+    const fake = await mount()
+    const a = parts(nodeGroup(fake, 'session:a'))
+    const b = parts(nodeGroup(fake, 'session:b'))
+    expect([a.halo.visible, a.aura.visible, a.core.material.emissiveIntensity]).toEqual([true, true, 0.35])
+    expect([b.halo.visible, b.core.material.emissiveIntensity]).toEqual([false, 0])
+    const linkStyled = named(fake, 'linkColor').length
+    await act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], state: undefined }, { ...NODES[1], state: 'waiting' }] })))
+    expect([a.halo.visible, a.aura.visible, a.core.material.emissiveIntensity]).toEqual([false, false, 0])
+    expect([b.halo.visible, b.core.material.emissiveIntensity]).toEqual([true, 0.35])
+    expect(named(fake, 'linkColor').length).toBeGreaterThan(linkStyled)
+  })
+
+  it('a theme change re-resolves every colour', async () => {
+    canvas2d(false)
+    // jsdom resolves no theme, so the computed colour stands in for one: dark, then light.
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      () => ({ color: document.documentElement.dataset.theme === 'light' ? 'rgb(10, 20, 30)' : 'rgb(200, 100, 50)' }) as CSSStyleDeclaration
+    )
+    const fake = await mount()
+    const a = parts(nodeGroup(fake, 'session:a'))
+    expect(a.core.material.color.getHexString()).toBe('c86432')
+    const linkColor = () => (fake.props.linkColor as (l: { id: string }) => string)({ id: 'm:a:b' })
+    expect(linkColor()).toBe('rgba(200, 100, 50, 1)')
+    await act(async () => {
+      document.documentElement.setAttribute('data-theme', 'light')
+      await Promise.resolve()
+    })
+    expect(a.core.material.color.getHexString()).toBe('0a141e')
+    expect(linkColor()).toBe('rgba(10, 20, 30, 1)')
   })
 
   it('a click on a session hands back the model node, as the 2D box does', async () => {
@@ -203,6 +253,36 @@ describe('AgentGraph3D', () => {
     expect(fake.renderer.forceContextLoss).toHaveBeenCalledTimes(1)
     expect(fake.canvas.isConnected).toBe(false)
     expect((window as unknown as { scene?: unknown }).scene).toBeUndefined()
+  })
+})
+
+describe('picking', () => {
+  // three's raycaster ignores `visible`, and the library ranks any node hit above any line hit, so a
+  // glow shell that took part would steal hovers from lines and clicks from the node behind it.
+  const camera = new PerspectiveCamera()
+  camera.position.set(0, 0, 100)
+  camera.updateMatrixWorld()
+  const hits = (group: Object3D, x: number, y: number): Object3D[] => {
+    const ray = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
+    ray.camera = camera
+    return ray.intersectObject(group, true).map((h) => h.object)
+  }
+
+  it('the glow shells let the pointer through, lit or not; the core and the label take it', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    for (const id of ['session:a', 'session:b']) {
+      const group = nodeGroup(fake, id)
+      group.updateMatrixWorld(true)
+      const { core, halo, aura, label } = parts(group)
+      expect(label, id).toBeDefined()
+      expect(new Set(hits(group, 0, 0)), id).toEqual(new Set([core]))
+      // Outside the core (radius 7), inside the halo (10.85) and the aura (15.4).
+      expect(hits(group, 10, 0), id).toEqual([])
+      expect(hits(group, 0, -13), id).toEqual([])
+      expect(hits(group, 0, 12), id).toEqual([label])
+      expect([halo, aura].some((o) => hits(group, 0, 0).includes(o))).toBe(false)
+    }
   })
 })
 
