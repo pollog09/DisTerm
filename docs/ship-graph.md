@@ -260,7 +260,8 @@ this computer, or in this browser for the Server Edition.
 
 **2D** is the layout described above. A box or a line fades in when it first appears, and not again
 when its status changes. A session's box glows in its status colour: working, needs you or idle.
-Working and needs you pulse four times and then stay lit. Idle is lit and still. Dots grow in and out
+Working and needs you pulse four times and then stay lit, and pulse again each time a session moves
+into either one. Idle is lit and still. Dots grow in and out
 with a soft halo in their line's colour. Glows stop pulsing while the window is unfocused or hidden.
 Under Reduce Motion nothing fades in and nothing pulses.
 
@@ -289,8 +290,12 @@ it.
 
 **When 3D cannot draw.** The 3D view needs WebGL. If this window cannot create it, loses its
 graphics context, or cannot load the 3D view, the graph shows 2D with a notice that says why. The
-switch then shows 2D, but your choice stays 3D, so the next time the graph opens it tries 3D again.
-You can also click 3D to try at once.
+switch then shows 2D, but your choice stays 3D.
+
+- When WebGL was missing or its context was lost, the next time the graph opens it tries 3D again.
+  You can also click 3D to try at once.
+- When the 3D view's code could not be loaded, 3D stays unavailable until DisTerm restarts or its
+  window is reloaded. Until then, clicking 3D or reopening the graph shows the same notice again.
 
 **What 3D shows differently.**
 
