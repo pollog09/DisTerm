@@ -7,6 +7,9 @@ export interface DisInvoiceSyncControl {
   openSettings: () => void
 }
 
+/** Settings fires this after a key is saved or removed, so a board already open relabels its button. */
+export const DIS_INVOICE_KEY_CHANGED = 'nodeterm:dis-invoice-key-changed'
+
 export interface DisInvoiceSyncOutcome {
   lines: DisInvoiceReportLine[]
   offerSettings: boolean

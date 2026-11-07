@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DisInvoiceStatus } from '@shared/dis-invoice'
+import { DIS_INVOICE_KEY_CHANGED } from '@renderer/state/disInvoiceSyncRun'
 import { Button } from '@renderer/ui/Button'
 import { Input } from '@renderer/ui/Input'
 import { SettingsSection } from '../SettingsSection'
@@ -52,6 +53,7 @@ export function DisInvoiceSection({ isActive }: { isActive: boolean }): React.JS
       if (result.ok) {
         setKey('')
         setStatus(await api.status())
+        window.dispatchEvent(new Event(DIS_INVOICE_KEY_CHANGED))
         setNotice({ tone: 'ok', text: 'dis-invoice accepted the key. Press Sync on the board to bring your tasks in.' })
       } else {
         setNotice({ tone: 'error', text: result.message })
@@ -68,6 +70,7 @@ export function DisInvoiceSection({ isActive }: { isActive: boolean }): React.JS
     setNotice(null)
     try {
       await api.clearKey()
+      window.dispatchEvent(new Event(DIS_INVOICE_KEY_CHANGED))
       setStatus(await api.status())
       setNotice({ tone: 'ok', text: 'Key removed. Your notes and projects stay as they are.' })
     } catch {

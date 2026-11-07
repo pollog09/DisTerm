@@ -6,7 +6,7 @@ import type {
 } from '../../shared/dis-invoice'
 import { normalizeOwnerRepo } from '../../shared/dis-invoice'
 
-export const DIS_INVOICE_CONNECTOR_URL = 'https://dis-invoice.distriib.com/api/connector'
+export const DIS_INVOICE_CONNECTOR_URL = 'https://portal.distriib.com/api/connector'
 
 const PAGE_SIZE = 200
 /** A hundred thousand open tasks is not a board. A connector that keeps paging is broken. */

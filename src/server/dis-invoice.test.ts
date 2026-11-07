@@ -311,7 +311,7 @@ describe('a brief in a distribution', () => {
 })
 
 describe('the connector and folder a build talks to', () => {
-  const PRODUCTION = 'https://dis-invoice.distriib.com/api/connector/columns'
+  const PRODUCTION = 'https://portal.distriib.com/api/connector/columns'
   const LOOPBACK = 'http://127.0.0.1:8799/api/connector'
 
   afterEach(() => {

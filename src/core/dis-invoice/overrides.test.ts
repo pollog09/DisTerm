@@ -38,7 +38,7 @@ describe('disInvoiceProofOverrides', () => {
 
   it.each([
     [undefined, '/sandbox', NEEDS_URL],
-    ['https://dis-invoice.distriib.com/api/connector', '/sandbox', NEEDS_URL],
+    ['https://portal.distriib.com/api/connector', '/sandbox', NEEDS_URL],
     ['http://evil.example/api/connector', '/sandbox', NEEDS_URL],
     [LOOPBACK, undefined, NEEDS_DOCUMENTS],
     [LOOPBACK, 'relative/folder', NEEDS_DOCUMENTS]
