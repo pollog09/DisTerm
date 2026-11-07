@@ -176,41 +176,56 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   layout ranks the harness left, and carries `flow: 'reverse'` so its dot runs the way hooks flow. An idle graph
   runs no animation. `agent-graph.css.test.ts` pins it.
 - **2D motion is finite, and the glows rest lit.** A box (`.agent-graph .react-flow__node`) and a line
-  (`g.agent-graph-edge`, its label) fade in once: React Flow keeps each element by id, so a status change
-  never replays it, and `scale` is used rather than `transform`, which React Flow owns on the wrapper. A
-  session's status glow (`data-glow` from `sessionGlow`: working, needs you, idle) pulses four times and
-  rests at the base `box-shadow`, which is where its keyframes start and end; idle is lit and still. An
-  idle window and Reduce Motion set `animation: none` on all of it. None reads `--nt-anim-state`.
-  `agent-graph.css.test.ts` and `styles.animation-gate.test.ts` pin the shorthands, the rest and the gates.
-  What a box says lives in `lib/agentGraphNodeText.ts`, so the 3D tooltip cannot word it differently.
-- **The 3D view renders the same model, and is its own chunk** (`components/graph/AgentGraph3D.tsx`,
-  `lazy()` from the view; pure shape in `lib/agentGraph3d.ts`). `toGraph3dData` returns the SAME object
-  while `agentGraphStructureKey` is unchanged and keeps every surviving node object otherwise: the force
-  layout writes positions onto those objects, so new ones throw the graph back to the start. Content
-  (status, counts, colours) is restyled in place. Colours are the 2D tokens resolved against the live
-  theme through a probe element (`parseCssColor` reads what Chromium computes, `color(srgb …)` included)
-  and re-resolved on a `data-theme`/`data-nt-glass`/`style` change; the WebGL canvas is transparent, so the
-  view's background is the theme's. A dashed 2D line is a fainter tube (`DASHED_LINK_ALPHA`): a tube has
-  no dash. Particles are the 2D dots' stream: `pulseOf` per line, seeded at 3D mount so nothing replays,
-  at most `MAX_FLOW_DOTS` in flight per line, none under Reduce Motion or while nobody can see them.
+  (`g.agent-graph-edge`, its label) fade in once. React Flow keeps each element by id, so a status change
+  never replays it. The box grows in with `scale`, not `transform`, which React Flow owns on the wrapper.
+  A session's status glow (`data-glow` from `sessionGlow`: working, needs you, idle) pulses four times
+  (2.6 s working, 2 s needs you) and rests at the base `box-shadow`, which is where its keyframes start
+  and end. Idle is lit and still. An
+  idle window sets `animation: none` on the glows, so they rest lit rather than freeze mid-pulse. The
+  entrance has no window gate, because it is short and runs once. Reduce Motion sets `animation: none`
+  on the entrance and the glows. None of it reads `--nt-anim-state`. `agent-graph.css.test.ts` and
+  `styles.animation-gate.test.ts` pin the shorthands, the rest and the gates. What a box says lives in
+  `lib/agentGraphNodeText.ts`, so the 3D tooltip cannot word it differently.
+- **The 3D view renders the same model** (`components/graph/AgentGraph3D.tsx`; the pure shape is in
+  `lib/agentGraph3d.ts`). `toGraph3dData` returns the SAME object while `agentGraphStructureKey` is
+  unchanged. When the structure changes, it keeps every surviving node object. The force layout writes
+  positions onto those objects, so new ones would throw the graph back to the start. Content (status,
+  counts, colours) is restyled in place. Colours are the 2D tokens, resolved against the live theme
+  through a probe element. `parseCssColor` reads what Chromium computes, `color(srgb …)` included. They
+  are re-resolved on a `data-theme`, `data-nt-glass`, `style` or `class` change on the root. The WebGL
+  canvas is transparent, so the view's background is the theme's. A dashed 2D line is a fainter tube
+  (`DASHED_LINK_ALPHA`), because a tube has no dash. A status glow is a still halo, never a pulse, so a
+  settled graph needs no frames. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
+  seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. None is emitted under
+  Reduce Motion or while nobody can see the view, and an event missed then is not replayed later.
 - **The 3D frame loop runs only while something can change and somebody can see it**
-  (`graph3dLoopShouldRun`): the layout moving, a particle in flight, the pointer over the view, or a
-  camera move asked for; never while the window is idle or hidden (`data-nt-window`, the CSS gate's own
-  signal) or the terminal modal covers it. 3d-force-graph's own loop is a rAF every frame forever, so a
-  settled graph nobody points at would otherwise hold the window at display rate. Reduce Motion: the
-  layout is warmed up before the first frame (`cooldownTicks` 0), the camera jumps (`zoomToFit(0)`), no
-  particles. Unmount calls `_destructor` (scene, controls, renderer) and then `forceContextLoss`, because
-  `dispose` keeps the context and Chromium evicts the oldest one past its cap, which can be a terminal's
-  (the budget in `terminal/webgl-budget.ts` leaves 4 under the browser's 16; this view takes one). It
-  also deletes the `window.scene` global the library sets. WebGL is probed before the chunk is fetched
-  (`lib/webgl.ts`, the probe context released at once); no WebGL, a lost context, or a chunk that fails to
-  load shows 2D with a notice, never a blank pane, and keeps the person's choice. The choice is a display
-  preference (`state/agentGraphDisplay.ts`, `nodeterm.agentGraphView`, one for all projects, 2D first).
-  `three` ships no types: `src/renderer/three-subset.d.ts` declares only what the view calls, and
-  `three/webgpu` is aliased to a stub (`three-webgpu-stub.ts`) because three-render-objects imports the
-  WebGPU renderer it never builds here, half the chunk (3.24 MB to 1.63 MB). **Not verified:** real WebGL
-  rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the Server
-  Edition in a browser, Liquid Glass. Mobile N/A.
+  (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, the pointer is over
+  the view, or a camera move was asked for. It never runs while the window is idle or hidden (`data-nt-window`,
+  the CSS gate's own signal) or the terminal modal covers the view. While it runs, the gate is re-checked
+  every 250 ms. 3d-force-graph's own loop is a rAF every frame forever, so without the gate a settled graph
+  nobody points at would hold the window at display rate. Under Reduce Motion the layout is computed before
+  the first frame (`cooldownTicks` 0), the camera jumps (`zoomToFit(0)`) and there are no particles.
+- **Unmounting the 3D view gives its WebGL context back.** It calls `_destructor` (scene, controls,
+  renderer) and then `forceContextLoss`. `dispose` alone keeps the context, and Chromium evicts the oldest
+  context past its cap, which can be a terminal's. The terminal budget (`terminal/webgl-budget.ts`) stays
+  under the platform cap with room to spare, and this view takes one of those spare slots. Unmount also
+  deletes the `window.scene` global the library sets.
+- **3D never leaves a blank pane.** WebGL is probed before the chunk is fetched (`lib/webgl.ts`), and the
+  probe's context is released at once. No WebGL, a lost context, or a chunk that fails to load or throws
+  (`Graph3DBoundary`) shows 2D with a notice. The person's choice is kept, so the next open tries 3D again.
+  The choice is a display preference in localStorage (`state/agentGraphDisplay.ts`,
+  `nodeterm.agentGraphView`). It is one for all projects, and anything but a literal `3d` reads as 2D.
+- **The 3D code costs nothing until it is opened, and nothing in the installer.** `AgentGraph3D` is a
+  `lazy()` chunk, the only one holding `three` and `3d-force-graph`. Both are exact-pinned
+  devDependencies: Vite bundles them into the renderer, and electron-builder packs only `dependencies`,
+  so their ~58 MB `node_modules` subtree stays out of the installer. `three/webgpu` is aliased to a stub
+  (`three-webgpu-stub.ts`, in `electron.vite.config.ts`). three-render-objects imports the WebGPU renderer
+  but never builds it here, and the stub halves the chunk (3.24 MB to 1.63 MB). `three` ships no types and
+  `@types/three` is not a dependency, so `src/renderer/three-subset.d.ts` declares only what the view
+  calls. A new three API must be added there first. `package.json` overrides 3d-force-graph's
+  `float-tooltip` to 1.7.5, because 1.8.0 was days old and pulled a days-old preact. **Not verified:**
+  real WebGL rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the
+  Server Edition in a browser, Liquid Glass. Mobile N/A.
 - **The Harness box is per machine and only for session boxes**, never a note, ghost or template. A figure the
   config cannot state for that machine (`shipDescribes`) is left off, not zero. Which box a subagent's call
   leaves (`subBox`) is certain or it is the session: a guessed, uncertain, twice-drawn or unknown run falls back.

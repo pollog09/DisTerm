@@ -251,6 +251,58 @@ arrives, but its chevrons do not move. That holds for the line into the guess an
 
 Moving chevrons pause while the window is unfocused or hidden, and stay still under Reduce Motion.
 
+## 2D and 3D
+
+The **2D / 3D** switch in the graph's header picks how the graph is drawn. Both views show the same
+boxes and lines, and share the legend, the notices and the side panels. The graph opens in 2D the
+first time. After that it opens in the view you used last, for every project. The choice is kept on
+this computer, or in this browser for the Server Edition.
+
+**2D** is the layout described above. A box or a line fades in when it first appears, and not again
+when its status changes. A session's box glows in its status colour: working, needs you or idle.
+Working and needs you pulse four times and then stay lit. Idle is lit and still. Dots grow in and out
+with a soft halo in their line's colour. Glows stop pulsing while the window is unfocused or hidden.
+Under Reduce Motion nothing fades in and nothing pulses.
+
+**3D** draws the same graph as a force layout you can turn. Its code loads the first time you open
+it.
+
+- Each kind of box has its own shape. A session is a sphere in its agent's colour. A Harness is an
+  icosahedron, a stage or subagent a dodecahedron, a skill an octahedron, an MCP server a cube and a
+  note a tetrahedron. A session has a still halo in its status colour, and any box whose run is in
+  progress has the working one.
+- Each name floats above its shape, cut at 40 characters. Hover a shape to read everything its 2D box
+  says. Hover a line to read its label and its description.
+- Drag to turn the camera and scroll to zoom. Shapes cannot be dragged. **Fit**, at the top left,
+  frames the whole graph. The camera also frames it by itself each time the layout settles after a box
+  or a line comes or goes. The view never rotates on its own.
+- A click does what it does in 2D. A session opens its terminal. A Harness, skill or MCP shape opens
+  the Harness panel. A note is shown on the canvas.
+- One particle travels along a line per event, as the 2D dots do, at most three on a line at once.
+  Harness particles run from the session to the Harness, as in 2D. Opening the view does not replay
+  what already happened.
+- The view draws only while something on it moves or your pointer is over it. It stops while the
+  window is unfocused or hidden, and while a terminal is open over it. An event that happens then gets
+  no particle, then or later.
+- Under Reduce Motion the layout appears already settled, the camera jumps instead of flying, and no
+  particles are drawn.
+
+**When 3D cannot draw.** The 3D view needs WebGL. If this window cannot create it, loses its
+graphics context, or cannot load the 3D view, the graph shows 2D with a notice that says why. The
+switch then shows 2D, but your choice stays 3D, so the next time the graph opens it tries 3D again.
+You can also click 3D to try at once.
+
+**What 3D shows differently.**
+
+- No moving chevrons. A line in use shows only its particles. An arrowhead marks which way each line
+  runs, except a Harness line.
+- A line that is dashed in 2D (a dependency, a context link, a rejection, a loop, a move not declared,
+  anything marked "maybe") is a fainter solid line. The legend still draws it dashed.
+- Badges and line labels, such as message counts and a line's `×2`, appear only on hover. A box's run
+  count stays in its name.
+- Nothing pulses when a move or message arrives. The particle is the arrival.
+- Status halos do not pulse.
+
 ## Known limits
 
 - Subagent, skill and MCP mapping is Claude-only. Other CLIs appear as sessions and message lines.
