@@ -121,9 +121,9 @@ its agent status" under Hosted team relay.
   sync is **split in two** — `TITLE_READ_CAPABLE = claude/codex/grok/gemini` (read) ⊇
   `RENAME_CAPABLE = claude/grok` (write), because gemini and codex name their own sessions but have
   no rename command (codex's read leg is `readCodexSessionName`);
-  **Context Link** spans five builtins
-  (`CONTEXT_LINK_CAPABLE = claude/codex/gemini/opencode/grok`; the one builtin outside it is
-  copilot). UI gates
+  **Context Link** spans seven builtins
+  (`CONTEXT_LINK_CAPABLE = claude/codex/gemini/opencode/grok/cursor/antigravity/copilot`; copilot
+  joined with `locateCopilot` + `linesFromCopilot`, see `context-link.md`). UI gates
   on these helpers — no hardcoded `=== 'claude'`. **Custom agents** (user-defined in Settings,
   `customAgents`) inherit the declared `baseAgent` harness through `capabilityAgentId`; a custom
   agent with no base remains spawn + terminal-title + process status only. Per-agent write-ups:
