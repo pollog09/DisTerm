@@ -1,4 +1,5 @@
 import type { ChatPromptBlocked, ChatPromptResult, EmptyPromptResult, TextDeliveryResult } from '../shared/text-delivery'
+import { readCopilotComposer } from '../shared/agents/copilot-screen'
 import { claudeScreenBlocksInput, readClaudeComposer, readClaudeDraft, readClaudeScreen } from '../shared/agents/claude-screen'
 import os from 'os'
 import fs from 'fs'
@@ -190,6 +191,7 @@ import {
   capabilityAgentId,
   submitsSeparately,
   hasSharedIdentity,
+  readsEmptyPrompt,
   readsScreenDialogs,
   setCustomAgentBaseResolver,
   typesChatInput,
@@ -6911,16 +6913,17 @@ export class PtyManager {
    * `blocked`/`waiting` pane would have had its dialog ANSWERED by that Enter).
    *
    * Emptiness is read off a STYLED capture (`readClaudeComposer`: the placeholder is dim, a draft is
-   * not), so only an agent with a measured composer reader may receive one (`readsScreenDialogs`);
+   * not), so only an agent with a measured composer reader may receive one (`readsEmptyPrompt`);
    * every other agent answers `unsupported` and nothing is written. The read and the write run inside
    * `serializePaneWrite`, so no other app write lands between them. What no gate closes: a keystroke
    * the user makes in the milliseconds between the capture and the paste. A claude composer is TYPED
    * (`typesChatInput`) and re-checks for a dialog before its Enter, like a chat prompt.
    */
   async sendToEmptyPrompt(persistKey: string, text: string, agentId: string): Promise<EmptyPromptResult> {
-    if (!readsScreenDialogs(agentId)) return { sent: false, reason: 'unsupported' }
+    if (!readsEmptyPrompt(agentId)) return { sent: false, reason: 'unsupported' }
     return this.serializePaneWrite(persistKey, async (): Promise<EmptyPromptResult> => {
-      const composer = readClaudeComposer(await this.captureStyledScreen(persistKey))
+      const screen = await this.captureStyledScreen(persistKey)
+      const composer = agentId === 'copilot' ? readCopilotComposer(screen) : readClaudeComposer(screen)
       if (composer !== 'empty') return { sent: false, reason: composer }
       const delivered = await this.sendTextNow(
         persistKey,

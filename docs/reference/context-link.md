@@ -12,8 +12,11 @@ Reference split out of `CLAUDE.md`, which holds the rules every change needs. Wo
   `tool.execution_start` and one `=` line per `tool.execution_complete`; system prompt, reasoning,
   usage and unknown events render nothing, and sub-agent events and the user messages copilot's own
   timeline hides are skipped. The `get-linked-context` skill is installed in `<COPILOT_HOME>/skills`
-  under the same consent as the other agents; copilot gets no discovery note (not
-  `SCREEN_DIALOG_READABLE`). **grok joined in 2026-09, and the file matters:** its
+  under the same consent as the other agents; copilot gets the discovery note too, so
+  a copilot↔copilot link announces itself: `EMPTY_PROMPT_READABLE` (not `SCREEN_DIALOG_READABLE`, which
+  would widen the chat view's dialog gate) admits it to `sendToEmptyPrompt`, whose emptiness proof is
+  `readCopilotComposer` (`shared/agents/copilot-screen.ts`, measured on 1.0.107: a bare `❯` between
+  two `────` rules is empty, any text after it is a draft). **grok joined in 2026-09, and the file matters:** its
   readable conversation is `chat_history.jsonl`, NOT the `updates.jsonl` its own hook payloads
   advertise and this line used to name. Routing through the advertised path does not error — it opens
   a real file, parses nothing, and hands the linked agent an EMPTY transcript with no diagnostic, so

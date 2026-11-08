@@ -30,6 +30,7 @@ describe('linkNoteRefusal (#1144)', () => {
 
   it('an agent whose composer cannot be read is refused: emptiness cannot be proven', () => {
     for (const a of ['codex', 'gemini', 'opencode', 'grok']) expect(linkNoteRefusal(a, { state: 'done' })).toBe('unsupported')
+    expect(linkNoteRefusal('copilot', { state: 'done' })).not.toBe('unsupported')
   })
 })
 
