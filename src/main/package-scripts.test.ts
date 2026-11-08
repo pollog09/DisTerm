@@ -51,3 +51,41 @@ describe('packaging scripts', () => {
     expect(cmd).not.toContain('npm run host:build')
   })
 })
+
+/**
+ * Every installer carries THIRD-PARTY-NOTICES.md in its resources. The BSD-3-Clause packages the agent
+ * graph's 3D view bundles (ngraph.*) ask for their notice "in the documentation and/or other materials
+ * provided with the distribution", and the build strips licence comments, so this file is where it is.
+ *
+ * electron-builder 26 concatenates the top-level `extraResources` with the platform's own list rather
+ * than letting one replace the other (`app-builder-lib/out/fileMatcher.js`, `getFileMatchers`: the
+ * top-level list, then `customBuildOptions[name]`, which is `config.mac`/`win`/`linux`). The effective
+ * list below follows that rule, and the rule itself is pinned, so an upgrade that changes it fails here.
+ */
+describe('third-party notices ship in every installer', () => {
+  const build = JSON.parse(fs.readFileSync(PKG, 'utf8')).build as Record<string, unknown>
+  type Entry = string | { from?: string; to?: string; filter?: string[] }
+  const list = (v: unknown): Entry[] => (v == null ? [] : Array.isArray(v) ? (v as Entry[]) : [v as Entry])
+  const effective = (platform: 'mac' | 'win' | 'linux'): Entry[] => [
+    ...list(build.extraResources),
+    ...list((build[platform] as Record<string, unknown> | undefined)?.extraResources)
+  ]
+  const shipsNotices = (e: Entry): boolean =>
+    typeof e === 'string' ? e === 'THIRD-PARTY-NOTICES.md' : e.from === 'THIRD-PARTY-NOTICES.md' && (e.to === undefined || e.to === 'THIRD-PARTY-NOTICES.md') && !e.filter
+
+  it.each(['mac', 'win', 'linux'] as const)('%s', (platform) => {
+    expect(effective(platform).filter(shipsNotices), JSON.stringify(effective(platform))).toHaveLength(1)
+  })
+
+  it('the file is there to ship', () => {
+    expect(fs.existsSync(path.resolve(__dirname, '../../THIRD-PARTY-NOTICES.md'))).toBe(true)
+  })
+
+  it('electron-builder still adds the platform list after the top-level one', () => {
+    const src = fs.readFileSync(require.resolve('app-builder-lib/out/fileMatcher.js'), 'utf8')
+    const top = src.indexOf('addPatterns(config[name]);')
+    const own = src.indexOf('addPatterns(options.customBuildOptions[name]);')
+    expect(top).toBeGreaterThan(0)
+    expect(own).toBeGreaterThan(top)
+  })
+})
