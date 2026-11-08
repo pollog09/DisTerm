@@ -240,6 +240,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       })
       if (run && !st.running) {
         st.running = true
+        // The cooldown is wall-clock from the last data update, and the layout moves only on frames. A
+        // layout paused mid-way for longer than the cooldown would stop on its first frame with nothing
+        // placed, so it starts its countdown again here, and only here, as the frames come back.
+        if (st.engineRunning) graph.d3ReheatSimulation()
         graph.resumeAnimation()
       } else if (!run && st.running) {
         st.running = false
@@ -487,6 +491,9 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
   // One particle per new event on a line, as the 2D view's dots: never what happened before this view
   // opened, at most MAX_FLOW_DOTS on one line at once, and none under reduced motion or while nobody
   // can see it travel.
+  // Not pruned when a line goes: a line that comes back (a session's Harness line, after it was a ghost)
+  // returns with its old `lastEventTs`, which only this map knows was already played. One number per line
+  // seen while the view is open, freed with it.
   const seen = useRef<Map<string, number> | null>(null)
   useEffect(() => {
     const graph = graphRef.current

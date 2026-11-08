@@ -329,6 +329,48 @@ describe('the 3D frame loop', () => {
     await act(async () => root.render(view([message()], { shown: false })))
     expect(running(fake)).toBe(false)
   })
+
+  // The layout's cooldown runs on the wall clock from the last data update, but the layout only moves on
+  // frames. A structure change while paused, then a pause longer than the cooldown, used to stop the
+  // engine on the first frame with no layout done, and the camera framed a pile of unplaced nodes.
+  const third: GraphNode = { id: 'session:c', kind: 'session', title: 'Reviewer', sessionId: 'c', agentId: 'claude' }
+  const order = (fake: Fake): string[] => fake.calls.map((c) => c.name).filter((n) => n === 'd3ReheatSimulation' || n === 'resumeAnimation' || n === 'pauseAnimation')
+
+  it('a structure change while covered restarts the cooldown before frames resume', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message()], { shown: false })))
+    await act(async () => root.render(view([message()], { shown: false, nodes: [...NODES, third] })))
+    expect(running(fake)).toBe(false)
+    const before = order(fake).length
+    await act(async () => root.render(view([message()], { nodes: [...NODES, third] })))
+    expect(order(fake).slice(before)).toEqual(['d3ReheatSimulation', 'resumeAnimation'])
+  })
+
+  it('a settled layout is not reheated when frames resume, and a stopped loop is never reheated', async () => {
+    const fake = await mount()
+    await settle(fake)
+    await act(async () => root.render(view([message()], { shown: false })))
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+    await act(async () => root.render(view([message()])))
+    expect(running(fake)).toBe(true)
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+  })
+
+  it('a window gone idle mid-layout gets the same restart when it is looked at again', async () => {
+    const fake = await mount()
+    await act(async () => {
+      document.documentElement.setAttribute('data-nt-window', 'idle')
+      await Promise.resolve()
+    })
+    expect(running(fake)).toBe(false)
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+    const before = order(fake).length
+    await act(async () => {
+      document.documentElement.removeAttribute('data-nt-window')
+      await Promise.resolve()
+    })
+    expect(order(fake).slice(before)).toEqual(['d3ReheatSimulation', 'resumeAnimation'])
+  })
 })
 
 describe('particles', () => {
@@ -372,6 +414,15 @@ describe('under reduced motion', () => {
     const fake = await mount()
     await act(async () => root.render(view([message(2000)])))
     expect(named(fake, 'emitParticle')).toHaveLength(0)
+  })
+
+  it('a restart after a pause still settles at once: the layout keeps no cooldown to animate', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message()], { shown: false })))
+    await act(async () => root.render(view([message()])))
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(1)
+    expect(fake.props.cooldownTicks).toBe(0)
+    expect(fake.props.warmupTicks).toBe(300)
   })
 
   it('the camera jumps instead of flying', async () => {
