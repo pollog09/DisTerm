@@ -194,8 +194,13 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `lib/agentGraphNodeText.ts`, so the 3D tooltip cannot word it differently.
 - **The 3D view renders the same model** (`components/graph/AgentGraph3D.tsx`; the pure shape is in
   `lib/agentGraph3d.ts`). `toGraph3dData` returns the SAME object while `agentGraphStructureKey` is
-  unchanged. When the structure changes, it keeps every surviving node object. The force layout writes
-  positions onto those objects, so new ones would throw the graph back to the start. Content (status,
+  unchanged and no node changed kind (`sameKinds`). A kind is not structure in 2D, but in 3D it is the
+  shape, so a session that turned ghost needs a new object and a new mesh. On a rebuild it keeps every
+  surviving node object of the same kind. The force layout writes positions onto those objects, so new
+  ones would throw the graph back to the start. A line object is kept only while each end is its id
+  string or the very object now in `nodes` for that id (`endIsLive`). d3-force-3d's `forceLink` keeps an
+  end that is already an object, so a line tied to a replaced node would stay pinned to an object no
+  longer simulated. Content (status,
   counts, colours) is restyled in place. Colours are the 2D tokens, resolved against the live theme
   through a probe element. `parseCssColor` reads what Chromium computes, `color(srgb …)` included. They
   are re-resolved on a `data-theme`, `data-nt-glass`, `style` or `class` change on the root. The WebGL
@@ -222,17 +227,21 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   deletes the `window.scene` global the library sets.
 - **3D never leaves a blank pane.** WebGL is probed before the chunk is fetched (`lib/webgl.ts`), and the
   probe's context is released at once. No WebGL, a lost context, or a chunk that fails to load or throws
-  (`Graph3DBoundary`) shows 2D with a notice. The person's choice is kept. After no WebGL, a lost context
+  (`Graph3DBoundary`) shows 2D with a notice. The boundary tells the last two apart: the lazy import
+  wraps its rejection as `Graph3DLoadError`, which gets `GRAPH_3D_LOAD_FAILED_NOTICE` ("could not be
+  loaded"), and any other throw gets `GRAPH_3D_FAILED_NOTICE` ("stopped with an error"). The person's
+  choice is kept. After no WebGL, a lost context
   or a render-time throw, a click on 3D or the next open tries again: the probe re-runs and the boundary
   remounts. **A chunk that failed to load does not retry.** `lazy()` is at module level in
   `AgentGraphView.tsx`, so React keeps the rejected promise for the renderer's life, and Chromium's module
   map keeps the failed import of that URL too. Every try shows the notice again until a restart or a window
   reload. The choice is a display preference in localStorage (`state/agentGraphDisplay.ts`,
   `nodeterm.agentGraphView`). It is one for all projects, and anything but a literal `3d` reads as 2D.
-- **The 3D code costs nothing until it is opened, and nothing in the installer.** `AgentGraph3D` is a
+- **The 3D code loads only when 3D opens, and only its bundled chunk ships.** `AgentGraph3D` is a
   `lazy()` chunk, the only one holding `three` and `3d-force-graph`. Both are exact-pinned
-  devDependencies: Vite bundles them into the renderer, and electron-builder packs only `dependencies`,
-  so their ~58 MB `node_modules` subtree stays out of the installer. `three/webgpu` is aliased to a stub
+  devDependencies: Vite bundles them into that chunk (about 1.6 MB, in `out/renderer`, which ships), and
+  electron-builder packs only `dependencies`, so their ~58 MB `node_modules` subtree stays out of the
+  installer. Their licences are in `THIRD-PARTY-NOTICES.md`, which every installer carries. `three/webgpu` is aliased to a stub
   (`three-webgpu-stub.ts`, in `electron.vite.config.ts`). three-render-objects imports the WebGPU renderer
   but never builds it here, and the stub halves the chunk (3.24 MB to 1.63 MB). `three` ships no types and
   `@types/three` is not a dependency, so `src/renderer/three-subset.d.ts` declares only what the view

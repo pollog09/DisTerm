@@ -368,6 +368,11 @@ Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for t
 and `release:mac` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
 work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
 
+**A new renderer dependency needs a line in `THIRD-PARTY-NOTICES.md`.** Vite strips licence comments
+from the bundle, so that file is the only place the notices reach users. Every installer ships it
+through a top-level `build.extraResources` entry (`src/main/package-scripts.test.ts` pins it). This
+holds for a devDependency too, because Vite bundles it.
+
 **Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two
 things can go wrong quietly:
 

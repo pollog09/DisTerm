@@ -291,13 +291,17 @@ it.
   particles are drawn.
 
 **When 3D cannot draw.** The 3D view needs WebGL. If this window cannot create it, loses its
-graphics context, or cannot load the 3D view, the graph shows 2D with a notice that says why. The
-switch then shows 2D, but your choice stays 3D.
+graphics context, cannot load the 3D view, or the 3D view stops with an error, the graph shows 2D
+with a notice that says why. The switch then shows 2D, but your choice stays 3D.
 
-- When WebGL was missing or its context was lost, the next time the graph opens it tries 3D again.
-  You can also click 3D to try at once.
-- When the 3D view's code could not be loaded, 3D stays unavailable until DisTerm restarts or its
-  window is reloaded. Until then, clicking 3D or reopening the graph shows the same notice again.
+| Notice | What happens next |
+|---|---|
+| The 3D view needs WebGL, which this window cannot create. | The next time the graph opens it tries 3D again. You can also click 3D to try at once. |
+| The 3D view lost its graphics context. | The same: the next open, or a click on 3D, tries again. |
+| The 3D view stopped with an error. | The same: the next open, or a click on 3D, tries again. |
+| The 3D view could not be loaded. | 3D stays unavailable until DisTerm restarts or its window is reloaded. Until then, clicking 3D or reopening the graph shows this notice again. |
+
+Each notice ends with "Showing the 2D view."
 
 **What 3D shows differently.**
 
