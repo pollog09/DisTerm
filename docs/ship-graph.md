@@ -286,7 +286,8 @@ it.
   what already happened.
 - The view draws only while something on it moves or your pointer is over it. It stops while the
   window is unfocused or hidden, and while a terminal is open over it. An event that happens then gets
-  no particle, then or later.
+  no particle, then or later. Boxes that arrive while it is stopped find their place when you come
+  back.
 - Under Reduce Motion the layout appears already settled, the camera jumps instead of flying, and no
   particles are drawn.
 

@@ -212,7 +212,10 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   and clicks meant for the node behind it. The core shape and the name label stay pickable, as a click on
   a 2D box's title opens it. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
   seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. None is emitted under
-  Reduce Motion or while nobody can see the view, and an event missed then is not replayed later.
+  Reduce Motion or while nobody can see the view, and an event missed then is not replayed later. The
+  map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
+  session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would
+  replay an event already shown. It costs one number per line id until the view unmounts.
 - **The 3D frame loop runs only while something can change and somebody can see it**
   (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, the pointer is over
   the view, or a camera move was asked for. It never runs while the window is idle or hidden (`data-nt-window`,
@@ -220,6 +223,13 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   every 250 ms. 3d-force-graph's own loop is a rAF every frame forever, so without the gate a settled graph
   nobody points at would hold the window at display rate. Under Reduce Motion the layout is computed before
   the first frame (`cooldownTicks` 0), the camera jumps (`zoomToFit(0)`) and there are no particles.
+  **Resuming frames reheats a layout that has not settled.** three-forcegraph's cooldown is wall-clock
+  (`cooldownTime`, 4 s), and a data update restarts it even while frames are paused, but the layout only
+  advances on frames. So when frames resume while the engine still counts as running, `evaluate()` calls
+  `d3ReheatSimulation()` (alpha 1 and a new countdown) before `resumeAnimation()`. Without it, a structure
+  change made while the view was covered or the window idle, then a pause longer than 4 s, ends the
+  engine with zero ticks and leaves the new shapes piled where they started. A settled engine is never
+  reheated, and Reduce Motion still settles at once.
 - **Unmounting the 3D view gives its WebGL context back.** It calls `_destructor` (scene, controls,
   renderer) and then `forceContextLoss`. `dispose` alone keeps the context, and Chromium evicts the oldest
   context past its cap, which can be a terminal's. The terminal budget (`terminal/webgl-budget.ts`) stays
