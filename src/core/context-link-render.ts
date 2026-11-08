@@ -10,6 +10,7 @@
 // remote side becomes a thin sh+curl client and the desktop does the reading and the parsing.
 import type { LinkDoc, LinkDocEntry } from './context-link-core'
 import { linesFromCursor } from './cursor-chat'
+import { isSubAgentEvent, shownSource } from './copilot-chat'
 
 export type ContextLinkVerb = 'list' | 'summary' | 'transcript' | 'terminal'
 
@@ -450,10 +451,86 @@ export function linesFromAntigravity(buf: string): string[] {
 
 linesFromAntigravity.skipped = (buf: string): number => antigravityParse(buf).skipped
 
+/**
+ * Copilot CLI's session journal (`<COPILOT_HOME>/session-state/<id>/events.jsonl`), one event per
+ * line in the envelope `{type, data, id, timestamp, parentId}`. Shapes measured on 1.0.105:
+ *
+ *   `user.message`            `data.content` is the prompt as typed (`transformedContent` is the
+ *                             model-facing rewrite and is never read)
+ *   `assistant.message`       `data.content` may be empty when the turn is only tool calls
+ *   `tool.execution_start`    `data.toolName` + `data.arguments` (one per call; `toolRequests` on the
+ *                             message above repeats the same calls, so it is not read)
+ *   `tool.execution_complete` `data.result.content` on success, `data.error.message` on failure
+ *
+ * Everything else (`system.message`, reasoning, usage, turn markers, notifications) renders nothing,
+ * and so does any event type nobody has measured. A sub-agent's events and user messages the CLI's
+ * own timeline hides (skill injections, other agents' prompts) are skipped by the same tests the ⌘M
+ * reader uses (`copilot-chat.ts`), so both views agree on what the conversation is. A line that is
+ * not JSON is skipped but counted: `linesFromCopilot.skipped(buf)`.
+ */
+function copilotParse(buf: string): { events: { type?: string; data: Record<string, unknown>; env: Record<string, unknown> }[]; skipped: number } {
+  const events: { type?: string; data: Record<string, unknown>; env: Record<string, unknown> }[] = []
+  let skipped = 0
+  for (const raw of buf.split('\n')) {
+    const t = raw.trim()
+    if (!t) continue
+    const o = parseJson(t) as Record<string, unknown> | undefined
+    if (!o || typeof o !== 'object' || Array.isArray(o)) {
+      skipped++
+      continue
+    }
+    const data = o.data && typeof o.data === 'object' && !Array.isArray(o.data) ? (o.data as Record<string, unknown>) : {}
+    events.push({ type: typeof o.type === 'string' ? o.type : undefined, data, env: o })
+  }
+  return { events, skipped }
+}
+
+export function linesFromCopilot(buf: string): string[] {
+  const res: string[] = []
+  for (const { type, data, env } of copilotParse(buf).events) {
+    if (isSubAgentEvent(env, data)) continue
+    switch (type) {
+      case 'user.message': {
+        if (!shownSource(data.source)) break
+        const t = flatText(data.content)
+        if (t) res.push(`user: ${t}`)
+        break
+      }
+      case 'assistant.message': {
+        const t = flatText(data.content)
+        if (t) res.push(`assistant: ${t}`)
+        break
+      }
+      case 'tool.execution_start': {
+        const name = typeof data.toolName === 'string' && data.toolName ? data.toolName : 'tool'
+        // A freeform tool (apply_patch) carries its input as one string; the rest are objects.
+        const arg = typeof data.arguments === 'string' ? ` ${data.arguments.slice(0, TOOL_ARG_MAX)}` : toolArg(data.arguments)
+        res.push(`  $ ${name}${arg}`)
+        break
+      }
+      case 'tool.execution_complete': {
+        const result = data.result as { content?: unknown } | undefined
+        const error = data.error as { message?: unknown } | undefined
+        const raw = flatText(result?.content) || (typeof error?.message === 'string' ? error.message : '')
+        const s = raw.split('\n').slice(0, 3).join(' ').slice(0, TOOL_RESULT_MAX)
+        if (s) res.push(`  = ${s}`)
+        break
+      }
+      default:
+        break
+    }
+  }
+  return res
+}
+
+/** How many lines of this buffer could not be parsed. Skipped, but never in silence. */
+linesFromCopilot.skipped = (buf: string): number => copilotParse(buf).skipped
+
 /** Parse a whole transcript buffer with the parser its agent's format needs. */
 export function renderTranscriptLines(agent: string | undefined, buf: string): string[] {
   if (agent === 'gemini') return linesFromGemini(buf)
   if (agent === 'grok') return linesFromGrok(buf)
+  if (agent === 'copilot') return linesFromCopilot(buf)
   // cursor's transcript text is newline-delimited message JSON built from its SQLite store
   // (`cursorTranscriptText`), not a file on disk.
   if (agent === 'cursor') return linesFromCursor(buf)

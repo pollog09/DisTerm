@@ -310,6 +310,9 @@ export const BRANCH_CAPABLE = ['claude'] as const
 // in the `<agent_skills>` block of a real chat's own context (measured in its store.db), i.e. it reads
 // `~/.claude/skills` like grok. Its transcript is a SQLite store read by `core/cursor-chat.ts`.
 // UNVERIFIED: a user setting that switches that Claude-compat scan off.
+// copilot joins WITH an installer: `skillRootsFor` already names `~/.copilot/skills`. Its transcript
+// is `session-state/<id>/events.jsonl`, located strictly by session id (`locateCopilot`) and rendered
+// by `linesFromCopilot`.
 export const CONTEXT_LINK_CAPABLE = [
   'claude',
   'codex',
@@ -317,7 +320,8 @@ export const CONTEXT_LINK_CAPABLE = [
   'opencode',
   'grok',
   'cursor',
-  'antigravity'
+  'antigravity',
+  'copilot'
 ] as const
 // Agents whose per-node context meter we can fill. Each needs BOTH numbers: a used count and a
 // TRUSTWORTHY window.
@@ -427,6 +431,11 @@ export const CLAUDE_TRANSCRIPT_READABLE = ['claude'] as const
 // claude's screen layout (MEASURED on 2.1.283); another CLI's layout would read as a permanent
 // dialog and lock its chat view, so each agent needs its own measured reader.
 export const SCREEN_DIALOG_READABLE = ['claude'] as const
+// Agents whose composer we can prove EMPTY on screen, the gate for the app's own unsolicited notes
+// (`pty.sendToEmptyPrompt`). A superset of SCREEN_DIALOG_READABLE on purpose: copilot has a measured
+// composer reader (`shared/agents/copilot-screen.ts`) but no dialog reader, so the chat view's
+// dialog gate must not widen with it.
+export const EMPTY_PROMPT_READABLE = ['claude', 'copilot'] as const
 // Agents whose CLI QUEUES a prompt submitted while a turn is running, instead of treating it as
 // input to whatever is on screen. The chat view (⌘M) sends into the pane exactly as typing would, so
 // only for these may it send while the agent is `working`. MEASURED for claude (2.1.281, 2026-09-23):
@@ -722,6 +731,7 @@ export const canChat = (id: AgentId): boolean => includes(CHAT_CAPABLE, id)
 export const chatReadsLocalOnly = (id: AgentId): boolean => includes(CHAT_LOCAL_ONLY, id)
 export const typesChatInput = (id: AgentId): boolean => includes(TYPED_INPUT_CAPABLE, id)
 export const readsScreenDialogs = (id: AgentId): boolean => includes(SCREEN_DIALOG_READABLE, id)
+export const readsEmptyPrompt = (id: AgentId): boolean => includes(EMPTY_PROMPT_READABLE, id)
 export const queuesInputWhileWorking = (id: AgentId): boolean => includes(INPUT_QUEUE_CAPABLE, id)
 /** Can CLAUDE's transcript resolver locate and parse this agent's conversation? Never widen this
  *  to mean "can we read this agent" — see CLAUDE_TRANSCRIPT_READABLE. */

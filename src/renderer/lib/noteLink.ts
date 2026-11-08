@@ -7,7 +7,7 @@ import { oneLine } from '@shared/one-line'
 import { readsLinkedContextSkill } from '@shared/agents/config'
 import type { BridgeLink } from '@shared/types'
 import { shimCommand, shimDialectFor } from '@shared/agents/shim-invocation'
-import { capabilityAgentId, readsScreenDialogs } from '@shared/agents/config'
+import { capabilityAgentId, readsEmptyPrompt } from '@shared/agents/config'
 import type { EmptyPromptRefusal } from '@shared/text-delivery'
 import { chatSendRefusal, type ChatGateStatus, type ChatSendRefusal } from './chatSendGate'
 import {
@@ -214,7 +214,7 @@ export type LinkNoteSkip = Exclude<ChatSendRefusal, null> | EmptyPromptRefusal
  * - never into a `working` agent (it would land mid-turn), never into `waiting`/`blocked` (the
  *   Enter would ANSWER the permission prompt or question), never into a pane the CLI has left (it
  *   would run as a shell command) — the ⌘M composer's own gate, `chatSendRefusal`;
- * - only into an agent whose composer we can READ (`readsScreenDialogs`), because "the input is
+ * - only into an agent whose composer we can READ (`readsEmptyPrompt`), because "the input is
  *   empty" must be proven on screen, not assumed — the reporter's draft was sitting in an idle
  *   agent's input. Core proves it (`pty.sendToEmptyPrompt`) and refuses otherwise.
  *
@@ -226,7 +226,7 @@ export type LinkNoteSkip = Exclude<ChatSendRefusal, null> | EmptyPromptRefusal
 export function linkNoteRefusal(agentId: string, s: ChatGateStatus): LinkNoteSkip | null {
   const state = chatSendRefusal(agentId, s)
   if (state !== null) return state
-  return readsScreenDialogs(capabilityAgentId(agentId)) ? null : 'unsupported'
+  return readsEmptyPrompt(capabilityAgentId(agentId)) ? null : 'unsupported'
 }
 
 const SKIP_REASON: Record<LinkNoteSkip, string> = {

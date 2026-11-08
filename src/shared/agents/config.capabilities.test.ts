@@ -34,6 +34,7 @@ import {
   CHAT_CAPABLE,
   TYPED_INPUT_CAPABLE,
   typesChatInput,
+  readsEmptyPrompt,
   readsScreenDialogs,
   queuesInputWhileWorking,
   LOCAL_ONLY_HOOK_AGENTS,
@@ -98,11 +99,11 @@ describe('copilot capabilities', () => {
     expect(canResume('copilot')).toBe(true)
     expect(canControlCanvas('copilot')).toBe(true)
     expect(canSwitchModel('copilot')).toBe(true)
+    expect(canContextLink('copilot')).toBe(true)
   })
 
   it('does not claim integrations whose Copilot-specific leaf is not implemented', () => {
     for (const can of [
-      canContextLink,
       canSubagent,
       canRecur,
       canBranch,
@@ -604,6 +605,13 @@ describe('readsScreenDialogs — whose own dialogs the chat view can see on scre
   it('is claude only: its reader would read every other CLI\'s screen as a permanent dialog', () => {
     expect(readsScreenDialogs('claude')).toBe(true)
     for (const id of BUILTIN_AGENT_IDS.filter((a) => a !== 'claude')) expect(readsScreenDialogs(id)).toBe(false)
+  })
+})
+
+describe('readsEmptyPrompt — whose composer the app may prove empty before typing a note', () => {
+  it('is claude and copilot, while the chat view\'s dialog gate stays claude only', () => {
+    for (const id of BUILTIN_AGENT_IDS) expect(readsEmptyPrompt(id)).toBe(id === 'claude' || id === 'copilot')
+    expect(readsScreenDialogs('copilot')).toBe(false)
   })
 })
 

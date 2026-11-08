@@ -61,6 +61,16 @@ describe('PtyManager.sendToEmptyPrompt (#1144)', () => {
     expect(now).not.toHaveBeenCalled()
   })
 
+  it('types the note into an empty copilot composer, and refuses a draft', async () => {
+    const rule = '─'.repeat(60)
+    const empty = await manager(`output\n${rule}\n❯\n${rule}\n ● ready   model`)
+    expect(await empty.mgr.sendToEmptyPrompt(NODE, 'note', 'copilot')).toEqual({ sent: true })
+    expect(empty.now).toHaveBeenCalledTimes(1)
+    const draft = await manager(`output\n${rule}\n❯ half typed\n${rule}\n ● ready   model`)
+    expect(await draft.mgr.sendToEmptyPrompt(NODE, 'note', 'copilot')).toEqual({ sent: false, reason: 'draft' })
+    expect(draft.now).not.toHaveBeenCalled()
+  })
+
   it('an agent without a measured composer reader is refused without a capture', async () => {
     const { mgr, snapshot, now } = await manager(S.empty)
     expect(await mgr.sendToEmptyPrompt(NODE, 'note', 'codex')).toEqual({ sent: false, reason: 'unsupported' })
