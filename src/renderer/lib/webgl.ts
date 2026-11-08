@@ -21,3 +21,4 @@ export function webglAvailable(doc: Document = document): boolean {
 export const WEBGL_UNAVAILABLE_NOTICE = 'The 3D view needs WebGL, which this window cannot create. Showing the 2D view.'
 export const WEBGL_LOST_NOTICE = 'The 3D view lost its graphics context. Showing the 2D view.'
 export const GRAPH_3D_LOAD_FAILED_NOTICE = 'The 3D view could not be loaded. Showing the 2D view.'
+export const GRAPH_3D_FAILED_NOTICE = 'The 3D view stopped with an error. Showing the 2D view.'

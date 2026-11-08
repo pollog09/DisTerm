@@ -66,6 +66,52 @@ describe('toGraph3dData', () => {
     expect(next.links[1]).toEqual({ id: 'n', source: 'b', target: 'c', kind: 'message' })
   })
 
+  // The layout swaps a line's ends for node objects and keeps an end that is already an object, so a
+  // kept line whose end object was replaced would stay pinned to a node nobody simulates any more.
+  const laidOut = (data: ReturnType<typeof toGraph3dData>) => {
+    const byId = new Map(data.nodes.map((n) => [n.id, n]))
+    for (const l of data.links) {
+      l.source = byId.get(l.source as string)!
+      l.target = byId.get(l.target as string)!
+    }
+    return data
+  }
+
+  it('rebuilds a line whose end node was replaced, and keeps one whose ends survived', () => {
+    const first = laidOut(toGraph3dData({ nodes: [session('x'), session('y'), session('z')], edges: [edge('m:x:y', 'x', 'y'), edge('m:y:z', 'y', 'z')] }))
+    // x closes and becomes a ghost under the same id, and a line is added in the same update.
+    const next = toGraph3dData(
+      { nodes: [{ id: 'x', kind: 'ghost', title: 'x' }, session('y'), session('z')], edges: [edge('m:x:y', 'x', 'y'), edge('m:y:z', 'y', 'z'), edge('m:z:x', 'z', 'x')] },
+      first
+    )
+    const ghost = next.nodes[0]
+    expect(ghost).not.toBe(first.nodes[0])
+    expect(ghost).toEqual({ id: 'x', kind: 'ghost' })
+    expect(next.links[0]).not.toBe(first.links[0])
+    expect(next.links[0]).toEqual({ id: 'm:x:y', source: 'x', target: 'y', kind: 'message' })
+    expect(next.links[0].source).not.toBe(first.nodes[0])
+    expect(next.links[1]).toBe(first.links[1])
+    expect([next.links[1].source, next.links[1].target]).toEqual([next.nodes[1], next.nodes[2]])
+    expect(next.links[2]).toEqual({ id: 'm:z:x', source: 'z', target: 'x', kind: 'message' })
+  })
+
+  it('the same holds the other way, a ghost turning back into a session', () => {
+    const first = laidOut(toGraph3dData({ nodes: [{ id: 'x', kind: 'ghost', title: 'x' }, session('y')], edges: [edge('m:x:y', 'x', 'y')] }))
+    const next = toGraph3dData({ nodes: [session('x'), session('y'), session('w')], edges: [edge('m:x:y', 'x', 'y'), edge('m:y:w', 'y', 'w')] }, first)
+    expect(next.nodes[0]).toEqual({ id: 'x', kind: 'session' })
+    expect(next.links[0]).toEqual({ id: 'm:x:y', source: 'x', target: 'y', kind: 'message' })
+  })
+
+  it('a kind that changes with nothing else changing still gets a new object, and so a new shape', () => {
+    const first = laidOut(toGraph3dData({ nodes: [{ id: 'x', kind: 'ghost', title: 'x' }, session('y')], edges: [edge('m:x:y', 'x', 'y')] }))
+    const next = toGraph3dData({ nodes: [session('x'), session('y')], edges: [edge('m:x:y', 'x', 'y')] }, first)
+    expect(next).not.toBe(first)
+    expect(next.key).toBe(first.key)
+    expect(next.nodes[0]).toEqual({ id: 'x', kind: 'session' })
+    expect(next.nodes[1]).toBe(first.nodes[1])
+    expect(next.links[0]).toEqual({ id: 'm:x:y', source: 'x', target: 'y', kind: 'message' })
+  })
+
   it('does not keep an object whose kind or ends changed under the same id', () => {
     const first = toGraph3dData({ nodes: [session('a'), session('b')], edges: [edge('m', 'a', 'b')] })
     const next = toGraph3dData({ nodes: [{ id: 'a', kind: 'note', title: 'a' }, session('b'), session('c')], edges: [edge('m', 'a', 'c')] }, first)

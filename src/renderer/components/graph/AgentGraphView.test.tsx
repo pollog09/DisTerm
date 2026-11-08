@@ -875,7 +875,9 @@ describe('the 2D / 3D switch', () => {
     expect(document.querySelector('.agent-graph__notices')?.textContent ?? '').not.toContain('needs WebGL')
   })
 
-  it('a 3D view that fails to load or throws hands back to 2D with a notice', async () => {
+  // A chunk that does not arrive has its own suite (AgentGraphView.load3d.test.tsx): `lazy()` keeps
+  // the first answer for the life of the module, so it needs a module graph of its own.
+  it('a 3D view that throws while drawing hands back to 2D, saying it stopped rather than did not load', async () => {
     withWebgl(true)
     graph3d.throws = true
     // React reports the caught render error on the console and on window; both are expected here.
@@ -891,7 +893,9 @@ describe('the 2D / 3D switch', () => {
       quiet.mockRestore()
     }
     expect(document.querySelector('.react-flow')).not.toBeNull()
-    expect(document.querySelector('.agent-graph__notices')?.textContent).toContain('could not be loaded')
+    const notice = document.querySelector('.agent-graph__notices')?.textContent ?? ''
+    expect(notice).toContain('The 3D view stopped with an error. Showing the 2D view.')
+    expect(notice).not.toContain('could not be loaded')
   })
 })
 

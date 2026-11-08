@@ -32,20 +32,26 @@ const endId = (end: string | Graph3dNode): string => (typeof end === 'string' ? 
 
 export function toGraph3dData(model: Pick<AgentGraphModel, 'nodes' | 'edges'>, prev?: Graph3dData | null): Graph3dData {
   const key = agentGraphStructureKey(model)
-  if (prev && prev.key === key) return prev
+  // A kind is not structure in 2D (a box keeps its place), but here it is the shape: a session that
+  // turned ghost under the same id needs a new object, so the library builds it a new mesh.
+  const sameKinds = !!prev && prev.nodes.length === model.nodes.length && model.nodes.every((n, i) => prev.nodes[i].kind === n.kind)
+  if (prev && prev.key === key && sameKinds) return prev
   const oldNodes = new Map((prev?.nodes ?? []).map((n) => [n.id, n]))
   const oldLinks = new Map((prev?.links ?? []).map((l) => [l.id, l]))
   const nodes = model.nodes.map((n): Graph3dNode => {
     const old = oldNodes.get(n.id)
     return old && old.kind === n.kind ? old : { id: n.id, kind: n.kind }
   })
-  const ids = new Set(nodes.map((n) => n.id))
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  // The layout swaps a line's ends for node objects, and keeps an end that is already an object. A line
+  // still tied to a node object that was replaced would stay pinned to where that object froze.
+  const endIsLive = (end: string | Graph3dNode, id: string): boolean => endId(end) === id && (typeof end === 'string' || byId.get(id) === end)
   const links: Graph3dLink[] = []
   for (const e of model.edges) {
     // The layout throws on a link to a node it was not given, as dagre invents one; neither is drawn.
-    if (!ids.has(e.source) || !ids.has(e.target)) continue
+    if (!byId.has(e.source) || !byId.has(e.target)) continue
     const old = oldLinks.get(e.id)
-    links.push(old && old.kind === e.kind && endId(old.source) === e.source && endId(old.target) === e.target ? old : { id: e.id, source: e.source, target: e.target, kind: e.kind })
+    links.push(old && old.kind === e.kind && endIsLive(old.source, e.source) && endIsLive(old.target, e.target) ? old : { id: e.id, source: e.source, target: e.target, kind: e.kind })
   }
   return { key, nodes, links }
 }

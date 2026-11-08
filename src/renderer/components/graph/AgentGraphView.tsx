@@ -58,7 +58,7 @@ import { useStationHandovers, isHandedOver } from '../../state/stationHandovers'
 import { useStationOutcomes } from '../../state/stationOutcomes'
 import { showCanvas, useViewMode } from '../../state/viewMode'
 import { useAgentGraphDisplay, type AgentGraphDimension } from '../../state/agentGraphDisplay'
-import { GRAPH_3D_LOAD_FAILED_NOTICE, WEBGL_UNAVAILABLE_NOTICE, webglAvailable } from '../../lib/webgl'
+import { GRAPH_3D_FAILED_NOTICE, GRAPH_3D_LOAD_FAILED_NOTICE, WEBGL_UNAVAILABLE_NOTICE, webglAvailable } from '../../lib/webgl'
 import type { CanvasNode } from '../../state/workspace'
 import { integrationsOf } from '@shared/agent-integrations'
 import { sshHostKey as sshHostKeyOf } from '@shared/ssh'
@@ -257,17 +257,28 @@ const FIT_OPTIONS = { maxZoom: 1, padding: 0.12 }
 
 /** three.js is most of the 3D view's weight, so it is fetched when that view first opens, never at
  *  startup or for the 2D view. */
-const AgentGraph3D = lazy(() => import('./AgentGraph3D'))
+const AgentGraph3D = lazy(() =>
+  import('./AgentGraph3D').catch((cause: unknown) => {
+    throw new Graph3DLoadError(cause)
+  })
+)
 
-/** A 3D chunk that fails to load, or a 3D view that throws, hands back to the 2D view with a notice,
- *  never a blank pane. */
-class Graph3DBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+/** The 3D chunk did not arrive, as opposed to a 3D view that arrived and then threw. */
+class Graph3DLoadError extends Error {
+  constructor(readonly cause: unknown) {
+    super('The 3D view could not be loaded')
+  }
+}
+
+/** A 3D chunk that fails to load, or a 3D view that throws, hands back to the 2D view with a notice
+ *  that says which, never a blank pane. */
+class Graph3DBoundary extends Component<{ onError: (loadFailed: boolean) => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true }
   }
-  componentDidCatch(): void {
-    this.props.onError()
+  componentDidCatch(error: unknown): void {
+    this.props.onError(error instanceof Graph3DLoadError)
   }
   render(): ReactNode {
     return this.state.failed ? null : this.props.children
@@ -347,7 +358,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   // Set during render, not in an effect: the boxes mount in this same render and must not see the old floor.
   const [shown2d, setShown2d] = useState<{ drawn: AgentGraphDimension; since: number }>({ drawn, since: 0 })
   if (shown2d.drawn !== drawn) setShown2d({ drawn, since: drawn === '2d' ? Date.now() : shown2d.since })
-  const on3dLoadFailed = useCallback(() => setFallback(GRAPH_3D_LOAD_FAILED_NOTICE), [])
+  const on3dFailed = useCallback((loadFailed: boolean) => setFallback(loadFailed ? GRAPH_3D_LOAD_FAILED_NOTICE : GRAPH_3D_FAILED_NOTICE), [])
 
   const machineOf = useCallback(
     (node: CanvasNode): GraphMachine => {
@@ -600,7 +611,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
               {templateFailure && <p className="agent-graph__empty-note" data-role="failure" role="alert">{templateFailure}</p>}
             </div>
           ) : drawn === '3d' ? (
-            <Graph3DBoundary onError={on3dLoadFailed}>
+            <Graph3DBoundary onError={on3dFailed}>
               <Suspense fallback={<div className="agent-graph-3d agent-graph-3d--loading">Loading the 3D view…</div>}>
                 <AgentGraph3D
                   nodes={model.nodes}
