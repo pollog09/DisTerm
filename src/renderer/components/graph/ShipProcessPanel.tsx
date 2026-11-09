@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { errorText } from '@shared/error-text'
-import type { ShipConfigResult, ShipMachine, ShipScope } from '@shared/ship-config'
+import { SHIP_AGENT_MODELS, isShipAgentModel, type ShipAgent, type ShipConfigResult, type ShipMachine, type ShipScope } from '@shared/ship-config'
 import type { AgentGraphApi } from '@shared/types'
 import { thisMachine } from '../../lib/machineName'
 
@@ -12,7 +12,7 @@ import { thisMachine } from '../../lib/machineName'
 export interface ShipProcessPanelProps {
   projectId: string
   result: ShipConfigResult | null
-  api: Pick<AgentGraphApi, 'createShipGraph'> | undefined
+  api: Pick<AgentGraphApi, 'createShipGraph' | 'setAgentModel'> | undefined
   /** The session this project runs under: a team tab's "local" machine is its host, not this one. */
   session?: { source: string; label: string } | null
   onReload: () => void
@@ -35,6 +35,57 @@ export function shipMachineName(machine: ShipMachine, session?: { source: string
 }
 
 const nameList = (names: readonly string[]): string => (names.length ? names.join(', ') : 'none')
+
+/** What the picker's hover says an edit will reach. */
+export function agentModelHint(agent: Pick<ShipAgent, 'scope' | 'fileName'>, machine: string): string {
+  if (!agent.fileName) return 'Could not tell which file declares this agent, so its model cannot be changed here.'
+  const where = agent.scope === 'global' ? `every project on ${machine}` : 'this project'
+  return `Writes the model: line of ${agent.fileName} (through its link, if it is one). Applies to ${where} from the next time the agent starts.`
+}
+
+function AgentModelPicker({ agent, machine, api, projectId, onChanged }: {
+  agent: ShipAgent
+  machine: string
+  api: ShipProcessPanelProps['api']
+  projectId: string
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const current = agent.model ?? ''
+  const known = isShipAgentModel(current)
+  const set = (model: string): void => {
+    if (!api?.setAgentModel || !isShipAgentModel(model) || model === current) return
+    setBusy(true)
+    setError(null)
+    void api
+      .setAgentModel(projectId, agent.scope, agent.name, model)
+      .then((r) => {
+        if (r.ok) onChanged()
+        else setError(r.message)
+      })
+      .catch((err: unknown) => setError(errorText(err)))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <>
+      <select
+        className="ship-panel__model"
+        aria-label={`Model for ${agent.name}`}
+        title={agentModelHint(agent, machine)}
+        value={current}
+        disabled={busy || !api?.setAgentModel || !agent.fileName}
+        onChange={(e) => set(e.target.value)}
+      >
+        {/* No model: line runs the agent on Claude Code's default, which is not the same promise as inherit. */}
+        {!current && <option value="" disabled>no model set</option>}
+        {current && !known && <option value={current} disabled>{current}</option>}
+        {SHIP_AGENT_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      {error && <span className="ship-panel__warning" role="alert">{error}</span>}
+    </>
+  )
+}
 
 export function ShipProcessPanel({ projectId, result, api, session, onReload, onOpenFile }: ShipProcessPanelProps) {
   const [createError, setCreateError] = useState<string | null>(null)
@@ -116,8 +167,8 @@ export function ShipProcessPanel({ projectId, result, api, session, onReload, on
               <span className="ship-panel__agent-name" data-color={a.color}>{a.name}</span>
               <span className="ship-panel__agent-meta">
                 {a.scope === 'project' ? (a.overridesGlobal ? 'project, overrides global' : 'project') : 'global'}
-                {a.model ? ` · ${a.model}` : ''}
               </span>
+              <AgentModelPicker agent={a} machine={machine} api={api} projectId={projectId} onChanged={onReload} />
             </li>
           ))}
         </ul>

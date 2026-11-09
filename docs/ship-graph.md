@@ -8,6 +8,7 @@ local project, the host for an SSH project.
 
 - **Agents** come from `agents/*.md` frontmatter in `~/.claude` (or `$CLAUDE_CONFIG_DIR`) and the
   project's `.claude`. Symlinks are followed. A project agent replaces the global one of the same name.
+  Each box in the graph shows the `model:` its agent file declares.
 - **Commands, workflows and skills** are listed by name, for reference.
 - **Routing** comes from an optional file. Agent files describe agents, not how work moves between
   them, so nothing else can say what follows what.
@@ -62,6 +63,26 @@ those can be links out to a shared kit. It also refuses when a global `agents` o
 cannot be read, since that says nothing about what is in it. Create example only writes the routing file, so
 it checks `.claude` against the global config alone, and an unreadable global `agents` folder does not block
 it.
+
+## Changing an agent's model
+
+In the Ship process panel (the graph view's side panel, or Settings → Ship process), each agent has a
+model menu: `inherit`, `opus`, `sonnet`, `haiku` or `fable`. Picking one rewrites the `model:` line in
+that agent's frontmatter, on the machine the project runs on, and the graph shows it within a moment.
+The agent picks it up the next time it starts.
+
+- Only the `model:` line changes. Everything else in the file stays as it was, line endings included.
+  With no `model:` line, one is added at the end of the frontmatter.
+- **A global agent is changed for every project on that machine.** The menu's hover says so.
+- **A linked agent is changed where the link points.** Agents installed from a shared kit (such as
+  claude-graph-kit) are symlinks, so the change lands in the kit's file and shows in the kit's git
+  status. The link stays a link.
+- A file holding some other value (a full model id, say) shows it as it is. You can replace it with one
+  of the five, but this menu never writes anything else.
+- A file with no frontmatter, one that changed while it was being written, or one another DisTerm writer
+  holds is left alone, and the panel says why.
+- It is not offered for an agent whose file is unknown, and it needs the Editor role on a shared
+  project, like the rest of this panel.
 
 ## With no file
 
@@ -328,7 +349,9 @@ Each notice ends with "Showing the 2D view."
   to hooks.
 - A session running under a managed Claude account has its own config dir. Discovery reads the default
   one (`~/.claude` or `$CLAUDE_CONFIG_DIR`), not the account's.
-- There is no visual pipeline editor.
+- There is no visual pipeline editor. Of an agent's settings, only its model can be changed here.
+- Plugin agents have no file in the folders discovery reads, so they show no model and cannot be changed
+  here.
 - **Set up graph engineering** needs the Editor role or above on a shared project, and is not offered to
   project-scoped guests. It is not offered while the machine cannot be read, such as a disconnected SSH
   project.

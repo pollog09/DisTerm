@@ -31,6 +31,7 @@ describe('parseAgentFile', () => {
   it('reads the frontmatter a real agent file has', () => {
     expect(parseAgentFile('implementer.md', agentFile('implementer'), 'global')).toEqual({
       name: 'implementer',
+      fileName: 'implementer.md',
       description: 'the implementer',
       model: 'inherit',
       color: 'blue',
@@ -41,7 +42,15 @@ describe('parseAgentFile', () => {
 
   it('falls back to the filename, and a file that is not an agent yields no secrets', () => {
     const key = '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n'
-    expect(parseAgentFile('stolen.md', key, 'project')).toEqual({ name: 'stolen', scope: 'project' })
+    expect(parseAgentFile('stolen.md', key, 'project')).toEqual({ name: 'stolen', fileName: 'stolen.md', scope: 'project' })
+  })
+
+  it('keeps the file it came from only as a bare .md leaf, the one thing the model picker resolves', () => {
+    const text = agentFile('a')
+    expect(parseAgentFile('a.md', text, 'global')?.fileName).toBe('a.md')
+    for (const bad of ['../a.md', 'x/a.md', '.hidden.md', 'a.txt', 'a.md\nb.md']) {
+      expect(parseAgentFile(bad, text, 'global')?.fileName, bad).toBeUndefined()
+    }
   })
 
   it('drops a colour Claude Code does not have, and a name that is not a name', () => {

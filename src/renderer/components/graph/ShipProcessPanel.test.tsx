@@ -12,8 +12,8 @@ pinNeutralMachineNoun()
 const config = (over: Partial<ShipConfig> = {}): ShipConfig => ({
   machine: { kind: 'local', label: '' },
   agents: [
-    { name: 'implementer', scope: 'project', overridesGlobal: true, model: 'inherit' },
-    { name: 'doc-writer', scope: 'global' }
+    { name: 'implementer', fileName: 'implementer.md', scope: 'project', overridesGlobal: true, model: 'inherit' },
+    { name: 'doc-writer', fileName: 'doc-writer.md', scope: 'global' }
   ],
   commands: ['ship-change'],
   workflows: [],
@@ -35,14 +35,28 @@ let host: HTMLDivElement
 const onReload = vi.fn()
 const onOpenFile = vi.fn()
 
-function render(result: ShipConfigResult | null, createShipGraph = vi.fn(), session?: { source: string; label: string }) {
+function render(
+  result: ShipConfigResult | null,
+  createShipGraph = vi.fn(),
+  session?: { source: string; label: string },
+  setAgentModel = vi.fn()
+) {
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
   act(() => {
-    root.render(<ShipProcessPanel projectId="P" result={result} api={{ createShipGraph }} session={session} onReload={onReload} onOpenFile={onOpenFile} />)
+    root.render(<ShipProcessPanel projectId="P" result={result} api={{ createShipGraph, setAgentModel }} session={session} onReload={onReload} onOpenFile={onOpenFile} />)
   })
   return createShipGraph
+}
+
+const picker = (agent: string): HTMLSelectElement => host.querySelector(`select[aria-label="Model for ${agent}"]`) as HTMLSelectElement
+
+function choose(select: HTMLSelectElement, value: string): void {
+  act(() => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
 }
 
 const button = (text: string, index = 0): HTMLButtonElement =>
@@ -71,7 +85,8 @@ describe('ShipProcessPanel', () => {
   it('lists agents with where they come from, the override called out', () => {
     render({ ok: true, config: config() })
     expect(host.textContent).toContain('2 agents on')
-    expect(host.textContent).toContain('project, overrides global · inherit')
+    expect(host.textContent).toContain('project, overrides global')
+    expect(picker('implementer').value).toBe('inherit')
     expect(host.textContent).toContain('ship-change')
     expect(host.textContent).toContain('No routing file')
   })
@@ -132,5 +147,39 @@ describe('ShipProcessPanel', () => {
     expect(host.textContent).toContain('not valid JSON')
     expect(host.textContent).toContain('Workflow agent() runs')
     expect(host.textContent).toContain('no visual pipeline editor')
+  })
+
+  it('sets an agent model by scope and name, then re-reads', async () => {
+    const setAgentModel = vi.fn().mockResolvedValue({ ok: true, model: 'opus' })
+    render({ ok: true, config: config() }, vi.fn(), undefined, setAgentModel)
+    choose(picker('implementer'), 'opus')
+    await act(async () => {})
+    expect(setAgentModel).toHaveBeenCalledWith('P', 'project', 'implementer', 'opus')
+    expect(onReload).toHaveBeenCalled()
+  })
+
+  it('an agent with no model line says so, and a global one warns it reaches every project', () => {
+    render({ ok: true, config: config() })
+    const select = picker('doc-writer')
+    expect(select.value).toBe('')
+    expect(select.selectedOptions[0].textContent).toBe('no model set')
+    expect(select.title).toContain('every project on')
+    expect(picker('implementer').title).toContain('this project')
+  })
+
+  it('a refusal is shown beside the agent and nothing reloads', async () => {
+    const setAgentModel = vi.fn().mockResolvedValue({ ok: false, reason: 'failed', message: 'Could not write it.' })
+    render({ ok: true, config: config() }, vi.fn(), undefined, setAgentModel)
+    choose(picker('doc-writer'), 'sonnet')
+    await act(async () => {})
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Could not write it.')
+    expect(onReload).not.toHaveBeenCalled()
+  })
+
+  it('keeps a model it cannot offer visible, and cannot edit an agent without a known file', () => {
+    render({ ok: true, config: config({ agents: [{ name: 'x', scope: 'global', model: 'claude-opus-5-5' }] }) })
+    const select = picker('x')
+    expect(select.value).toBe('claude-opus-5-5')
+    expect(select.disabled).toBe(true)
   })
 })

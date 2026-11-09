@@ -15,6 +15,12 @@ describe('graphNodeBadges', () => {
     ])
   })
 
+  it('shows the model an agent file declares, on the box and in the 3D tooltip', () => {
+    const stage = node({ kind: 'stage', title: 'Code', model: 'sonnet', runs: 1 })
+    expect(graphNodeBadges(stage, false)).toEqual([{ text: 'sonnet', role: 'model', title: expect.stringMatching(/Ship process/) }])
+    expect(graphNodeTextLines(stage, false)).toContain('sonnet')
+  })
+
   it('names the machine only when the view asks', () => {
     expect(graphNodeBadges(node({ machine: { kind: 'local', label: 'this computer' } }), false)).toEqual([])
   })

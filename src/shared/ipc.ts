@@ -358,6 +358,8 @@ export const IPC = {
   shipGraphCreate: 'ship-config:create-graph',
   /** Add the starter pipeline to a project's `.claude`, keeping everything already there. */
   shipTemplateCreate: 'ship-config:create-template',
+  /** Change the `model:` line of one existing agent file, through its link if it is one. */
+  shipAgentSetModel: 'ship-config:set-agent-model',
   /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while a view holds one, the core re-reads
    *  the config on a timer and pushes `shipConfigChanged` on a real change. */
   shipConfigSubscribe: 'ship-config:subscribe',

@@ -127,6 +127,29 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   session. The real-path refusal on both buttons, the unreadable global folder failure and the guessed-move
   rule are covered by handler and model tests only: the panel's display of the refusal was not exercised,
   and the live Electron run was not repeated for them.
+- **Setting an agent's model is the one ship-config write that edits a file the person has**
+  (`core/ship-config/agent-model.ts` `setFrontmatterModel`, `handlers.ts` `setShipAgentModel`,
+  `ship-config:set-agent-model`; the Ship process panel's `AgentModelPicker`). Everything else here only
+  creates, so this one takes NAMES ONLY from the caller (project, scope, agent, model) and never a path:
+  the agent is found in a fresh read by scope and name, and the path is built in the core from that
+  scope's folder and the bare `*.md` leaf discovery kept (`ShipAgent.fileName`, `isAgentLeaf`). A global
+  agent hidden by a project override is not in the read, so it cannot be edited either; the view never
+  offers it. Only `SHIP_AGENT_MODELS` is written, and only the `model:` lines inside the frontmatter
+  block change, found by the same rule `parseFrontmatter` reads with, so what is written is what is read
+  back. A file with no frontmatter gets nothing invented around it. **It writes through the link**,
+  because a kit-installed agent IS the kit's file: the guarded transactions (`updateTextFile` locally,
+  `updateRemoteTextFile` on a host over a new `runCommand` on the remote route) resolve links, lock,
+  keep the mode, and refuse to publish over a file that changed since it was read. Replacing the link
+  with a copy would quietly fork the agent from its kit. **On a host the edit still reaches POSIX `sh`,
+  not the login shell** (`viaPosixSh`): it needs stdin for the file's bytes, so it cannot ride `sh -s`
+  like discovery, and is sent instead as `sh -c` over one single-quoted word of `%b` octal escapes, which
+  holds no quote and no doubled backslash, so fish, tcsh and POSIX shells all pass it through untouched.
+  Handed to the login shell raw, it failed on every non-POSIX one. On success the core pushes `shipConfigChanged`
+  rather than waiting for the poll. Classified with the other ship writes: Editor-only and
+  `SCOPED_REFUSED`. Desktop (local and SSH) and Server Edition (local) have a real leg; the Server
+  Edition answers `unsupported` for SSH as it does for reads. Kanban: N/A (agent definitions are not
+  canvas nodes). Mobile: N/A. **Not verified:** a real SSH host (the edit has run under a real `/bin/sh`
+  only), Windows, and the Server Edition in a browser.
 - **Status reaches the model as one string** (`statusSig`, the `teamProgressSig` discipline), never the
   whole `byId` map, which changes on every hook of every node.
 - **A delivery buffer spanning every project is why narrowing exists.** `AgentGraphLog` is per process.

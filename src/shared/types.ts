@@ -1124,6 +1124,13 @@ export interface AgentGraphApi {
   readShipConfig(projectId: string): Promise<import('./ship-config').ShipConfigResult>
   createShipGraph(projectId: string, scope: import('./ship-config').ShipScope): Promise<import('./ship-config').ShipGraphCreateResult>
   createShipTemplate(projectId: string): Promise<import('./ship-config').ShipTemplateCreateResult>
+  /** Rewrite one agent's `model:` frontmatter line on the machine the project runs on. */
+  setAgentModel(
+    projectId: string,
+    scope: import('./ship-config').ShipScope,
+    agent: string,
+    model: import('./ship-config').ShipAgentModel
+  ): Promise<import('./ship-config').ShipAgentModelResult>
   /** Subscribe to config changes on the machine this project runs on; returns an unsubscribe. */
   onShipConfigChanged(projectId: string, cb: () => void): () => void
 }

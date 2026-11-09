@@ -67,8 +67,21 @@ export type ShipScope = 'global' | 'project'
 export const SHIP_AGENT_COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'] as const
 export type ShipAgentColor = (typeof SHIP_AGENT_COLORS)[number]
 
+/**
+ * The models the agent graph offers for an agent's `model:` line, as Claude Code's aliases. `inherit`
+ * runs the agent on the session's model. A file may hold any other value (a full model id): it is
+ * shown as it is, and only a value from this list is ever written.
+ */
+export const SHIP_AGENT_MODELS = ['inherit', 'opus', 'sonnet', 'haiku', 'fable'] as const
+export type ShipAgentModel = (typeof SHIP_AGENT_MODELS)[number]
+
+export const isShipAgentModel = (v: unknown): v is ShipAgentModel =>
+  typeof v === 'string' && (SHIP_AGENT_MODELS as readonly string[]).includes(v)
+
 export interface ShipAgent {
   name: string
+  /** The file it was read from, inside its scope's `agents` folder: a bare leaf, never a path. */
+  fileName?: string
   description?: string
   model?: string
   color?: ShipAgentColor
@@ -126,6 +139,10 @@ export type ShipConfigResult = { ok: true; config: ShipConfig } | { ok: false; r
 export type ShipGraphCreateResult =
   | { ok: true; path: string }
   | { ok: false; reason: 'exists' | 'unsupported' | 'failed'; message: string }
+
+export type ShipAgentModelResult =
+  | { ok: true; model: ShipAgentModel; unchanged?: true }
+  | { ok: false; reason: 'unsupported' | 'missing' | 'failed'; message: string }
 
 export type ShipTemplateCreateResult =
   /** `created` and `kept` are paths inside `root`, the project's `.claude` as the machine resolved it. */
