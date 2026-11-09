@@ -367,6 +367,8 @@ export interface Graph3dLoopInput {
   pointerInside: boolean
   /** Something is running (`graph3dHasLiveMotion`), and Reduce Motion is off. */
   liveMotion: boolean
+  /** A fly key is held down. */
+  flying: boolean
   /** A camera move or a redraw was asked for until then. */
   busyUntil: number
   now: number
@@ -379,7 +381,7 @@ export interface Graph3dLoopInput {
  */
 export function graph3dLoopShouldRun(s: Graph3dLoopInput): boolean {
   if (!s.shown || !s.watched) return false
-  return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.busyUntil > s.now
+  return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.flying || s.busyUntil > s.now
 }
 
 /** How hard every pair of nodes pushes apart (`forceManyBody`). */
@@ -412,4 +414,65 @@ export function graph3dLayoutForces(): Record<string, Force> {
  *  animates; otherwise it settles on screen and stops. */
 export function graph3dEngineSettings(reducedMotion: boolean): { warmupTicks: number; cooldownTicks: number; cooldownTime: number } {
   return reducedMotion ? { warmupTicks: 300, cooldownTicks: 0, cooldownTime: 0 } : { warmupTicks: 0, cooldownTicks: 300, cooldownTime: 4000 }
+}
+
+/** A way to fly the camera. */
+export type Graph3dFlyMove = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down'
+
+/** By the key's place on the keyboard (`KeyboardEvent.code`), so W A S D sit under the same fingers
+ *  on any layout. The arrows do the same as W A S D. */
+const FLY_KEYS: Readonly<Record<string, Graph3dFlyMove>> = {
+  KeyW: 'forward',
+  ArrowUp: 'forward',
+  KeyS: 'back',
+  ArrowDown: 'back',
+  KeyA: 'left',
+  ArrowLeft: 'left',
+  KeyD: 'right',
+  ArrowRight: 'right',
+  Space: 'up',
+  ShiftLeft: 'down',
+  ShiftRight: 'down'
+}
+
+/** The move a key makes, or null. A key held with ⌘, Ctrl or Alt is a shortcut, never a move, so the
+ *  app's own chords (⌘W among them) still reach it while the view has focus. */
+export function graph3dFlyMove(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): Graph3dFlyMove | null {
+  if (e.metaKey || e.ctrlKey || e.altKey) return null
+  return FLY_KEYS[e.code] ?? null
+}
+
+export interface Vec3 {
+  x: number
+  y: number
+  z: number
+}
+
+/** Fly speed, as a share per second of the distance to what the camera turns round, so a close look
+ *  moves gently and a far one crosses the graph in a few seconds. Never slower than the floor. */
+export const FLY_RATE = 0.35
+export const FLY_MIN_SPEED = 25
+/** A frame longer than this (a hitch, or the first after a pause) moves no further than this would. */
+const FLY_MAX_STEP_S = 0.05
+
+/**
+ * How far the camera, and the point it turns round, move this frame. Forward is the way the camera
+ * looks, left and right stay level, up and down are the world's. Both move by the same amount, so
+ * dragging still turns the view round what is in front of it.
+ */
+export function graph3dFlyStep(camera: Vec3, target: Vec3, held: ReadonlySet<Graph3dFlyMove>, seconds: number): Vec3 {
+  const toTarget = { x: target.x - camera.x, y: target.y - camera.y, z: target.z - camera.z }
+  const distance = Math.hypot(toTarget.x, toTarget.y, toTarget.z)
+  const f = distance > 0 ? { x: toTarget.x / distance, y: toTarget.y / distance, z: toTarget.z / distance } : { x: 0, y: 0, z: -1 }
+  const level = Math.hypot(f.z, f.x)
+  const r = level > 1e-6 ? { x: -f.z / level, y: 0, z: f.x / level } : { x: 1, y: 0, z: 0 }
+  const axis = (a: Graph3dFlyMove, b: Graph3dFlyMove): number => (held.has(a) ? 1 : 0) - (held.has(b) ? 1 : 0)
+  const ahead = axis('forward', 'back')
+  const side = axis('right', 'left')
+  const rise = axis('up', 'down')
+  const dir = { x: f.x * ahead + r.x * side, y: f.y * ahead + rise, z: f.z * ahead + r.z * side }
+  const length = Math.hypot(dir.x, dir.y, dir.z)
+  if (length === 0) return { x: 0, y: 0, z: 0 }
+  const step = (Math.max(FLY_MIN_SPEED, distance * FLY_RATE) * Math.min(Math.max(0, seconds), FLY_MAX_STEP_S)) / length
+  return { x: dir.x * step, y: dir.y * step, z: dir.z * step }
 }

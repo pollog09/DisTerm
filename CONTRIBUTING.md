@@ -271,7 +271,10 @@ of its column; only a positional drop asks for the bottom (`AT_COLUMN_END`). Car
 ignore `rank`; never splice the array by hand. A saved view's query is built only by `viewQuery`,
 so the live-state chips can never be saved into one. Board keys are
 registry commands in the `board` scope — the only scope allowed a bare letter, because it never
-fires while typing or in a terminal.
+fires while typing or in a terminal. The one other place bare keys act is the 3D agent graph while
+it has focus: its fly keys (W A S D, arrows, Space, Shift) are that view's own navigation, stop at the
+view, and let every chord through. Do not move them into the registry, and do not copy the pattern
+for an app command (docs/reference/keybindings.md).
 
 Anything that **starts an agent by itself** (board dispatch is the first) takes its consent from
 machine-local settings and its trigger from a gesture the person made in this app — never from a

@@ -31,9 +31,23 @@ function save(v: AgentGraphDimension): void {
   }
 }
 
+/** Whether the 3D view's card of fly keys shows. Shown until someone hides it: the keys are not
+ *  guessable, and the card is how anyone finds out the view can be flown. */
+export const AGENT_GRAPH_FLY_HELP_KEY = 'nodeterm.agentGraphFlyHelp'
+
+function loadFlyHelp(): boolean {
+  try {
+    return readLocal(AGENT_GRAPH_FLY_HELP_KEY) !== 'hidden'
+  } catch {
+    return true
+  }
+}
+
 interface AgentGraphDisplayState {
   dimension: AgentGraphDimension
   setDimension(v: AgentGraphDimension): void
+  flyHelp: boolean
+  setFlyHelp(shown: boolean): void
 }
 
 export const useAgentGraphDisplay = create<AgentGraphDisplayState>((set) => ({
@@ -41,5 +55,14 @@ export const useAgentGraphDisplay = create<AgentGraphDisplayState>((set) => ({
   setDimension: (dimension) => {
     save(dimension)
     set({ dimension })
+  },
+  flyHelp: loadFlyHelp(),
+  setFlyHelp: (flyHelp) => {
+    try {
+      writeLocal(AGENT_GRAPH_FLY_HELP_KEY, flyHelp ? 'shown' : 'hidden')
+    } catch {
+      /* a display preference is a nicety, never fail the UI */
+    }
+    set({ flyHelp })
   }
 }))

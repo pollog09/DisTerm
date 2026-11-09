@@ -36,6 +36,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     refusals is what makes a bare key a command rather than a character stolen from the user, so a
     `board` row must never gain either flag, and no other scope may be given bare letters
     (`normalizeBindingForCommand`).
+  - **The 3D agent graph's fly keys are not registry commands, on purpose.** W A S D, the arrows,
+    Space and Shift move the camera only while the 3D view itself has focus, the way arrows move a
+    caret in a text field: they are the widget's own navigation, not app commands, so they are not
+    rebindable and never show in ShortcutsPanel. The view's `keydown` listener takes exactly those
+    keys (by `code`, so they sit under the same fingers on any layout) and stops them there, so the
+    board's bare-key commands (Space opens a card) never see them; a key held with ⌘, Ctrl or Alt is
+    never a fly key and goes on to the app, and a key on one of the view's own buttons is the button's
+    (`graph3dFlyMove`, `AgentGraph3D.tsx`). See `agent-graph.md`.
   - **A conflict bucket is a DISPATCH CONTEXT, not a scope** (`conflictBuckets`): `canvas` resolves
     only with the board closed, `board` only with it open, `app` in both — so an app command sits in
     `canvas-view` AND `board-view`, and a canvas command never conflicts with a board one. One

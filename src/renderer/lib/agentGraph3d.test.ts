@@ -4,7 +4,11 @@ import {
   compositeOver,
   GRAPH3D_CHARGE,
   graph3dLayoutForces,
+  FLY_MIN_SPEED,
   graph3dEngineSettings,
+  graph3dFlyMove,
+  graph3dFlyStep,
+  type Graph3dFlyMove,
   graph3dHasLiveMotion,
   graph3dLinkLook,
   graph3dLoopShouldRun,
@@ -207,7 +211,7 @@ describe('parseCssColor', () => {
 })
 
 describe('graph3dLoopShouldRun', () => {
-  const idle: Graph3dLoopInput = { shown: true, watched: true, engineRunning: false, particlesInFlight: false, liveMotion: false, pointerInside: false, busyUntil: 0, now: 1000 }
+  const idle: Graph3dLoopInput = { shown: true, watched: true, engineRunning: false, particlesInFlight: false, liveMotion: false, pointerInside: false, flying: false, busyUntil: 0, now: 1000 }
   it.each<[string, Partial<Graph3dLoopInput>, boolean]>([
     ['a settled graph nobody points at', {}, false],
     ['the layout still moving', { engineRunning: true }, true],
@@ -215,6 +219,8 @@ describe('graph3dLoopShouldRun', () => {
     ['the pointer over it', { pointerInside: true }, true],
     ['a camera move asked for', { busyUntil: 1500 }, true],
     ['something running', { liveMotion: true }, true],
+    ['a fly key held', { flying: true }, true],
+    ['a fly key held in a window nobody is looking at', { flying: true, watched: false }, false],
     ['a camera move that is over', { busyUntil: 1000 }, false],
     ['covered by the terminal modal', { shown: false, engineRunning: true, pointerInside: true }, false],
     ['a window nobody is looking at', { watched: false, engineRunning: true, particlesInFlight: true, liveMotion: true, pointerInside: true, busyUntil: 9999 }, false],
@@ -380,5 +386,56 @@ describe('compositeOver', () => {
   it('draws a translucent token as it looks on the panel', () => {
     expect(compositeOver({ r: 255, g: 255, b: 255, a: 0.45 }, { r: 40, g: 40, b: 40, a: 1 })).toEqual({ r: 137, g: 137, b: 137, a: 1 })
     expect(compositeOver({ r: 217, g: 119, b: 87, a: 1 }, { r: 40, g: 40, b: 40, a: 1 })).toEqual({ r: 217, g: 119, b: 87, a: 1 })
+  })
+})
+
+describe('flying', () => {
+  const key = (code: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean }> = {}) => ({ code, metaKey: false, ctrlKey: false, altKey: false, ...mods })
+
+  it('maps W A S D, the arrows, Space and either Shift to a move, by the key\'s place', () => {
+    expect(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowLeft'].map((c) => graph3dFlyMove(key(c)))).toEqual([
+      'forward', 'left', 'back', 'right', 'up', 'down', 'down', 'forward', 'left'
+    ])
+    expect(graph3dFlyMove(key('KeyQ'))).toBeNull()
+  })
+
+  it('leaves a chord with Cmd, Ctrl or Alt to the app', () => {
+    expect(graph3dFlyMove(key('KeyW', { metaKey: true }))).toBeNull()
+    expect(graph3dFlyMove(key('KeyD', { ctrlKey: true }))).toBeNull()
+    expect(graph3dFlyMove(key('KeyS', { altKey: true }))).toBeNull()
+  })
+
+  const camera = { x: 0, y: 0, z: 100 }
+  const target = { x: 0, y: 0, z: 0 }
+  const fly = (...moves: Graph3dFlyMove[]) => graph3dFlyStep(camera, target, new Set(moves), 0.02)
+  const round = (v: { x: number; y: number; z: number }) => ({ x: +v.x.toFixed(3) + 0, y: +v.y.toFixed(3) + 0, z: +v.z.toFixed(3) + 0 })
+
+  it('W flies the way the camera looks, at 35% of the distance to the target per second', () => {
+    expect(round(fly('forward'))).toEqual({ x: 0, y: 0, z: -0.7 })
+    expect(round(fly('back'))).toEqual({ x: 0, y: 0, z: 0.7 })
+  })
+
+  it('A and D stay level; Space and Shift are the world\'s up and down', () => {
+    expect(round(fly('right'))).toEqual({ x: 0.7, y: 0, z: 0 })
+    expect(round(fly('left'))).toEqual({ x: -0.7, y: 0, z: 0 })
+    expect(round(fly('up'))).toEqual({ x: 0, y: 0.7, z: 0 })
+    expect(round(fly('down'))).toEqual({ x: 0, y: -0.7, z: 0 })
+  })
+
+  it('two keys at once are no faster than one, and opposite keys cancel', () => {
+    const d = fly('forward', 'right')
+    expect(Math.hypot(d.x, d.y, d.z)).toBeCloseTo(0.7, 6)
+    expect(round(fly('forward', 'back'))).toEqual({ x: 0, y: 0, z: 0 })
+  })
+
+  it('never crawls up close, and a long frame moves no further than 50 ms', () => {
+    const near = graph3dFlyStep({ x: 0, y: 0, z: 1 }, target, new Set(['forward']), 0.02)
+    expect(Math.abs(near.z)).toBeCloseTo(FLY_MIN_SPEED * 0.02, 6)
+    const hitch = graph3dFlyStep(camera, target, new Set(['forward']), 2)
+    expect(hitch.z).toBeCloseTo(-1.75, 6)
+  })
+
+  it('looking straight down, right is still sideways', () => {
+    expect(round(graph3dFlyStep({ x: 0, y: 100, z: 0 }, target, new Set(['right']), 0.02))).toEqual({ x: 0.7, y: 0, z: 0 })
   })
 })

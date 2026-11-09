@@ -264,6 +264,20 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   over (normal blending) instead of added, and the nebula is hidden. Corona, glow and nebula are painted
   once, in white, and tinted by the sprite that wears them. They take no frames of their own and never
   take the pointer.
+- **The 3D view can be flown** (`graph3dFlyMove`, `graph3dFlyStep`). Clicking the view focuses it;
+  then W A S D (or the arrows) fly forward, back and sideways, Space and Shift rise and sink in the
+  world's up, drag still turns and scroll still zooms. A step moves the camera AND the orbit target by
+  the same amount, so dragging afterwards turns round what is in front, not round where the graph
+  was. Speed is `FLY_RATE` (35%) of the distance to the target per second, never under
+  `FLY_MIN_SPEED`: at 90% one tap of D crossed the whole system. A long frame moves no further than
+  50 ms would, so a hitch never jumps. Two keys at once are no faster than one. Frames run while a key
+  is held (`flying` in `graph3dLoopShouldRun`) and stop after, under the same window gate as the rest.
+  Blur lets go of every key, because a key released elsewhere never sends its keyup here. Which keys,
+  and why they are not registry commands: `keybindings.md`. A card of the keys sits over the lower left
+  corner, shown until someone hides it (`nodeterm.agentGraphFlyHelp`, a display preference), with a
+  **Keys** button to bring it back. Its last line always says where the keys go ("Click the graph, then
+  fly." or "Keys go to the graph."): a card that grew a line when focus left moved its own close button
+  out from under the pointer between press and release. Mobile N/A: no keyboard.
 - **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
   (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
   (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of

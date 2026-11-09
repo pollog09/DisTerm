@@ -34,6 +34,9 @@ import {
   DASHED_LINK_ALPHA,
   GRAPH3D_CHARGE,
   graph3dEngineSettings,
+  graph3dFlyMove,
+  graph3dFlyStep,
+  type Graph3dFlyMove,
   graph3dCurrentStep,
   graph3dHasLiveMotion,
   graph3dLayoutForces,
@@ -59,6 +62,7 @@ import {
   type Rgba
 } from '../../lib/agentGraph3d'
 import { useReducedMotion, useWindowWatched } from '../../lib/reducedMotion'
+import { useAgentGraphDisplay } from '../../state/agentGraphDisplay'
 import { WEBGL_LOST_NOTICE, WEBGL_UNAVAILABLE_NOTICE } from '../../lib/webgl'
 import { paintCorona, paintGlow, paintNebula, paintSurface, SURFACE_HEIGHT, SURFACE_WIDTH, tone } from './planetSurface'
 
@@ -86,6 +90,15 @@ export interface AgentGraph3DProps {
 
 type Graph = ForceGraph3DInstance<Graph3dNode, Graph3dLink>
 type LinkWithPhotons = Graph3dLink & { __singleHopPhotonsObj?: { children: unknown[] } }
+
+/** What the card of keys lists, in the order a newcomer needs it. */
+const FLY_HELP: ReadonlyArray<readonly [readonly string[], string]> = [
+  [['W', 'A', 'S', 'D'], 'Fly around'],
+  [['Space', 'Shift'], 'Up and down'],
+  [['Drag'], 'Turn the view'],
+  [['Scroll'], 'Zoom'],
+  [['Click'], 'Open terminal']
+]
 
 const FIT_PADDING = 40
 const FLY_MS = 600
@@ -359,7 +372,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
 
   const visuals = useRef(new Map<string, NodeVisual>())
   const palette = useRef<ReturnType<typeof colorResolver> | null>(null)
-  const loop = useRef({ running: false, engineRunning: true, pointerInside: false, busyUntil: 0, shown, watched, timer: 0 as ReturnType<typeof setInterval> | 0, fitPending: true })
+  const loop = useRef({ running: false, engineRunning: true, pointerInside: false, flying: false, busyUntil: 0, shown, watched, timer: 0 as ReturnType<typeof setInterval> | 0, fitPending: true })
+  const flyHelp = useAgentGraphDisplay((s) => s.flyHelp)
+  const setFlyHelp = useAgentGraphDisplay((s) => s.setFlyHelp)
+  const [focused, setFocused] = useState(false)
   const api = useRef<{ evaluate(): void; wake(ms: number): void; restyle(): void; fit(ms: number): void } | null>(null)
 
   useEffect(() => {
@@ -410,6 +426,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         engineRunning: st.engineRunning,
         particlesInFlight: particlesInFlight(),
         liveMotion,
+        flying: st.flying,
         pointerInside: st.pointerInside,
         busyUntil: st.busyUntil,
         now
@@ -445,6 +462,24 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
 
     const view = { width: 0, height: 0 }
     const camera = graph.camera() as PerspectiveCamera
+
+    // Flying moves the camera and the point it turns round by the same step, on the frames the held
+    // key keeps running; the step shows on the next one.
+    const held = new Set<Graph3dFlyMove>()
+    let lastFly = 0
+    const fly = (): void => {
+      if (held.size === 0) {
+        lastFly = 0
+        return
+      }
+      const now = performance.now()
+      const seconds = lastFly ? (now - lastFly) / 1000 : 1 / 60
+      lastFly = now
+      const target = (graph.controls() as { target: Vector3 }).target
+      const step = graph3dFlyStep(camera.position, target, held, seconds)
+      camera.position.set(camera.position.x + step.x, camera.position.y + step.y, camera.position.z + step.z)
+      target.set(target.x + step.x, target.y + step.y, target.z + step.z)
+    }
     const sizeLabel = (visual: NodeVisual): void => {
       const k = graph3dPixelScale(visual.labelPx, view.height, camera.fov)
       visual.label?.scale.set(k * visual.labelAspect, k, 1)
@@ -773,7 +808,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     stars.material.color.set(rgbHex(ink()))
     // The sky is drawn on every frame and never culled, so it carries the once-a-frame label pass.
     stars.frustumCulled = false
-    stars.onBeforeRender = placeLabels
+    stars.onBeforeRender = () => {
+      fly()
+      placeLabels()
+    }
     graph.scene().add(lightLayer)
     // Dust far behind the graph, warm and cool, as still as the stars. Only on a dark sky.
     const nebula = [
@@ -832,6 +870,46 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       pointerRef.current = { x: e.clientX - box.left, y: e.clientY - box.top }
       if (hoverRef.current) setPointer(pointerRef.current)
     }
+    // The fly keys are the view's own while it has focus, and only those: they stop here, so the board's
+    // bare-key commands (Space opens a card) never see them, and every other key, a chord included,
+    // goes on to the app as before. A key on one of the view's buttons is that button's.
+    const flyKey = (e: KeyboardEvent): Graph3dFlyMove | null => {
+      if ((e.target as Element | null)?.closest?.('button, input, a')) return null
+      return graph3dFlyMove(e)
+    }
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const move = flyKey(e)
+      if (!move) return
+      e.preventDefault()
+      e.stopPropagation()
+      held.add(move)
+      st.flying = true
+      evaluate()
+    }
+    const onKeyUp = (e: KeyboardEvent): void => {
+      const move = flyKey(e)
+      if (!move) return
+      e.stopPropagation()
+      held.delete(move)
+      st.flying = held.size > 0
+      wake(100)
+    }
+    // A key let go while focus was elsewhere never sends its keyup here.
+    const onBlur = (): void => {
+      held.clear()
+      st.flying = false
+      setFocused(false)
+      evaluate()
+    }
+    const onFocus = (): void => setFocused(true)
+    const onDown = (e: PointerEvent): void => {
+      if (!(e.target as Element | null)?.closest?.('button, .agent-graph-3d__keys')) host.focus({ preventScroll: true })
+    }
+    host.addEventListener('keydown', onKeyDown)
+    host.addEventListener('keyup', onKeyUp)
+    host.addEventListener('blur', onBlur)
+    host.addEventListener('focus', onFocus)
+    host.addEventListener('pointerdown', onDown)
     host.addEventListener('pointerenter', onEnter)
     host.addEventListener('pointerleave', onLeave)
     host.addEventListener('pointermove', onMove)
@@ -851,6 +929,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       api.current = null
       themeWatch.disconnect()
       sizeWatch?.disconnect()
+      host.removeEventListener('keydown', onKeyDown)
+      host.removeEventListener('keyup', onKeyUp)
+      host.removeEventListener('blur', onBlur)
+      host.removeEventListener('focus', onFocus)
+      host.removeEventListener('pointerdown', onDown)
       host.removeEventListener('pointerenter', onEnter)
       host.removeEventListener('pointerleave', onLeave)
       host.removeEventListener('pointermove', onMove)
@@ -963,7 +1046,14 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
   }, [hover, showMachine, nodes, edges]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="agent-graph-3d" ref={hostRef} data-testid="agent-graph-3d">
+    <div
+      className="agent-graph-3d"
+      ref={hostRef}
+      data-testid="agent-graph-3d"
+      tabIndex={0}
+      role="application"
+      aria-label="Agent graph in 3D. Fly with W A S D, Space and Shift; drag to turn."
+    >
       <div className="agent-graph-3d__scene" ref={sceneRef} />
       <div className="agent-graph-3d__controls">
         <button
@@ -974,7 +1064,33 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         >
           Fit
         </button>
+        {!flyHelp && (
+          <button type="button" className="agent-graph__button" title="Show the keys that fly the view" onClick={() => setFlyHelp(true)}>
+            Keys
+          </button>
+        )}
       </div>
+      {flyHelp && (
+        <section className="agent-graph-3d__keys" aria-label="Navigation">
+          <header className="agent-graph-3d__keys-head">
+            <span>Navigation</span>
+            <button type="button" className="agent-graph-3d__keys-hide" title="Hide the keys" aria-label="Hide the keys" onClick={() => setFlyHelp(false)}>
+              ×
+            </button>
+          </header>
+          <dl>
+            {FLY_HELP.map(([keys, what]) => (
+              <div key={what} className="agent-graph-3d__keys-row">
+                <dt>{keys.map((k) => <kbd key={k} className="kbd">{k}</kbd>)}</dt>
+                <dd>{what}</dd>
+              </div>
+            ))}
+          </dl>
+          {/* Always one line, only its words change: a card that grew when focus left the graph moved its
+              own close button out from under the pointer between press and release. */}
+          <p className="agent-graph-3d__keys-hint">{focused ? 'Keys go to the graph.' : 'Click the graph, then fly.'}</p>
+        </section>
+      )}
       {tooltip.length > 0 && (
         <div className="agent-graph-3d__tooltip" role="tooltip" style={{ transform: `translate(${pointer.x + 14}px, ${pointer.y + 14}px)` }}>
           {tooltip.map((line, i) => (

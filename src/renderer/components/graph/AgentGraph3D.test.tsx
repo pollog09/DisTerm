@@ -8,6 +8,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PerspectiveCamera, Raycaster, Vector3, type Mesh, type MeshLambertMaterial, type Object3D } from 'three'
 import type { GraphEdge, GraphNode } from '../../lib/agentGraphModel'
+import { useAgentGraphDisplay } from '../../state/agentGraphDisplay'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -19,12 +20,13 @@ interface Fake {
   renderer: { domElement: HTMLCanvasElement; forceContextLoss: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }
   scene: { add: ReturnType<typeof vi.fn> }
   camera: PerspectiveCamera
+  controls: { target: Vector3 }
 }
 
 const lib = vi.hoisted(() => ({ instances: [] as Fake[], throwOnCreate: false }))
 
 vi.mock('3d-force-graph', async () => {
-  const { PerspectiveCamera } = await import('three')
+  const { PerspectiveCamera, Vector3 } = await import('three')
   function ForceGraph3D(this: unknown, el: HTMLElement, config: unknown) {
     if (lib.throwOnCreate) throw new Error('Error creating WebGL context.')
     const canvas = document.createElement('canvas')
@@ -36,7 +38,8 @@ vi.mock('3d-force-graph', async () => {
       renderer: { domElement: canvas, forceContextLoss: vi.fn(), dispose: vi.fn() },
       scene: { add: vi.fn() },
       // Where the picking tests' ray starts, so a name drawn a fixed size on screen is measured from it.
-      camera: new PerspectiveCamera()
+      camera: new PerspectiveCamera(),
+      controls: { target: new Vector3(0, 0, 0) }
     }
     fake.camera.position.set(0, 0, 100)
     fake.camera.updateMatrixWorld()
@@ -50,6 +53,7 @@ vi.mock('3d-force-graph', async () => {
           if (prop === 'renderer') return target.renderer
           if (prop === 'scene') return target.scene
           if (prop === 'camera') return target.camera
+          if (prop === 'controls') return target.controls
           if (prop === 'd3Force') return args.length > 1 ? proxy : { strength: () => undefined }
           if (prop === 'emitParticle') {
             const link = args[0] as { __singleHopPhotonsObj?: { children: unknown[] } }
@@ -429,6 +433,116 @@ describe('the current step', () => {
     expect(layer.children).toHaveLength(3)
     await act(async () => root.render(view([], { nodes: [NODES[0]] })))
     expect(layer.children).toHaveLength(2)
+  })
+})
+
+describe('flying', () => {
+  const view3d = (): HTMLElement => host.querySelector<HTMLElement>('[data-testid="agent-graph-3d"]')!
+  const press = (code: string, mods: KeyboardEventInit = {}, on: Element = view3d()): KeyboardEvent => {
+    const e = new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true, ...mods })
+    on.dispatchEvent(e)
+    return e
+  }
+  const release = (code: string): void => {
+    view3d().dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }))
+  }
+  const frame = (fake: Fake): void => {
+    const sky = fake.scene.add.mock.calls.map((c) => c[0] as Object3D).find((o) => o.constructor.name === 'Points')
+    sky!.onBeforeRender()
+  }
+  const at = (fake: Fake) => [+fake.camera.position.z.toFixed(3), +fake.controls.target.z.toFixed(3)]
+
+  beforeEach(() => useAgentGraphDisplay.setState({ flyHelp: true }))
+
+  it('W moves the camera and the point it turns round together, while it is held', async () => {
+    const fake = await mount()
+    press('KeyW')
+    frame(fake)
+    // 100 from the target, at 35% of that a second, for the first frame's 1/60 s.
+    expect(at(fake)).toEqual([99.417, -0.583])
+    release('KeyW')
+    frame(fake)
+    expect(at(fake)).toEqual([99.417, -0.583])
+  })
+
+  it('the fly keys stop at the view, Space does not scroll, and every other key goes on to the app', async () => {
+    await mount()
+    const seen: string[] = []
+    const onWindow = (e: KeyboardEvent): void => void seen.push(e.code)
+    window.addEventListener('keydown', onWindow)
+    try {
+      const space = press('Space')
+      press('KeyW')
+      expect(space.defaultPrevented).toBe(true)
+      expect(seen).toEqual([])
+      press('KeyW', { metaKey: true })
+      press('KeyW', { ctrlKey: true })
+      press('KeyJ')
+      expect(seen).toEqual(['KeyW', 'KeyW', 'KeyJ'])
+    } finally {
+      window.removeEventListener('keydown', onWindow)
+    }
+  })
+
+  it('a chord with Cmd or Ctrl does not fly', async () => {
+    const fake = await mount()
+    press('KeyW', { metaKey: true })
+    press('KeyS', { ctrlKey: true })
+    frame(fake)
+    expect(at(fake)).toEqual([100, 0])
+  })
+
+  it('leaving the view lets go of every key, as no keyup will come', async () => {
+    const fake = await mount()
+    press('KeyW')
+    await act(async () => void view3d().dispatchEvent(new FocusEvent('blur')))
+    frame(fake)
+    expect(at(fake)).toEqual([100, 0])
+  })
+
+  it("a key on one of the view's buttons is that button's", async () => {
+    const fake = await mount()
+    const fit = host.querySelector('button')!
+    const e = press('Space', {}, fit)
+    frame(fake)
+    expect(e.defaultPrevented).toBe(false)
+    expect(at(fake)).toEqual([100, 0])
+  })
+
+  it('frames keep running while a key is held, and stop after', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await mount()
+    await settle(fake)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(running(fake)).toBe(false)
+    await act(async () => void press('KeyD'))
+    expect(running(fake)).toBe(true)
+    await act(async () => {
+      release('KeyD')
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(running(fake)).toBe(false)
+  })
+
+  it('the card of keys hides, is remembered hidden, and comes back from Keys', async () => {
+    await mount()
+    expect(host.querySelector('.agent-graph-3d__keys')).not.toBeNull()
+    await act(async () => host.querySelector<HTMLButtonElement>('.agent-graph-3d__keys-hide')!.click())
+    expect(host.querySelector('.agent-graph-3d__keys')).toBeNull()
+    expect(localStorage.getItem('nodeterm.agentGraphFlyHelp')).toBe('hidden')
+    const keys = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Keys')!
+    await act(async () => keys.click())
+    expect(host.querySelector('.agent-graph-3d__keys')).not.toBeNull()
+  })
+
+  it('the card says where the keys go', async () => {
+    await mount()
+    const hint = () => host.querySelector('.agent-graph-3d__keys-hint')!.textContent
+    expect(hint()).toBe('Click the graph, then fly.')
+    await act(async () => view3d().focus())
+    expect(hint()).toBe('Keys go to the graph.')
   })
 })
 
