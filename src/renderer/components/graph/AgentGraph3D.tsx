@@ -158,7 +158,7 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
   }
   if (!ctx) return null
   const shown = text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text
-  const font = `${strong ? 600 : 500} 30px system-ui, -apple-system, "Segoe UI", sans-serif`
+  const font = `${strong ? 700 : 600} 30px system-ui, -apple-system, "Segoe UI", sans-serif`
   ctx.font = font
   const height = 46
   const width = Math.ceil(ctx.measureText(shown).width) + 28
@@ -172,7 +172,7 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
   ctx.strokeStyle = rgbaString({ ...ink, a: 0.18 })
   ctx.lineWidth = 2
   ctx.stroke()
-  ctx.fillStyle = rgbaString({ ...ink, a: strong ? 1 : 0.8 })
+  ctx.fillStyle = rgbaString({ ...ink, a: 1 })
   ctx.textBaseline = 'middle'
   ctx.fillText(shown, 14, height / 2 + 1)
   const texture = new CanvasTexture(canvas)

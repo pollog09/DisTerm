@@ -243,7 +243,7 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   turned, and had lines and arrowheads running through them. Each frame the names are placed on screen
   and kept by rank (session, then Harness, then stages and subagents, skills and MCP, notes, ghosts:
   `labelRank`), then nearest first; one that would come within `LABEL_GAP_PX` of a name already kept is
-  hidden. A session's name is bold and full ink, every other name medium weight at 80%. A hidden name
+  hidden. A session's name is bold (700) and every other name semibold (600), all in full ink: lighter names, or ink at 80%, washed out on the light theme's pills once scaled down to 22 px. A hidden name
   also stops taking the pointer (its `raycast` is `noPick` until it shows again), because the raycaster
   ignores `visible`. Hovering its node still shows the name in the tooltip. The pass runs from the star
   field's `onBeforeRender`, which is never culled, so it adds no frames and runs only on frames the gate
