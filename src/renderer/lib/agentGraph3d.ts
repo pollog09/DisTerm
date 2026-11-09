@@ -9,6 +9,7 @@
  * on structure, not content"), and keeps each surviving node object when it is not, so only what is
  * new has to find a place.
  */
+import { forceX, forceY, forceZ, type Force } from 'd3-force-3d'
 import { AGENT_CONFIG, FALLBACK_AGENT_COLOR, type BuiltinAgentId } from '@shared/agents/config'
 import { agentGraphStructureKey, edgeInTransit, type AgentGraphModel, type GraphEdge, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from './agentGraphModel'
 import { graphEdgeColor, graphEdgeDashed, MCP_LINE, SKILL_LINE } from './agentGraphEdgeText'
@@ -270,6 +271,32 @@ export interface Graph3dLoopInput {
 export function graph3dLoopShouldRun(s: Graph3dLoopInput): boolean {
   if (!s.shown || !s.watched) return false
   return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.busyUntil > s.now
+}
+
+/** How hard every pair of nodes pushes apart (`forceManyBody`). */
+export const GRAPH3D_CHARGE = -140
+
+/**
+ * How hard each node is pulled toward the middle, on each axis (`forceX`/`forceY`/`forceZ`). The
+ * library's own `center` force only moves the whole graph's centroid, so two parts with no line between
+ * them (a ship template beside the sessions) pushed each other apart with nothing pulling back: eight
+ * line lengths apart, and fitting both left every node a speck. This keeps them about two lines apart
+ * and leaves a line's own length alone.
+ */
+export const GRAPH3D_GRAVITY = 0.1
+
+/** The pull toward the screen's plane is this many times stronger. The first view looks down the depth
+ *  axis, and with an even pull nodes sat behind each other there. At 2.5 the graph is about a sixth as
+ *  deep as it is wide: the first view shows nodes side by side, and turning it still shows depth. */
+export const GRAPH3D_DEPTH_FLATTEN = 2.5
+
+/** The forces the view adds to the library's own `link`, `charge` and `center`, by name. */
+export function graph3dLayoutForces(): Record<string, Force> {
+  return {
+    x: forceX(0).strength(GRAPH3D_GRAVITY),
+    y: forceY(0).strength(GRAPH3D_GRAVITY),
+    z: forceZ(0).strength(GRAPH3D_GRAVITY * GRAPH3D_DEPTH_FLATTEN)
+  }
 }
 
 /** Layout settings. Under reduced motion the layout is computed before the first frame and never

@@ -219,6 +219,21 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
   session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would
   replay an event already shown. It costs one number per line id until the view unmounts.
+- **The 3D layout pulls every node toward the middle, harder in depth** (`graph3dLayoutForces`). The
+  library's own forces are `link`, `charge` and `center`, and `center` only moves the whole graph's
+  centroid. Two parts with no line between them (a ship template beside the sessions, a note on its own)
+  pushed each other apart with nothing pulling back: 7.6 line lengths apart in the reported picture,
+  and fitting both left every node a speck. `forceX`/`forceY` at `GRAPH3D_GRAVITY` (0.1) keep them
+  about two line lengths apart and leave a line's own length alone. `forceZ` is `GRAPH3D_DEPTH_FLATTEN`
+  (2.5) times stronger, because the first view looks down z: with an even pull, nodes sat behind each
+  other there (closest pair at 0.05 of the room a halo and a name need, over eight start orders). At
+  2.5 the closest pair keeps 0.84 of it and the graph is about a sixth as deep as it is wide, so turning
+  it still shows depth; at 3 it is flat. A collision force was tried and dropped: in 3D the nodes were
+  already clear of each other, and what overlapped was on screen, which only the depth pull fixes.
+  `agentGraph3d.test.ts` runs the real simulation on the reported picture and pins all three.
+  **Not verified:** label overlap when the camera is
+  turned, or on a dense graph. Labels are world-sized sprites, so one near the camera grows and can
+  cover another.
 - **The 3D frame loop runs only while something can change and somebody can see it**
   (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, something is live
   (`graph3dHasLiveMotion`, and never under Reduce Motion), the pointer is over the view, or a camera
@@ -275,7 +290,7 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   (`three-webgpu-stub.ts`, in `electron.vite.config.ts`). three-render-objects imports the WebGPU renderer
   but never builds it here, and the stub halves the chunk (3.24 MB to 1.63 MB). `three` ships no types and
   `@types/three` is not a dependency, so `src/renderer/three-subset.d.ts` declares only what the view
-  calls. A new three API must be added there first. `package.json` overrides 3d-force-graph's
+  calls. A new three API must be added there first. `d3-force-3d` (the library's own layout engine, already in the chunk) is an exact-pinned devDependency too, so the view can add forces to it, and `src/renderer/d3-force-3d-subset.d.ts` declares only what the view and its tests call. `package.json` overrides 3d-force-graph's
   `float-tooltip` to 1.7.5, because 1.8.0 was days old and pulled a days-old preact. **Not verified:**
   real WebGL rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the
   Server Edition in a browser, Liquid Glass. Mobile N/A.

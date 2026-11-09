@@ -28,8 +28,10 @@ import { MAX_FLOW_DOTS } from '../../lib/agentGraphLayout'
 import { graphNodeTextLines } from '../../lib/agentGraphNodeText'
 import {
   DASHED_LINK_ALPHA,
+  GRAPH3D_CHARGE,
   graph3dEngineSettings,
   graph3dHasLiveMotion,
+  graph3dLayoutForces,
   graph3dLinkLook,
   graph3dLoopShouldRun,
   graph3dNodeLook,
@@ -519,7 +521,8 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const engine = graph3dEngineSettings(reducedRef.current)
     graph.warmupTicks(engine.warmupTicks).cooldownTicks(engine.cooldownTicks).cooldownTime(engine.cooldownTime)
     const charge = graph.d3Force('charge') as { strength?: (n: number) => unknown } | undefined
-    charge?.strength?.(-140)
+    charge?.strength?.(GRAPH3D_CHARGE)
+    for (const [name, force] of Object.entries(graph3dLayoutForces())) graph.d3Force(name, force)
 
     const canvas = graph.renderer().domElement
     const onLost = (): void => callbacks.current.onUnsupported(WEBGL_LOST_NOTICE)

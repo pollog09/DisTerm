@@ -43,7 +43,7 @@ vi.mock('3d-force-graph', () => {
           target.calls.push({ name: prop, args })
           if (prop === 'renderer') return target.renderer
           if (prop === 'scene') return target.scene
-          if (prop === 'd3Force') return { strength: () => undefined }
+          if (prop === 'd3Force') return args.length > 1 ? proxy : { strength: () => undefined }
           if (prop === 'emitParticle') {
             const link = args[0] as { __singleHopPhotonsObj?: { children: unknown[] } }
             ;(link.__singleHopPhotonsObj ??= { children: [] }).children.push({})

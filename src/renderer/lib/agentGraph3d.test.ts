@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { forceCenter, forceLink, forceManyBody, forceSimulation, type Force, type LinkForce, type SimNode } from 'd3-force-3d'
 import {
+  GRAPH3D_CHARGE,
+  graph3dLayoutForces,
   graph3dEngineSettings,
   graph3dHasLiveMotion,
   graph3dLinkLook,
@@ -236,5 +239,66 @@ describe('graph3dHasLiveMotion', () => {
     expect(graph3dHasLiveMotion([session('session:a', { live: [{ id: 'r', type: 'Explore', startedAt: 0 }] })], [], 0)).toBe(true)
     expect(graph3dHasLiveMotion([], [edge('m', 'a', 'b', { latest: 'delivered', lastEventTs: 1000 })], 2000)).toBe(true)
     expect(graph3dHasLiveMotion([], [edge('m', 'a', 'b', { latest: 'queued', lastEventTs: 1000 })], 2000)).toBe(false)
+  })
+})
+
+describe('graph3dLayoutForces', () => {
+  // The picture that was reported: sessions on a Harness with a subagent, and a ship template's three
+  // stages beside them with no line between the two, plus notes on their own. The library's own forces,
+  // then the view's, from several start orders.
+  const kinds: Record<string, GraphNode['kind']> = {
+    claude: 'session', redesign: 'session', startup: 'session', harness: 'harness', shipit: 'subagent',
+    implementer: 'stage', writer: 'stage', reviewer: 'stage', n1: 'note', n2: 'note', n3: 'note', n4: 'note'
+  }
+  const lines = [['harness', 'claude'], ['harness', 'redesign'], ['harness', 'startup'], ['startup', 'shipit'], ['implementer', 'writer'], ['writer', 'reviewer'], ['reviewer', 'implementer']]
+  const ids = Object.keys(kinds)
+  // A node's halo, which any glowing kind can wear, and room for the name above it.
+  const clearance = (id: string): number => graph3dNodeLook({ id, kind: kinds[id], title: id }).radius * 1.55 + 4
+
+  const settle = (forces: () => Record<string, Force>, start: number) => {
+    const nodes: SimNode[] = [...ids.slice(start), ...ids.slice(0, start)].map((id) => ({ id }))
+    const sim = forceSimulation()
+      .numDimensions(3)
+      .stop()
+      .force('link', forceLink().id((n) => n.id as string))
+      .force('charge', forceManyBody().strength(GRAPH3D_CHARGE))
+      .force('center', forceCenter())
+      .nodes(nodes)
+    ;(sim.force('link') as LinkForce).links(lines.map(([source, target]) => ({ source, target })))
+    for (const [name, force] of Object.entries(forces())) sim.force(name, force)
+    sim.tick(300)
+    const at = new Map(nodes.map((n) => [n.id as string, [n.x ?? 0, n.y ?? 0, n.z ?? 0]]))
+    const p = (id: string): number[] => at.get(id)!
+    const dist = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+    const middle = (group: string[]): number[] => [0, 1, 2].map((k) => group.reduce((sum, id) => sum + p(id)[k], 0) / group.length)
+    const meanLine = lines.reduce((sum, [a, b]) => sum + dist(p(a), p(b)), 0) / lines.length
+    const spread = (k: number): number => Math.max(...ids.map((id) => p(id)[k])) - Math.min(...ids.map((id) => p(id)[k]))
+    return {
+      gapInLines: dist(middle(['claude', 'redesign', 'startup', 'harness', 'shipit']), middle(['implementer', 'writer', 'reviewer'])) / meanLine,
+      // The first view looks down z, so what overlaps on screen is what is close in x and y.
+      onScreen: Math.min(...ids.flatMap((a, i) => ids.slice(i + 1).map((b) => Math.hypot(p(a)[0] - p(b)[0], p(a)[1] - p(b)[1]) / (clearance(a) + clearance(b))))),
+      depth: spread(2) / Math.max(spread(0), spread(1))
+    }
+  }
+  const starts = [0, 1, 2, 3, 4, 5, 6, 7]
+  const before = starts.map((s) => settle(() => ({}), s))
+  const after = starts.map((s) => settle(graph3dLayoutForces, s))
+  const worst = (runs: typeof after, key: 'gapInLines' | 'onScreen'): number => (key === 'gapInLines' ? Math.max : Math.min)(...runs.map((r) => r[key]))
+  const mean = (runs: typeof after): number => runs.reduce((sum, r) => sum + r.depth, 0) / runs.length
+
+  it('keeps two parts with no line between them close: about two line lengths, not eight', () => {
+    expect(worst(before, 'gapInLines')).toBeGreaterThan(6)
+    expect(worst(after, 'gapInLines')).toBeLessThan(3)
+  })
+
+  it('shows every node clear of the others in the first view, halo and name included', () => {
+    expect(worst(before, 'onScreen')).toBeLessThan(0.3)
+    expect(worst(after, 'onScreen')).toBeGreaterThan(0.75)
+  })
+
+  it('stays a 3D graph: flatter in depth than across, never flat', () => {
+    expect(mean(before)).toBeGreaterThan(0.9)
+    expect(mean(after)).toBeGreaterThan(0.1)
+    expect(mean(after)).toBeLessThan(0.3)
   })
 })
