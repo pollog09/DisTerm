@@ -68,3 +68,17 @@ describe('graphNodeTextLines', () => {
     ])
   })
 })
+
+describe('live runs in a box’s words', () => {
+  const live = (labels: string[]) => labels.map((label, i) => ({ id: `r${i}`, type: 'Explore', label, startedAt: i }))
+
+  it('counts them, as subagents on a session and as runs on a subagent box', () => {
+    expect(graphNodeBadges({ id: 's', kind: 'session', title: 's', live: live(['a', 'b']) }, false).map((b) => b.text)).toContain('2 subagents running')
+    expect(graphNodeBadges({ id: 'x', kind: 'subagent', title: 'Explore', live: live(['a']) }, false).map((b) => b.text)).toContain('1 running now')
+  })
+
+  it('names the newest few and counts the rest', () => {
+    const lines = graphNodeTextLines({ id: 'x', kind: 'subagent', title: 'Explore', live: live(['a', 'b', 'c', 'd', 'e', 'f']) }, false)
+    expect(lines).toContain('Now: c, d, e, f and 2 more')
+  })
+})

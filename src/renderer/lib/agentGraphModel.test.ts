@@ -795,3 +795,46 @@ describe('what is in transit', () => {
     })
   })
 })
+
+describe('live subagent runs', () => {
+  it('a fan-out of one type is one box carrying every run still going, oldest first', () => {
+    const m = build({
+      sessions: [session('p')],
+      snapshot: snap([start('p', 'a', 'Explore', 10, { label: 'find routes' }), start('p', 'b', 'Explore', 11), start('p', 'c', 'Explore', 12), end('p', 'b', 20)]),
+      now: 30
+    })
+    expect(m.nodes.find((n) => n.id === 'sub:p:Explore')!.live).toEqual([
+      { id: 'a', type: 'Explore', label: 'find routes', startedAt: 10 },
+      { id: 'c', type: 'Explore', startedAt: 12 }
+    ])
+    expect(m.nodes.find((n) => n.id === 'session:p')!.live).toBeUndefined()
+  })
+
+  it('a run past the staleness line, or ended, is not live', () => {
+    const m = build({
+      sessions: [session('p')],
+      snapshot: snap([start('p', 'a', 'Explore', 10), start('p', 'b', 'Plan', 11), end('p', 'b', 12)]),
+      now: 10 + WORKING_STALE_MS + 1
+    })
+    expect(m.nodes.some((n) => n.live)).toBe(false)
+  })
+
+  it('a run mapped onto a stage is that stage’s', () => {
+    const m = build({ sessions: [session('p')], ship: ship(), snapshot: snap([start('p', '1', 'implementer', 10)]), now: 20 })
+    expect(m.nodes.find((n) => n.id === 'stage:p:ship-change:impl')!.live).toEqual([{ id: '1', type: 'implementer', startedAt: 10 }])
+  })
+
+  it('a run with no certain box is its session’s', () => {
+    // Over the type cap, a run has no box of its own.
+    const events = Array.from({ length: 25 }, (_, i) => start('p', `s${i}`, `type-${i}`, 10 + i))
+    const m = build({ sessions: [session('p')], snapshot: snap(events), now: 100 })
+    expect(m.nodes.find((n) => n.id === 'session:p')!.live).toEqual([{ id: 's24', type: 'type-24', startedAt: 34 }])
+  })
+
+  it('never moves the layout', () => {
+    const events = [start('p', 'a', 'Explore', 10)]
+    const running = build({ sessions: [session('p')], snapshot: snap(events), now: 20 })
+    const stale = build({ sessions: [session('p')], snapshot: snap(events), now: 10 + WORKING_STALE_MS + 1 })
+    expect(agentGraphStructureKey(running)).toBe(agentGraphStructureKey(stale))
+  })
+})

@@ -3,6 +3,7 @@ import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph'
 import {
   BackSide,
   BoxGeometry,
+  BufferAttribute,
   CanvasTexture,
   DodecahedronGeometry,
   Group,
@@ -11,24 +12,30 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   OctahedronGeometry,
+  Points,
+  PointsMaterial,
   SphereGeometry,
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
   TetrahedronGeometry,
-  type BufferGeometry,
+  BufferGeometry,
   type Object3D
 } from 'three'
-import type { GraphEdge, GraphNode } from '../../lib/agentGraphModel'
+import { edgeInTransit, type GraphEdge, type GraphNode } from '../../lib/agentGraphModel'
 import { graphEdgeLabel, graphEdgeTitle } from '../../lib/agentGraphEdgeText'
 import { MAX_FLOW_DOTS } from '../../lib/agentGraphLayout'
 import { graphNodeTextLines } from '../../lib/agentGraphNodeText'
 import {
   DASHED_LINK_ALPHA,
   graph3dEngineSettings,
+  graph3dHasLiveMotion,
   graph3dLinkLook,
   graph3dLoopShouldRun,
   graph3dNodeLook,
+  graph3dNodeMotion,
+  STREAM_EVERY_MS,
+  type Graph3dNodeMotion,
   parseCssColor,
   rgbaString,
   rgbHex,
@@ -76,6 +83,16 @@ const GATE_CHECK_MS = 250
 const PARTICLE_SPEED = 0.011
 const LABEL_MAX = 40
 const LABEL_HEIGHT = 5.5
+
+/** Satellite size and how far out it orbits, as fractions of its box's radius. */
+const SATELLITE_RADIUS = 0.2
+const SATELLITE_ORBIT = 1.85
+/** Radians per second. */
+const ORBIT_SPEED = 1.2
+const SPIN_SPEED = 0.8
+const BREATHE_SPEED = 2.4
+const STARS = 520
+const STAR_FIELD = 700
 
 const FALLBACK_TEXT: Rgba = { r: 200, g: 200, b: 200, a: 0.85 }
 const FALLBACK_PANEL: Rgba = { r: 40, g: 40, b: 40, a: 1 }
@@ -160,11 +177,40 @@ interface NodeVisual {
   core: Mesh<BufferGeometry, MeshLambertMaterial>
   halo: Mesh<BufferGeometry, MeshBasicMaterial>
   aura: Mesh<BufferGeometry, MeshBasicMaterial>
+  /** Turns as one, so each satellite keeps its place on the ring. */
+  orbit: Group
+  satellites: Array<{ id: string; mesh: Mesh<BufferGeometry, MeshBasicMaterial> }>
+  radius: number
+  motion: Graph3dNodeMotion
+  /** Where in its breath this node starts, so a row of running boxes does not swell in step. */
+  phase: number
   label: Sprite | null
   labelKey: string
 }
 
 const noPick = (): void => {}
+
+const REST: Graph3dNodeMotion = { spin: false, breathe: false, satellites: [] }
+
+/** A fixed scatter of faint points behind the graph. It never moves, so it costs no frames. */
+function starField(): Points<BufferGeometry, PointsMaterial> {
+  const positions = new Float32Array(STARS * 3)
+  // Deterministic, so a remount draws the same sky.
+  let seed = 7
+  const rand = (): number => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+  for (let i = 0; i < STARS; i++) {
+    const u = rand() * 2 - 1
+    const t = rand() * Math.PI * 2
+    const r = STAR_FIELD * (0.55 + 0.45 * rand())
+    const k = Math.sqrt(1 - u * u)
+    positions.set([r * k * Math.cos(t), r * u, r * k * Math.sin(t)], i * 3)
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new BufferAttribute(positions, 3))
+  const stars = new Points(geometry, new PointsMaterial({ size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.35, depthWrite: false }))
+  stars.raycast = noPick
+  return stars
+}
 
 function disposeSprite(sprite: Sprite): void {
   sprite.material.map?.dispose()
@@ -228,15 +274,33 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const particlesInFlight = (): boolean =>
       (dataRef.current?.links ?? []).some((l) => ((l as LinkWithPhotons).__singleHopPhotonsObj?.children.length ?? 0) > 0)
 
+    // A line in transit sends a particle every STREAM_EVERY_MS, as the 2D marks keep moving along it.
+    const lastStream = new Map<string, number>()
+    const stream = (now: number): void => {
+      if (reducedRef.current || !st.shown || !st.watched) return
+      for (const link of dataRef.current?.links ?? []) {
+        const edge = edgesById.current.get(link.id)
+        if (!edge || !edgeInTransit(edge, now)) continue
+        if (now - (lastStream.get(link.id) ?? 0) < STREAM_EVERY_MS) continue
+        if (((link as LinkWithPhotons).__singleHopPhotonsObj?.children.length ?? 0) >= MAX_FLOW_DOTS) continue
+        lastStream.set(link.id, now)
+        graph.emitParticle(link)
+      }
+    }
+
     const evaluate = (): void => {
+      const now = Date.now()
+      const liveMotion = !reducedRef.current && graph3dHasLiveMotion([...nodesById.current.values()], [...edgesById.current.values()], now)
+      if (liveMotion) stream(now)
       const run = graph3dLoopShouldRun({
         shown: st.shown,
         watched: st.watched,
         engineRunning: st.engineRunning,
         particlesInFlight: particlesInFlight(),
+        liveMotion,
         pointerInside: st.pointerInside,
         busyUntil: st.busyUntil,
-        now: Date.now()
+        now
       })
       if (run && !st.running) {
         st.running = true
@@ -284,6 +348,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       }
       visual.halo.visible = !!look.glow
       visual.aura.visible = !!look.glow
+      visual.motion = graph3dNodeMotion(node)
+      syncSatellites(visual)
+      // Sets the pose now, so a box that stopped running rests unswollen even if no frame follows.
+      animate(visual)
       const text = ink()
       const back = panel()
       const labelKey = `${look.label}|${rgbaString(text)}|${rgbaString(back)}`
@@ -301,6 +369,50 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       }
     }
 
+    const satelliteGeometry = new SphereGeometry(1, 14, 10)
+    const syncSatellites = (visual: NodeVisual): void => {
+      const want = visual.motion.satellites
+      const keep = new Set(want)
+      for (const sat of visual.satellites.filter((s) => !keep.has(s.id))) {
+        visual.orbit.remove(sat.mesh)
+        sat.mesh.material.dispose()
+      }
+      const had = new Map(visual.satellites.filter((s) => keep.has(s.id)).map((s) => [s.id, s]))
+      const color = rgbHex(colors.get('var(--state-working)', FALLBACK_LINE))
+      visual.satellites = want.map((id) => {
+        const old = had.get(id)
+        if (old) return old
+        const mesh = new Mesh(satelliteGeometry, new MeshBasicMaterial({ color }))
+        mesh.raycast = noPick
+        const r = visual.radius * SATELLITE_RADIUS
+        mesh.scale.set(r, r, r)
+        visual.orbit.add(mesh)
+        return { id, mesh }
+      })
+      // Evenly round the ring, tilted in turn, so two satellites never sit on top of each other.
+      const n = visual.satellites.length
+      visual.satellites.forEach((sat, i) => {
+        const a = (i / Math.max(1, n)) * Math.PI * 2
+        const d = visual.radius * SATELLITE_ORBIT
+        sat.mesh.position.set(Math.cos(a) * d, (i % 2 ? 0.35 : -0.35) * visual.radius, Math.sin(a) * d)
+        sat.mesh.material.color.set(color)
+      })
+    }
+
+    // Per-frame motion: only what `graph3dNodeMotion` says is happening, and nothing under Reduce Motion.
+    // It runs only on frames the gate already allows, so it adds no frames of its own.
+    const animate = (visual: NodeVisual): void => {
+      const m = reducedRef.current ? REST : visual.motion
+      const t = performance.now() / 1000
+      if (m.spin) visual.core.rotation.set(t * SPIN_SPEED * 0.5, t * SPIN_SPEED, 0)
+      const k = m.breathe ? 1 + 0.14 * Math.sin(t * BREATHE_SPEED + visual.phase) : 1
+      visual.halo.scale.set(k, k, k)
+      visual.aura.scale.set(k * k, k * k, k * k)
+      visual.aura.material.opacity = m.breathe ? 0.07 + 0.08 * (0.5 + 0.5 * Math.sin(t * BREATHE_SPEED + visual.phase)) : 0.09
+      visual.core.material.emissiveIntensity = visual.halo.visible ? (m.breathe ? 0.3 + 0.25 * (0.5 + 0.5 * Math.sin(t * BREATHE_SPEED + visual.phase)) : 0.35) : 0
+      visual.orbit.rotation.set(0.45, reducedRef.current ? 0 : t * ORBIT_SPEED + visual.phase, 0)
+    }
+
     const nodeObject = (n3: Graph3dNode): Object3D => {
       const node = nodesById.current.get(n3.id)
       const look = node ? graph3dNodeLook(node) : { shape: 'sphere' as const, radius: 4 }
@@ -313,8 +425,23 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       // hover) and clicks meant for the node behind it. Only what is drawn solid takes the pointer.
       halo.raycast = noPick
       aura.raycast = noPick
-      group.add(core, halo, aura)
-      const visual: NodeVisual = { group, core, halo, aura, label: null, labelKey: '' }
+      const orbit = new Group()
+      group.add(core, halo, aura, orbit)
+      const visual: NodeVisual = {
+        group,
+        core,
+        halo,
+        aura,
+        orbit,
+        satellites: [],
+        radius: look.radius,
+        motion: REST,
+        phase: (visuals.current.size * 1.7) % (Math.PI * 2),
+        label: null,
+        labelKey: ''
+      }
+      // A satellite can swing out of the view while its box is still in it.
+      core.onBeforeRender = () => animate(visual)
       visuals.current.set(n3.id, visual)
       if (node) styleNode(visual, node)
       return group
@@ -344,6 +471,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         const node = nodesById.current.get(id)
         if (node) styleNode(visual, node)
       }
+      stars.material.color.set(rgbHex(ink()))
       // Fresh functions make the library re-read the lines' materials; their objects stay.
       graph.linkColor((l) => linkColor(l)).linkDirectionalArrowColor((l) => arrowColor(l))
     }
@@ -384,6 +512,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         }
         evaluate()
       })
+    const stars = starField()
+    stars.material.color.set(rgbHex(ink()))
+    graph.scene().add(stars)
+
     const engine = graph3dEngineSettings(reducedRef.current)
     graph.warmupTicks(engine.warmupTicks).cooldownTicks(engine.cooldownTicks).cooldownTime(engine.cooldownTime)
     const charge = graph.d3Force('charge') as { strength?: (n: number) => unknown } | undefined
@@ -454,7 +586,13 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       // The library publishes its scene as a global for debugging; do not keep it alive.
       const w = window as unknown as { scene?: unknown }
       if (w.scene === scene) delete w.scene
-      for (const visual of visuals.current.values()) if (visual.label) disposeSprite(visual.label)
+      for (const visual of visuals.current.values()) {
+        if (visual.label) disposeSprite(visual.label)
+        for (const sat of visual.satellites) sat.mesh.material.dispose()
+      }
+      satelliteGeometry.dispose()
+      stars.geometry.dispose()
+      stars.material.dispose()
       visuals.current.clear()
       colors.dispose()
       palette.current = null

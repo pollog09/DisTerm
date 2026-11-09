@@ -104,6 +104,17 @@ export interface GraphNode {
   lastEventTs?: number
   /** `harness` only. A figure the machine's config could not state is absent, never 0. */
   harness?: HarnessFacts
+  /** Subagent runs going on right now that this box stands for, oldest first. A run whose box is not
+   *  certain (`subBox`) is its session's. Content, not structure: it never moves the layout. */
+  live?: GraphLiveRun[]
+}
+
+/** One subagent run that is live now (`isLive`): not ended, and heard from inside the staleness line. */
+export interface GraphLiveRun {
+  id: string
+  type: string
+  label?: string
+  startedAt: number
 }
 
 /** What the Harness box says about one machine. */
@@ -756,6 +767,23 @@ function addObserved(
   out.edges.push(...edges.values())
 }
 
+/** Each live run onto the box it is drawn in, by the same certainty rule a skill call leaves by: one
+ *  known box, or else its session. A run whose session has no box is not drawn anywhere. */
+function attachLiveRuns(out: GraphBuild, runsByParent: ReadonlyMap<string, SubRun[]>, known: ReadonlyMap<string, unknown>, now: number): void {
+  const byId = new Map(out.nodes.map((n) => [n.id, n]))
+  for (const [parent, runs] of runsByParent) {
+    if (!known.has(parent)) continue
+    for (const run of runs) {
+      if (!isLive(run, now)) continue
+      const boxes = out.subBox.get(`${parent}:${run.subId}`)
+      const only = boxes && boxes.size === 1 ? [...boxes][0] : null
+      const node = (only ? byId.get(only) : undefined) ?? byId.get(`session:${parent}`)
+      if (!node) continue
+      ;(node.live ??= []).push({ id: run.subId, type: run.type, ...(run.label ? { label: run.label } : {}), startedAt: run.startedAt })
+    }
+  }
+}
+
 const skillBoxId = (name: string): string => `skill:${name}`
 const mcpBoxId = (server: string): string => `mcp:${server}`
 
@@ -1061,6 +1089,7 @@ export function buildAgentGraphModel(input: AgentGraphInput): AgentGraphModel {
     if (box.kind === 'session') sessionBoxes.push({ node: box, stateAt: s.lastStateAt ?? 0 })
   }
   addHarness(out, sessionBoxes, ship)
+  attachLiveRuns(out, runsByParent, known, now)
   for (const id of ghosts) {
     // Deleted, or alive in another project of this core: the id cannot say which, so neither is claimed.
     out.nodes.push({ id: nodeFor(id), kind: 'ghost', title: 'Session outside this project', subtitle: id.slice(0, 16) })

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   graph3dEngineSettings,
+  graph3dHasLiveMotion,
   graph3dLinkLook,
   graph3dLoopShouldRun,
   graph3dNodeLook,
+  graph3dNodeMotion,
+  MAX_SATELLITES,
   parseCssColor,
   rgbaString,
   rgbHex,
@@ -177,16 +180,18 @@ describe('parseCssColor', () => {
 })
 
 describe('graph3dLoopShouldRun', () => {
-  const idle: Graph3dLoopInput = { shown: true, watched: true, engineRunning: false, particlesInFlight: false, pointerInside: false, busyUntil: 0, now: 1000 }
+  const idle: Graph3dLoopInput = { shown: true, watched: true, engineRunning: false, particlesInFlight: false, liveMotion: false, pointerInside: false, busyUntil: 0, now: 1000 }
   it.each<[string, Partial<Graph3dLoopInput>, boolean]>([
     ['a settled graph nobody points at', {}, false],
     ['the layout still moving', { engineRunning: true }, true],
     ['a particle in flight', { particlesInFlight: true }, true],
     ['the pointer over it', { pointerInside: true }, true],
     ['a camera move asked for', { busyUntil: 1500 }, true],
+    ['something running', { liveMotion: true }, true],
     ['a camera move that is over', { busyUntil: 1000 }, false],
     ['covered by the terminal modal', { shown: false, engineRunning: true, pointerInside: true }, false],
-    ['a window nobody is looking at', { watched: false, engineRunning: true, particlesInFlight: true, pointerInside: true, busyUntil: 9999 }, false]
+    ['a window nobody is looking at', { watched: false, engineRunning: true, particlesInFlight: true, liveMotion: true, pointerInside: true, busyUntil: 9999 }, false],
+    ['a covered view with something running', { shown: false, liveMotion: true }, false]
   ])('%s', (_name, over, run) => {
     expect(graph3dLoopShouldRun({ ...idle, ...over })).toBe(run)
   })
@@ -198,5 +203,38 @@ describe('graph3dEngineSettings', () => {
   })
   it('otherwise settles on screen and stops', () => {
     expect(graph3dEngineSettings(false)).toEqual({ warmupTicks: 0, cooldownTicks: 300, cooldownTime: 4000 })
+  })
+})
+
+describe('graph3dNodeMotion', () => {
+  const sub = (over: Partial<GraphNode> = {}): GraphNode => ({ id: 'sub:p:Explore', kind: 'subagent', title: 'Explore', ...over })
+  const live = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `r${i}`, type: 'Explore', startedAt: i }))
+
+  it('a settled box does not move', () => {
+    expect(graph3dNodeMotion(sub({ activity: 'done' }))).toEqual({ spin: false, breathe: false, satellites: [] })
+    expect(graph3dNodeMotion(session('session:a', { state: 'waiting' }))).toEqual({ spin: false, breathe: false, satellites: [] })
+  })
+
+  it('a running subagent turns, breathes and carries a satellite per live run, the newest kept', () => {
+    const m = graph3dNodeMotion(sub({ activity: 'running', live: live(MAX_SATELLITES + 2) }))
+    expect(m.spin).toBe(true)
+    expect(m.breathe).toBe(true)
+    expect(m.satellites).toHaveLength(MAX_SATELLITES)
+    expect(m.satellites.at(-1)).toBe(`r${MAX_SATELLITES + 1}`)
+  })
+
+  it('a session that is only working keeps still; one with live subagents breathes and does not turn', () => {
+    expect(graph3dNodeMotion(session('session:a', { state: 'working' }))).toEqual({ spin: false, breathe: false, satellites: [] })
+    expect(graph3dNodeMotion(session('session:a', { live: live(1) }))).toMatchObject({ spin: false, satellites: ['r0'] })
+  })
+})
+
+describe('graph3dHasLiveMotion', () => {
+  it('only something happening keeps frames', () => {
+    expect(graph3dHasLiveMotion([session('session:a', { state: 'done' })], [edge('m', 'a', 'b', { latest: 'delivered', lastEventTs: 0 })], 60_000)).toBe(false)
+    expect(graph3dHasLiveMotion([session('session:a', { state: 'working' })], [], 0)).toBe(false)
+    expect(graph3dHasLiveMotion([session('session:a', { live: [{ id: 'r', type: 'Explore', startedAt: 0 }] })], [], 0)).toBe(true)
+    expect(graph3dHasLiveMotion([], [edge('m', 'a', 'b', { latest: 'delivered', lastEventTs: 1000 })], 2000)).toBe(true)
+    expect(graph3dHasLiveMotion([], [edge('m', 'a', 'b', { latest: 'queued', lastEventTs: 1000 })], 2000)).toBe(false)
   })
 })

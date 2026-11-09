@@ -40,6 +40,10 @@ export function graphNodeBadges(node: GraphNode, showMachine: boolean): GraphNod
   if (node.state) out.push({ text: GRAPH_STATE_LABEL[node.state] ?? node.state, role: 'state' })
   if (node.handedOver) out.push({ text: 'handed work' })
   if (node.outcome) out.push({ text: node.outcome, outcome: node.outcome })
+  if (node.live?.length) {
+    const n = node.live.length
+    out.push({ text: node.kind === 'session' ? `${n} subagent${n === 1 ? '' : 's'} running` : `${n} running now`, role: 'state' })
+  }
   if (node.activity === 'stale') out.push({ text: 'no recent signal' })
   if (node.reentered) out.push({ text: 're-entered', role: 'loop' })
   if (node.maybeRuns) {
@@ -70,6 +74,9 @@ export const GLOW_COLOR: Readonly<Record<GraphGlow, string>> = {
   idle: 'var(--state-success)'
 }
 
+/** Live runs a box names in its text; the rest are counted. */
+const LIVE_NAMED = 4
+
 /** The text a box shows, as lines: its title with its run count, its subtitle, its badges and its
  *  description. The 3D view's tooltip is this, so hovering a sphere reads what the box says. */
 export function graphNodeTextLines(node: GraphNode, showMachine: boolean): string[] {
@@ -77,6 +84,11 @@ export function graphNodeTextLines(node: GraphNode, showMachine: boolean): strin
   if (node.subtitle) lines.push(node.subtitle)
   const badges = graphNodeBadges(node, showMachine).map((b) => b.text)
   if (badges.length) lines.push(badges.join(' · '))
+  const running = (node.live ?? []).map((r) => r.label ?? r.type)
+  if (running.length) {
+    const shown = running.slice(-LIVE_NAMED)
+    lines.push(`Now: ${shown.join(', ')}${running.length > shown.length ? ` and ${running.length - shown.length} more` : ''}`)
+  }
   if (node.description) lines.push(node.description)
   return lines
 }

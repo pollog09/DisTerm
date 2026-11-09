@@ -32,6 +32,7 @@ declare module 'three' {
   export class Object3D {
     position: Vector3Like
     scale: Vector3Like
+    rotation: Vector3Like
     visible: boolean
     renderOrder: number
     parent: Object3D | null
@@ -41,6 +42,9 @@ declare module 'three' {
     /** Picking. Replaced with a no-op on objects a pointer must go through. */
     raycast(raycaster: Raycaster, intersects: Intersection[]): void
     updateMatrixWorld(force?: boolean): void
+    /** Called each frame this object is drawn: the agent graph's per-frame motion hangs off it. */
+    onBeforeRender: () => void
+    frustumCulled: boolean
   }
   export class Group extends Object3D {}
   export class Scene extends Object3D {}
@@ -57,6 +61,10 @@ declare module 'three' {
 
   export class BufferGeometry {
     dispose(): void
+    setAttribute(name: string, attribute: BufferAttribute): this
+  }
+  export class BufferAttribute {
+    constructor(array: Float32Array, itemSize: number)
   }
   export class SphereGeometry extends BufferGeometry {
     constructor(radius?: number, widthSegments?: number, heightSegments?: number)
@@ -89,6 +97,8 @@ declare module 'three' {
     flatShading?: boolean
     side?: number
     map?: Texture | null
+    size?: number
+    sizeAttenuation?: boolean
   }
   export class Material {
     opacity: number
@@ -107,12 +117,21 @@ declare module 'three' {
     constructor(parameters?: MaterialParameters)
     color: Color
   }
+  export class PointsMaterial extends Material {
+    constructor(parameters?: MaterialParameters)
+    color: Color
+  }
   export class SpriteMaterial extends Material {
     constructor(parameters?: MaterialParameters)
     map: Texture | null
   }
 
   export class Mesh<G extends BufferGeometry = BufferGeometry, M extends Material = Material> extends Object3D {
+    constructor(geometry?: G, material?: M)
+    geometry: G
+    material: M
+  }
+  export class Points<G extends BufferGeometry = BufferGeometry, M extends Material = Material> extends Object3D {
     constructor(geometry?: G, material?: M)
     geometry: G
     material: M
