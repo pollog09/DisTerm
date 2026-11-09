@@ -10,6 +10,7 @@ import {
   graph3dLoopShouldRun,
   graph3dNodeLook,
   graph3dNodeMotion,
+  graph3dCurrentStep,
   graph3dPixelScale,
   graph3dPlanetPose,
   graph3dSeed,
@@ -323,6 +324,22 @@ describe('graph3dLayoutForces', () => {
     expect(mean(before)).toBeGreaterThan(0.9)
     expect(mean(after)).toBeGreaterThan(0.1)
     expect(mean(after)).toBeLessThan(0.3)
+  })
+})
+
+describe('graph3dCurrentStep', () => {
+  const stage = (id: string, over: Partial<GraphNode> = {}): GraphNode => ({ id, kind: 'stage', title: id, ...over })
+  it('is nothing while nothing runs', () => {
+    expect(graph3dCurrentStep([session('a', { state: 'idle', lastEventTs: 9 }), stage('b', { activity: 'done', lastEventTs: 10 })])).toBeNull()
+  })
+  it('is the running node with the newest event', () => {
+    expect(graph3dCurrentStep([session('a', { state: 'working', lastEventTs: 5 }), stage('b', { activity: 'running', lastEventTs: 7 }), stage('c', { lastEventTs: 9 })])).toBe('b')
+  })
+  it('counts a box with a live subagent run as running', () => {
+    expect(graph3dCurrentStep([session('a', { state: 'idle' }), { id: 's', kind: 'subagent', title: 's', live: [{ id: 'r', type: 'x' } as never] }])).toBe('s')
+  })
+  it('on a tie, a session outranks a stage', () => {
+    expect(graph3dCurrentStep([stage('b', { activity: 'running' }), session('a', { state: 'working' })])).toBe('a')
   })
 })
 

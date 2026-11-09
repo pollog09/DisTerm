@@ -119,3 +119,64 @@ export function paintSurface(ctx: CanvasRenderingContext2D, surface: Graph3dSurf
   else if (surface === 'asteroid') rock(ctx, base, rand, -0.2, 34)
   else rock(ctx, base, rand, -0.04, 18)
 }
+
+/* Light that is tinted by the sprite that wears it, so each is painted once, in white. */
+
+/** A star's corona: a hot core fading out, crossed by long uneven rays. */
+export function paintCorona(ctx: CanvasRenderingContext2D, size: number): void {
+  const c = size / 2
+  const rand = random(7)
+  ctx.save()
+  ctx.translate(c, c)
+  for (let i = 0; i < 110; i++) {
+    const angle = rand() * Math.PI * 2
+    const reach = c * (0.45 + rand() * 0.55)
+    const spread = 0.012 + rand() * 0.03
+    const ray = ctx.createLinearGradient(0, 0, Math.cos(angle) * reach, Math.sin(angle) * reach)
+    ray.addColorStop(0, `rgba(255, 255, 255, ${0.12 + rand() * 0.14})`)
+    ray.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = ray
+    ctx.beginPath()
+    ctx.moveTo(0, 0)
+    ctx.lineTo(Math.cos(angle - spread) * reach, Math.sin(angle - spread) * reach)
+    ctx.lineTo(Math.cos(angle + spread) * reach, Math.sin(angle + spread) * reach)
+    ctx.fill()
+  }
+  ctx.restore()
+  const glow = ctx.createRadialGradient(c, c, 0, c, c, c)
+  glow.addColorStop(0, 'rgba(255, 255, 255, 0.95)')
+  glow.addColorStop(0.16, 'rgba(255, 255, 255, 0.55)')
+  glow.addColorStop(0.4, 'rgba(255, 255, 255, 0.16)')
+  glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, size, size)
+}
+
+/** The soft light round a planet. */
+export function paintGlow(ctx: CanvasRenderingContext2D, size: number): void {
+  const c = size / 2
+  const glow = ctx.createRadialGradient(c, c, 0, c, c, c)
+  glow.addColorStop(0, 'rgba(255, 255, 255, 0.7)')
+  glow.addColorStop(0.35, 'rgba(255, 255, 255, 0.28)')
+  glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, size, size)
+}
+
+/** A cloud of dust: many faint overlapping puffs, thickest in the middle. */
+export function paintNebula(ctx: CanvasRenderingContext2D, size: number, seed: number): void {
+  const rand = random(seed)
+  const c = size / 2
+  for (let i = 0; i < 70; i++) {
+    const r = size * (0.06 + rand() * 0.16)
+    const d = c * 0.62 * Math.sqrt(rand())
+    const a = rand() * Math.PI * 2
+    const x = c + Math.cos(a) * d
+    const y = c + Math.sin(a) * d * 0.7
+    const puff = ctx.createRadialGradient(x, y, 0, x, y, r)
+    puff.addColorStop(0, `rgba(255, 255, 255, ${0.05 + rand() * 0.07})`)
+    puff.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = puff
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+}

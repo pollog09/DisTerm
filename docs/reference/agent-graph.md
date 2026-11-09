@@ -249,6 +249,21 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   library's light is mostly ambient, which draws a sphere as a flat disc, so the view sets its own:
   ambient 0.55 and one sun (3.6) up and to the left of the first view. A darker night side turned into
   black discs on the light theme's cream.
+- **The current step is the 3D view's sun** (`graph3dCurrentStep`). Of the nodes with something running
+  (a working session, a running box, a live subagent run), the one with the newest event is drawn as a
+  star: 1.7 times its size (drawn only; the layout keeps its size), lit from within, in a corona of
+  rays in its own colour, with "CURRENT STEP" under its name, which never gives way (`labelRank` -1).
+  Its glow shells hide, because the corona is its glow. A tie goes to the more important kind. With
+  nothing running there is no sun: the view never claims a step that is not happening. Every world also
+  wears a soft glow in its colour, and three still nebula clouds sit far behind the graph. **Light lives
+  outside the nodes** (one `lightLayer` in the scene) and follows them from the core's
+  `onBeforeRender`: the library fits the camera to every geometry under a node
+  (`getGraphBbox`), and a corona fifteen radii wide inside one pushed the whole graph into the
+  distance. A node that leaves, or is rebuilt as another kind, takes its glow with it (`dropGlow`).
+  Light adds up on a dark sky and vanishes on a pale one, so on a light theme glow and corona are laid
+  over (normal blending) instead of added, and the nebula is hidden. Corona, glow and nebula are painted
+  once, in white, and tinted by the sprite that wears them. They take no frames of their own and never
+  take the pointer.
 - **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
   (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
   (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of

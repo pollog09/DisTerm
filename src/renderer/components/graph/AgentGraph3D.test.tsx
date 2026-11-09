@@ -120,6 +120,8 @@ async function mount(edges?: GraphEdge[]): Promise<Fake> {
   return lib.instances[lib.instances.length - 1]
 }
 
+/** The first session lit but waiting, not working: nothing runs, so there is no sun to grow and caption it. */
+const noSun = async (): Promise<void> => act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], state: 'waiting' }, NODES[1]] })))
 const named = (fake: Fake, name: string): unknown[][] => fake.calls.filter((c) => c.name === name).map((c) => c.args)
 /** Whether the library's loop is running, by the last pause or resume asked of it (it starts running). */
 const running = (fake: Fake): boolean => {
@@ -159,7 +161,7 @@ afterEach(async () => {
 const canvas2d = (works: boolean) =>
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) =>
     works && kind === '2d'
-      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {}, fillRect() {}, arc() {}, ellipse() {}, moveTo() {}, lineTo() {} }
+      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {}, fillRect() {}, arc() {}, ellipse() {}, moveTo() {}, lineTo() {}, save() {}, restore() {}, translate() {}, createRadialGradient: () => ({ addColorStop() {} }), createLinearGradient: () => ({ addColorStop() {} }) }
       : null) as never)
 /** What the library would build for a node: the component's own `nodeThreeObject`. */
 const nodeGroup = (fake: Fake, id: string): Object3D => (fake.props.nodeThreeObject as (n: { id: string; kind: string }) => Object3D)({ id, kind: 'session' })
@@ -189,6 +191,7 @@ describe('AgentGraph3D', () => {
   it('a status change shows on the drawn nodes and lines, without rebuilding them', async () => {
     canvas2d(false)
     const fake = await mount()
+    await noSun()
     const a = parts(nodeGroup(fake, 'session:a'))
     const b = parts(nodeGroup(fake, 'session:b'))
     expect([a.halo.visible, a.aura.visible, a.core.material.emissiveIntensity]).toEqual([true, true, 0.35])
@@ -280,6 +283,7 @@ describe('picking', () => {
   it('the glow shells let the pointer through, lit or not; the core and the label take it', async () => {
     canvas2d(true)
     const fake = await mount()
+    await noSun()
     for (const id of ['session:a', 'session:b']) {
       const group = nodeGroup(fake, id)
       group.updateMatrixWorld(true)
@@ -316,6 +320,7 @@ describe('names on screen', () => {
   it('of two names on the same spot, one shows; the other hides and stops taking the pointer', async () => {
     canvas2d(true)
     const fake = await mount()
+    await noSun()
     const a = nodeGroup(fake, 'session:a')
     const b = nodeGroup(fake, 'session:b')
     frame(fake)
@@ -384,6 +389,46 @@ describe('planets', () => {
     const { core } = parts(nodeGroup(fake, 'session:a'))
     expect(core.material.map).toBeNull()
     expect(core.material.color.getHexString()).toBe('d97757')
+  })
+})
+
+describe('the current step', () => {
+  /** The layer of light the component adds to the scene: the corona first, then each world's glow. */
+  const lightLayer = (fake: Fake): Object3D =>
+    fake.scene.add.mock.calls.map((c) => c[0] as Object3D).find((o) => o.constructor.name === 'Group')!
+  const render = async (nodes: GraphNode[]) => act(async () => root.render(view([message()], { nodes })))
+
+  it('a working session is the sun: drawn larger, its corona lit, its name captioned and never giving way', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    const sun = nodeGroup(fake, 'session:a')
+    const other = nodeGroup(fake, 'session:b')
+    await render([...NODES])
+    const [corona] = lightLayer(fake).children
+    expect(corona.visible).toBe(true)
+    expect(parts(sun).core.scale.x).toBeCloseTo(1.7)
+    expect(parts(other).core.scale.x).toBe(1)
+    expect(parts(sun).label.scale.y).toBeGreaterThan(parts(other).label.scale.y * 1.5)
+  })
+
+  it('with nothing running there is no sun', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    const a = nodeGroup(fake, 'session:a')
+    await render([{ ...NODES[0], state: 'idle' }, NODES[1]])
+    expect(lightLayer(fake).children[0].visible).toBe(false)
+    expect(parts(a).core.scale.x).toBe(1)
+  })
+
+  it('a world that leaves takes its glow with it', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    nodeGroup(fake, 'session:a')
+    nodeGroup(fake, 'session:b')
+    const layer = lightLayer(fake)
+    expect(layer.children).toHaveLength(3)
+    await act(async () => root.render(view([], { nodes: [NODES[0]] })))
+    expect(layer.children).toHaveLength(2)
   })
 })
 

@@ -120,6 +120,7 @@ declare module 'three' {
     sizeAttenuation?: boolean
   }
   export class Material {
+    blending: number
     opacity: number
     transparent: boolean
     depthWrite: boolean
@@ -144,6 +145,7 @@ declare module 'three' {
   export class SpriteMaterial extends Material {
     constructor(parameters?: MaterialParameters)
     map: Texture | null
+    color: Color
   }
 
   export class Mesh<G extends BufferGeometry = BufferGeometry, M extends Material = Material> extends Object3D {
@@ -196,5 +198,7 @@ declare module 'three' {
 
   export const BackSide: number
   export const DoubleSide: number
+  export const NormalBlending: number
+  export const AdditiveBlending: number
   export const SRGBColorSpace: string
 }

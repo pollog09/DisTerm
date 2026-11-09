@@ -160,6 +160,24 @@ const LABEL_RANK: Readonly<Record<GraphNodeKind, number>> = {
   ghost: 5
 }
 
+/**
+ * The current step: where work is going on right now, drawn as the system's sun. Of the nodes with
+ * something running (a working session, a running box, a live subagent run), the one with the newest
+ * event; a tie goes to the more important kind. Nothing running is no sun: the view never claims a step
+ * that is not happening.
+ */
+export function graph3dCurrentStep(nodes: readonly GraphNode[]): string | null {
+  let best: GraphNode | null = null
+  for (const n of nodes) {
+    const running = n.activity === 'running' || (n.kind === 'session' && n.state === 'working') || (n.live?.length ?? 0) > 0
+    if (!running) continue
+    const ts = n.lastEventTs ?? -Infinity
+    const bestTs = best?.lastEventTs ?? -Infinity
+    if (!best || ts > bestTs || (ts === bestTs && LABEL_RANK[n.kind] < LABEL_RANK[best.kind])) best = n
+  }
+  return best?.id ?? null
+}
+
 /** A name's place on screen, in CSS pixels from the view's top left. */
 export interface Graph3dLabelBox {
   id: string

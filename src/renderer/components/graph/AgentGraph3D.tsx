@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph'
 import {
+  AdditiveBlending,
   AmbientLight,
   BackSide,
   BufferAttribute,
@@ -12,6 +13,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  NormalBlending,
   type PerspectiveCamera,
   Points,
   PointsMaterial,
@@ -32,6 +34,7 @@ import {
   DASHED_LINK_ALPHA,
   GRAPH3D_CHARGE,
   graph3dEngineSettings,
+  graph3dCurrentStep,
   graph3dHasLiveMotion,
   graph3dLayoutForces,
   graph3dLinkLook,
@@ -57,7 +60,7 @@ import {
 } from '../../lib/agentGraph3d'
 import { useReducedMotion, useWindowWatched } from '../../lib/reducedMotion'
 import { WEBGL_LOST_NOTICE, WEBGL_UNAVAILABLE_NOTICE } from '../../lib/webgl'
-import { paintSurface, SURFACE_HEIGHT, SURFACE_WIDTH, tone } from './planetSurface'
+import { paintCorona, paintGlow, paintNebula, paintSurface, SURFACE_HEIGHT, SURFACE_WIDTH, tone } from './planetSurface'
 
 /**
  * The agent graph in 3D: the same boxes and lines as the 2D view, as a force layout you can turn. This
@@ -104,6 +107,11 @@ const SATELLITE_ORBIT = 1.85
 const ORBIT_SPEED = 1.2
 const SPIN_SPEED = 0.8
 const BREATHE_SPEED = 2.4
+/** The current step is drawn this much bigger than its kind. Only drawn: the layout keeps its size. */
+const SUN_SCALE = 1.7
+/** The corona's width, in the sun's radii. */
+const CORONA_SPAN = 15
+const GLOW_SPAN = 4
 const STARS = 520
 const STAR_FIELD = 700
 
@@ -168,7 +176,17 @@ function colorResolver(host: HTMLElement): { get(color: string, fallback: Rgba):
   }
 }
 
-function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { sprite: Sprite; aspect: number } | null {
+/** Canvas pixels of a one-line name's pill; a caption adds a second, smaller line under it. */
+const PILL_HEIGHT = 46
+const CAPTION_HEIGHT = 32
+
+function labelSprite(
+  text: string,
+  ink: Rgba,
+  panel: Rgba,
+  strong: boolean,
+  caption?: { text: string; color: Rgba }
+): { sprite: Sprite; aspect: number; tall: number } | null {
   const canvas = document.createElement('canvas')
   let ctx: CanvasRenderingContext2D | null = null
   try {
@@ -180,8 +198,13 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
   const shown = text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text
   const font = `${strong ? 700 : 600} 30px system-ui, -apple-system, "Segoe UI", sans-serif`
   ctx.font = font
-  const height = 46
-  const width = Math.ceil(ctx.measureText(shown).width) + 28
+  const height = PILL_HEIGHT + (caption ? CAPTION_HEIGHT : 0)
+  const captionFont = '700 22px system-ui, -apple-system, "Segoe UI", sans-serif'
+  let width = Math.ceil(ctx.measureText(shown).width) + 28
+  if (caption) {
+    ctx.font = captionFont
+    width = Math.max(width, Math.ceil(ctx.measureText(caption.text).width + caption.text.length * 2) + 28)
+  }
   canvas.width = width
   canvas.height = height
   ctx.font = font
@@ -194,7 +217,14 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
   ctx.stroke()
   ctx.fillStyle = rgbaString({ ...ink, a: 1 })
   ctx.textBaseline = 'middle'
-  ctx.fillText(shown, 14, height / 2 + 1)
+  ctx.textAlign = 'center'
+  ctx.fillText(shown, width / 2, PILL_HEIGHT / 2 + 1)
+  if (caption) {
+    ctx.font = captionFont
+    ctx.letterSpacing = '2px'
+    ctx.fillStyle = rgbaString({ ...caption.color, a: 1 })
+    ctx.fillText(caption.text, width / 2, PILL_HEIGHT + CAPTION_HEIGHT / 2 - 7)
+  }
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
   // A fixed size on screen, drawn over lines and nodes: a name a line runs through, or one that grows
@@ -202,7 +232,33 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
   const sprite = new Sprite(new SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false }))
   sprite.center.set(0.5, 0)
   sprite.renderOrder = 20
-  return { sprite, aspect: width / height }
+  return { sprite, aspect: width / height, tall: height / PILL_HEIGHT }
+}
+
+/** A white light painted once and tinted by each sprite that wears it, or null with no 2D canvas. */
+function lightTexture(size: number, paint: (ctx: CanvasRenderingContext2D, size: number) => void): CanvasTexture | null {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  let ctx: CanvasRenderingContext2D | null = null
+  try {
+    ctx = canvas.getContext('2d')
+  } catch {
+    ctx = null
+  }
+  if (!ctx) return null
+  paint(ctx, size)
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  return texture
+}
+
+/** Light round a world, under it in draw order, never taking the pointer. */
+function lightSprite(map: CanvasTexture | null): Sprite {
+  const sprite = new Sprite(new SpriteMaterial({ map, transparent: true, depthWrite: false }))
+  sprite.raycast = noPick
+  sprite.renderOrder = -1
+  return sprite
 }
 
 interface NodeVisual {
@@ -215,6 +271,10 @@ interface NodeVisual {
   surfaceKey: string
   atmosphere: Mesh<BufferGeometry, MeshBasicMaterial> | null
   rings: Array<Mesh<BufferGeometry, MeshBasicMaterial>>
+  /** The soft light in its own colour round every world. */
+  glow: Sprite
+  /** This node is the current step, drawn as the sun. */
+  sun: boolean
   halo: Mesh<BufferGeometry, MeshBasicMaterial>
   aura: Mesh<BufferGeometry, MeshBasicMaterial>
   /** Turns as one, so each satellite keeps its place on the ring. */
@@ -229,6 +289,8 @@ interface NodeVisual {
   labelRank: number
   /** Width over height of the name's pill. */
   labelAspect: number
+  /** The name's height on screen, in CSS pixels: taller with a caption. */
+  labelPx: number
 }
 
 const noPick = (): void => {}
@@ -254,6 +316,12 @@ function starField(): Points<BufferGeometry, PointsMaterial> {
   const stars = new Points(geometry, new PointsMaterial({ size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.35, depthWrite: false }))
   stars.raycast = noPick
   return stars
+}
+
+/** A node's light lives outside the node, so it goes when the node does. */
+function dropGlow(visual: NodeVisual): void {
+  visual.glow.parent?.remove(visual.glow)
+  visual.glow.material.dispose()
 }
 
 function disposeSprite(sprite: Sprite): void {
@@ -378,7 +446,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const view = { width: 0, height: 0 }
     const camera = graph.camera() as PerspectiveCamera
     const sizeLabel = (visual: NodeVisual): void => {
-      const k = graph3dPixelScale(LABEL_PX, view.height, camera.fov)
+      const k = graph3dPixelScale(visual.labelPx, view.height, camera.fov)
       visual.label?.scale.set(k * visual.labelAspect, k, 1)
     }
     // Which names show, from where they land on screen this frame. A name that gives way also stops
@@ -392,8 +460,8 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         if (at.z > 1) continue
         const x = ((at.x + 1) / 2) * view.width
         const y = ((1 - at.y) / 2) * view.height
-        const width = LABEL_PX * visual.labelAspect
-        boxes.push({ id, left: x - width / 2, top: y - LABEL_PX, width, height: LABEL_PX, depth: at.z, rank: visual.labelRank })
+        const width = visual.labelPx * visual.labelAspect
+        boxes.push({ id, left: x - width / 2, top: y - visual.labelPx, width, height: visual.labelPx, depth: at.z, rank: visual.labelRank })
       }
       const shown = graph3dShownLabels(boxes)
       for (const [id, visual] of visuals.current) {
@@ -404,8 +472,27 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       }
     }
 
+    // Space light, painted once in white and tinted where it is worn.
+    const coronaMap = lightTexture(512, paintCorona)
+    const glowMap = lightTexture(128, paintGlow)
+    const nebulaMaps = [3, 11].map((seed) => lightTexture(512, (ctx, size) => paintNebula(ctx, size, seed)))
+    const corona = lightSprite(coronaMap)
+    // Light lives outside the nodes and follows them each frame: the library fits the camera to every
+    // geometry under a node, and a corona fifteen radii wide would push the whole graph into the distance.
+    const lightLayer = new Group()
+    lightLayer.add(corona)
+    corona.visible = false
+    let sunId: string | null = null
+    /** Light adds up on a dark sky and vanishes on a pale one, so there it is laid over instead. */
+    const darkSky = (): boolean => {
+      const p = panel()
+      return 0.2126 * p.r + 0.7152 * p.g + 0.0722 * p.b < 115
+    }
+
     const styleNode = (visual: NodeVisual, node: GraphNode): void => {
       const look = graph3dNodeLook(node)
+      const sun = node.id === sunId
+      visual.sun = sun
       const base = compositeOver(colors.get(look.color, FALLBACK_LINE), panel())
       const surfaceKey = `${rgbHex(base)}|${visual.planet.surface}|${visual.planet.seed}`
       if (surfaceKey !== visual.surfaceKey) {
@@ -430,29 +517,50 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       } else {
         visual.core.material.emissiveIntensity = 0
       }
-      visual.halo.visible = !!look.glow
-      visual.aura.visible = !!look.glow
+      // The sun's corona is its glow.
+      visual.halo.visible = !!look.glow && !sun
+      visual.aura.visible = !!look.glow && !sun
+      const size = sun ? SUN_SCALE : 1
+      visual.core.scale.set(size, size, size)
+      visual.orbit.scale.set(size, size, size)
+      const dark = darkSky()
+      visual.glow.material.color.set(rgbHex(tone(base, 0.15)))
+      visual.glow.material.blending = dark ? AdditiveBlending : NormalBlending
+      visual.glow.material.opacity = look.faded ? 0.15 : dark ? 0.8 : 0.3
+      if (sun) {
+        visual.core.material.emissive.set(rgbHex(tone(base, 0.05)))
+        corona.material.color.set(rgbHex(tone(base, 0.2)))
+        corona.material.blending = dark ? AdditiveBlending : NormalBlending
+        corona.material.opacity = dark ? 0.95 : 0.6
+        corona.scale.set(visual.radius * SUN_SCALE * CORONA_SPAN, visual.radius * SUN_SCALE * CORONA_SPAN, 1)
+        corona.visible = true
+      }
+      const glowSize = visual.radius * size * GLOW_SPAN
+      visual.glow.scale.set(glowSize, glowSize, 1)
       visual.motion = graph3dNodeMotion(node)
       syncSatellites(visual)
       // Sets the pose now, so a box that stopped running rests unswollen even if no frame follows.
       animate(visual)
       const text = ink()
       const back = panel()
-      const labelKey = `${look.label}|${look.labelRank}|${rgbaString(text)}|${rgbaString(back)}`
+      const labelKey = `${look.label}|${look.labelRank}|${sun}|${rgbaString(text)}|${rgbaString(back)}`
       if (labelKey !== visual.labelKey) {
         if (visual.label) {
           visual.group.remove(visual.label)
           disposeSprite(visual.label)
         }
-        const made = labelSprite(look.label, text, back, look.labelRank === 0)
+        const caption = sun ? { text: 'CURRENT STEP', color: tone(base, dark ? 0.35 : -0.25) } : undefined
+        const made = labelSprite(look.label, text, back, sun || look.labelRank === 0, caption)
         visual.label = made?.sprite ?? null
         visual.labelAspect = made?.aspect ?? 1
+        visual.labelPx = LABEL_PX * (made?.tall ?? 1)
         if (visual.label) {
-          visual.label.position.set(0, look.radius + LABEL_LIFT, 0)
+          visual.label.position.set(0, look.radius * size + LABEL_LIFT, 0)
           sizeLabel(visual)
           visual.group.add(visual.label)
         }
-        visual.labelRank = look.labelRank
+        // The current step's name is the one that never gives way.
+        visual.labelRank = sun ? -1 : look.labelRank
         visual.labelKey = labelKey
       }
     }
@@ -490,6 +598,9 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     // Per-frame motion: only what `graph3dNodeMotion` says is happening, and nothing under Reduce Motion.
     // It runs only on frames the gate already allows, so it adds no frames of its own.
     const animate = (visual: NodeVisual): void => {
+      const { x, y, z } = visual.group.position
+      visual.glow.position.set(x, y, z)
+      if (visual.sun) corona.position.set(x, y, z)
       const m = reducedRef.current ? REST : visual.motion
       const t = performance.now() / 1000
       // A running world turns on its own tilted axis, as a planet does.
@@ -498,7 +609,14 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       visual.halo.scale.set(k, k, k)
       visual.aura.scale.set(k * k, k * k, k * k)
       visual.aura.material.opacity = m.breathe ? 0.07 + 0.08 * (0.5 + 0.5 * Math.sin(t * BREATHE_SPEED + visual.phase)) : 0.09
-      visual.core.material.emissiveIntensity = visual.halo.visible ? (m.breathe ? 0.3 + 0.25 * (0.5 + 0.5 * Math.sin(t * BREATHE_SPEED + visual.phase)) : 0.35) : 0
+      // The sun is lit from within; a glowing world's light breathes with it.
+      visual.core.material.emissiveIntensity = visual.sun
+        ? 0.75
+        : visual.halo.visible
+          ? m.breathe
+            ? 0.3 + 0.25 * (0.5 + 0.5 * Math.sin(t * BREATHE_SPEED + visual.phase))
+            : 0.35
+          : 0
       visual.orbit.rotation.set(0.45, reducedRef.current ? 0 : t * ORBIT_SPEED + visual.phase, 0)
     }
 
@@ -526,6 +644,8 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
             return ring
           })
         : []
+      const glow = lightSprite(glowMap)
+      lightLayer.add(glow)
       for (const extra of [atmosphere, ...rings]) {
         if (!extra) continue
         extra.raycast = noPick
@@ -548,6 +668,8 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         surfaceKey: '',
         atmosphere,
         rings,
+        glow,
+        sun: false,
         halo,
         aura,
         orbit,
@@ -558,10 +680,14 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         label: null,
         labelKey: '',
         labelRank: 0,
-        labelAspect: 1
+        labelAspect: 1,
+        labelPx: LABEL_PX
       }
       // A satellite can swing out of the view while its box is still in it.
       core.onBeforeRender = () => animate(visual)
+      // A node rebuilt as another kind under the same id leaves its old light behind otherwise.
+      const old = visuals.current.get(n3.id)
+      if (old) dropGlow(old)
       visuals.current.set(n3.id, visual)
       if (node) styleNode(visual, node)
       return group
@@ -587,6 +713,12 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const particleColor = (l: Graph3dLink): string => arrowColor(l)
 
     const restyle = (): void => {
+      sunId = graph3dCurrentStep([...nodesById.current.values()])
+      if (!sunId || !visuals.current.has(sunId)) corona.visible = false
+      const dark = darkSky()
+      for (const cloud of nebula) {
+        cloud.visible = dark
+      }
       for (const [id, visual] of visuals.current) {
         const node = nodesById.current.get(id)
         if (node) styleNode(visual, node)
@@ -642,6 +774,24 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     // The sky is drawn on every frame and never culled, so it carries the once-a-frame label pass.
     stars.frustumCulled = false
     stars.onBeforeRender = placeLabels
+    graph.scene().add(lightLayer)
+    // Dust far behind the graph, warm and cool, as still as the stars. Only on a dark sky.
+    const nebula = [
+      { map: nebulaMaps[0], at: [-240, 90, -420], size: 760, color: '#ff5a1f', opacity: 0.55 },
+      { map: nebulaMaps[1], at: [300, -150, -380], size: 600, color: '#6c3bd1', opacity: 0.45 },
+      { map: nebulaMaps[0], at: [60, 260, -460], size: 520, color: '#c2410c', opacity: 0.3 }
+    ].map(({ map, at, size, color, opacity }) => {
+      const cloud = lightSprite(map)
+      cloud.material.blending = AdditiveBlending
+      cloud.material.color.set(color)
+      cloud.material.opacity = opacity
+      cloud.position.set(at[0], at[1], at[2])
+      cloud.scale.set(size, size, 1)
+      cloud.renderOrder = -2
+      cloud.visible = darkSky()
+      graph.scene().add(cloud)
+      return cloud
+    })
     graph.scene().add(stars)
 
     const engine = graph3dEngineSettings(reducedRef.current)
@@ -720,7 +870,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       // The library publishes its scene as a global for debugging; do not keep it alive.
       const w = window as unknown as { scene?: unknown }
       if (w.scene === scene) delete w.scene
+      for (const map of [coronaMap, glowMap, ...nebulaMaps]) map?.dispose()
+      for (const sprite of [corona, ...nebula]) sprite.material.dispose()
       for (const visual of visuals.current.values()) {
+        visual.glow.material.dispose()
         visual.core.material.map?.dispose()
         if (visual.label) disposeSprite(visual.label)
         for (const sat of visual.satellites) sat.mesh.material.dispose()
@@ -741,7 +894,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const graph = graphRef.current
     if (!graph) return
     const keep = new Set(data.nodes.map((n) => n.id))
-    for (const id of [...visuals.current.keys()]) if (!keep.has(id)) visuals.current.delete(id)
+    for (const [id, visual] of [...visuals.current]) {
+      if (keep.has(id)) continue
+      dropGlow(visual)
+      visuals.current.delete(id)
+    }
     graph.graphData(data)
     loop.current.engineRunning = true
     loop.current.fitPending = true
