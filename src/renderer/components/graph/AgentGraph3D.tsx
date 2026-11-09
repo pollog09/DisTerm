@@ -12,6 +12,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   OctahedronGeometry,
+  type PerspectiveCamera,
   Points,
   PointsMaterial,
   SphereGeometry,
@@ -19,6 +20,7 @@ import {
   SpriteMaterial,
   SRGBColorSpace,
   TetrahedronGeometry,
+  Vector3,
   BufferGeometry,
   type Object3D
 } from 'three'
@@ -36,8 +38,12 @@ import {
   graph3dLoopShouldRun,
   graph3dNodeLook,
   graph3dNodeMotion,
+  graph3dPixelScale,
+  graph3dShownLabels,
   STREAM_EVERY_MS,
+  type Graph3dLabelBox,
   type Graph3dNodeMotion,
+  compositeOver,
   parseCssColor,
   rgbaString,
   rgbHex,
@@ -84,7 +90,10 @@ const GATE_CHECK_MS = 250
 /** Of a line's length per frame: about a second and a half on a 60 Hz display. */
 const PARTICLE_SPEED = 0.011
 const LABEL_MAX = 40
-const LABEL_HEIGHT = 5.5
+/** A name's height on screen, in CSS pixels, whatever its depth or the zoom. */
+const LABEL_PX = 22
+/** World units between a node's top and the bottom of its name. */
+const LABEL_LIFT = 1.2
 
 /** Satellite size and how far out it orbits, as fractions of its box's radius. */
 const SATELLITE_RADIUS = 0.2
@@ -139,7 +148,7 @@ function colorResolver(host: HTMLElement): { get(color: string, fallback: Rgba):
   }
 }
 
-function labelSprite(text: string, ink: Rgba, panel: Rgba): Sprite | null {
+function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { sprite: Sprite; aspect: number } | null {
   const canvas = document.createElement('canvas')
   let ctx: CanvasRenderingContext2D | null = null
   try {
@@ -149,7 +158,7 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba): Sprite | null {
   }
   if (!ctx) return null
   const shown = text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text
-  const font = '600 30px system-ui, -apple-system, "Segoe UI", sans-serif'
+  const font = `${strong ? 600 : 500} 30px system-ui, -apple-system, "Segoe UI", sans-serif`
   ctx.font = font
   const height = 46
   const width = Math.ceil(ctx.measureText(shown).width) + 28
@@ -163,15 +172,17 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba): Sprite | null {
   ctx.strokeStyle = rgbaString({ ...ink, a: 0.18 })
   ctx.lineWidth = 2
   ctx.stroke()
-  ctx.fillStyle = rgbaString({ ...ink, a: 1 })
+  ctx.fillStyle = rgbaString({ ...ink, a: strong ? 1 : 0.8 })
   ctx.textBaseline = 'middle'
   ctx.fillText(shown, 14, height / 2 + 1)
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
-  const sprite = new Sprite(new SpriteMaterial({ map: texture, transparent: true, depthWrite: false }))
-  sprite.scale.set((width / height) * LABEL_HEIGHT, LABEL_HEIGHT, 1)
+  // A fixed size on screen, drawn over lines and nodes: a name a line runs through, or one that grows
+  // to cover its neighbours as the camera nears it, is what made the turned view hard to read.
+  const sprite = new Sprite(new SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false }))
+  sprite.center.set(0.5, 0)
   sprite.renderOrder = 20
-  return sprite
+  return { sprite, aspect: width / height }
 }
 
 interface NodeVisual {
@@ -188,9 +199,13 @@ interface NodeVisual {
   phase: number
   label: Sprite | null
   labelKey: string
+  labelRank: number
+  /** Width over height of the name's pill. */
+  labelAspect: number
 }
 
 const noPick = (): void => {}
+const pickLabel = Sprite.prototype.raycast
 
 const REST: Graph3dNodeMotion = { spin: false, breathe: false, satellites: [] }
 
@@ -333,9 +348,38 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const ink = (): Rgba => colors.get('var(--text)', FALLBACK_TEXT)
     const panel = (): Rgba => colors.get('var(--panel)', FALLBACK_PANEL)
 
+    const view = { width: 0, height: 0 }
+    const camera = graph.camera() as PerspectiveCamera
+    const sizeLabel = (visual: NodeVisual): void => {
+      const k = graph3dPixelScale(LABEL_PX, view.height, camera.fov)
+      visual.label?.scale.set(k * visual.labelAspect, k, 1)
+    }
+    // Which names show, from where they land on screen this frame. A name that gives way also stops
+    // taking the pointer: the raycaster ignores `visible`, and a hidden name would still catch clicks.
+    const at = new Vector3()
+    const placeLabels = (): void => {
+      const boxes: Graph3dLabelBox[] = []
+      for (const [id, visual] of visuals.current) {
+        if (!visual.label) continue
+        visual.label.getWorldPosition(at).project(camera)
+        if (at.z > 1) continue
+        const x = ((at.x + 1) / 2) * view.width
+        const y = ((1 - at.y) / 2) * view.height
+        const width = LABEL_PX * visual.labelAspect
+        boxes.push({ id, left: x - width / 2, top: y - LABEL_PX, width, height: LABEL_PX, depth: at.z, rank: visual.labelRank })
+      }
+      const shown = graph3dShownLabels(boxes)
+      for (const [id, visual] of visuals.current) {
+        if (!visual.label) continue
+        const on = shown.has(id)
+        visual.label.visible = on
+        visual.label.raycast = on ? pickLabel : noPick
+      }
+    }
+
     const styleNode = (visual: NodeVisual, node: GraphNode): void => {
       const look = graph3dNodeLook(node)
-      const base = colors.get(look.color, FALLBACK_LINE)
+      const base = compositeOver(colors.get(look.color, FALLBACK_LINE), panel())
       visual.core.material.color.set(rgbHex(base))
       visual.core.material.opacity = look.faded ? 0.4 : 1
       visual.core.material.transparent = !!look.faded
@@ -356,17 +400,21 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       animate(visual)
       const text = ink()
       const back = panel()
-      const labelKey = `${look.label}|${rgbaString(text)}|${rgbaString(back)}`
+      const labelKey = `${look.label}|${look.labelRank}|${rgbaString(text)}|${rgbaString(back)}`
       if (labelKey !== visual.labelKey) {
         if (visual.label) {
           visual.group.remove(visual.label)
           disposeSprite(visual.label)
         }
-        visual.label = labelSprite(look.label, text, back)
+        const made = labelSprite(look.label, text, back, look.labelRank === 0)
+        visual.label = made?.sprite ?? null
+        visual.labelAspect = made?.aspect ?? 1
         if (visual.label) {
-          visual.label.position.set(0, look.radius + LABEL_HEIGHT * 0.9, 0)
+          visual.label.position.set(0, look.radius + LABEL_LIFT, 0)
+          sizeLabel(visual)
           visual.group.add(visual.label)
         }
+        visual.labelRank = look.labelRank
         visual.labelKey = labelKey
       }
     }
@@ -440,7 +488,9 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         motion: REST,
         phase: (visuals.current.size * 1.7) % (Math.PI * 2),
         label: null,
-        labelKey: ''
+        labelKey: '',
+        labelRank: 0,
+        labelAspect: 1
       }
       // A satellite can swing out of the view while its box is still in it.
       core.onBeforeRender = () => animate(visual)
@@ -489,11 +539,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       .linkColor(linkColor)
       .linkWidth((l) => {
         const edge = edgesById.current.get(l.id)
-        return edge ? graph3dLinkLook(edge).width : 0.45
+        return edge ? graph3dLinkLook(edge).width : 0.7
       })
       .linkDirectionalArrowLength((l) => {
         const edge = edgesById.current.get(l.id)
-        return edge && graph3dLinkLook(edge).arrow ? 3.2 : 0
+        return edge ? graph3dLinkLook(edge).arrowLength : 0
       })
       .linkDirectionalArrowRelPos(1)
       .linkDirectionalArrowColor(arrowColor)
@@ -516,6 +566,9 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       })
     const stars = starField()
     stars.material.color.set(rgbHex(ink()))
+    // The sky is drawn on every frame and never culled, so it carries the once-a-frame label pass.
+    stars.frustumCulled = false
+    stars.onBeforeRender = placeLabels
     graph.scene().add(stars)
 
     const engine = graph3dEngineSettings(reducedRef.current)
@@ -530,7 +583,12 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
 
     const resize = (): void => {
       const { width, height } = host.getBoundingClientRect()
-      if (width > 0 && height > 0) graph.width(width).height(height)
+      if (width > 0 && height > 0) {
+        graph.width(width).height(height)
+        view.width = width
+        view.height = height
+        for (const visual of visuals.current.values()) sizeLabel(visual)
+      }
       wake(100)
     }
     resize()

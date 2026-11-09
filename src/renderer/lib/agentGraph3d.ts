@@ -70,11 +70,13 @@ export interface Graph3dNodeLook {
   /** A box the 2D view draws faded. */
   faded?: boolean
   label: string
+  /** Which name wins when two would cover each other on screen: lower first. */
+  labelRank: number
 }
 
 const NODE_SHAPE: Readonly<Record<GraphNodeKind, { shape: Graph3dShape; radius: number }>> = {
   session: { shape: 'sphere', radius: 7 },
-  harness: { shape: 'icosahedron', radius: 8 },
+  harness: { shape: 'icosahedron', radius: 6 },
   stage: { shape: 'dodecahedron', radius: 5 },
   subagent: { shape: 'dodecahedron', radius: 5 },
   skill: { shape: 'octahedron', radius: 4.5 },
@@ -114,8 +116,63 @@ export function graph3dNodeLook(node: GraphNode): Graph3dNodeLook {
     color: nodeColor(node),
     ...(glow ? { glow, glowColor: GLOW_COLOR[glow] } : {}),
     ...(node.kind === 'ghost' ? { faded: true } : {}),
-    label: node.runs ? `${node.title} ×${node.runs}` : node.title
+    label: node.runs ? `${node.title} ×${node.runs}` : node.title,
+    labelRank: LABEL_RANK[node.kind]
   }
+}
+
+/** The sessions are what the graph is about, so their names are the last to give way. */
+const LABEL_RANK: Readonly<Record<GraphNodeKind, number>> = {
+  session: 0,
+  harness: 1,
+  stage: 2,
+  subagent: 2,
+  skill: 3,
+  mcp: 3,
+  note: 4,
+  ghost: 5
+}
+
+/** A name's place on screen, in CSS pixels from the view's top left. */
+export interface Graph3dLabelBox {
+  id: string
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Distance from the camera, for ties within a rank: the nearer name wins. */
+  depth: number
+  rank: number
+}
+
+/** Space kept between two names, in CSS pixels. */
+export const LABEL_GAP_PX = 3
+
+/**
+ * The names to draw: by rank, then nearest first, each one that does not cover a name already kept. A
+ * name that gives way is not lost: hovering its node shows it in the tooltip, and turning the view
+ * brings it back. Labels sit at a fixed size on screen, so without this a turned graph stacks them.
+ */
+export function graph3dShownLabels(boxes: readonly Graph3dLabelBox[]): Set<string> {
+  const kept: Graph3dLabelBox[] = []
+  const covers = (a: Graph3dLabelBox, b: Graph3dLabelBox): boolean =>
+    a.left < b.left + b.width + LABEL_GAP_PX &&
+    b.left < a.left + a.width + LABEL_GAP_PX &&
+    a.top < b.top + b.height + LABEL_GAP_PX &&
+    b.top < a.top + a.height + LABEL_GAP_PX
+  for (const box of [...boxes].sort((a, b) => a.rank - b.rank || a.depth - b.depth)) {
+    if (!kept.some((k) => covers(k, box))) kept.push(box)
+  }
+  return new Set(kept.map((k) => k.id))
+}
+
+/**
+ * The world scale that draws a sprite `px` CSS pixels tall at any distance. With `sizeAttenuation` off,
+ * three multiplies a sprite's scale by its distance, so it covers `scale * cot(fov / 2)` of the half
+ * height of the view whatever its depth.
+ */
+export function graph3dPixelScale(px: number, viewHeight: number, fovDegrees: number): number {
+  return (2 * px * Math.tan((fovDegrees * Math.PI) / 360)) / Math.max(1, viewHeight)
 }
 
 export interface Graph3dLinkLook {
@@ -125,8 +182,8 @@ export interface Graph3dLinkLook {
   width: number
   /** A dashed 2D line, drawn fainter here: a tube has no dash. */
   dashed: boolean
-  /** Every line but the Harness one carries an arrow, as in 2D. */
-  arrow: boolean
+  /** World units. Every line but the Harness one carries an arrow, as in 2D; that one's is 0. */
+  arrowLength: number
   /** The dot runs from target to source (`GraphEdge.flow`). */
   reverse: boolean
 }
@@ -134,9 +191,9 @@ export interface Graph3dLinkLook {
 export function graph3dLinkLook(edge: GraphEdge): Graph3dLinkLook {
   return {
     color: graphEdgeColor(edge),
-    width: edge.loop ? 1.1 : 0.45,
+    width: edge.loop ? 1.6 : 0.7,
     dashed: graphEdgeDashed(edge),
-    arrow: edge.kind !== 'harness',
+    arrowLength: edge.kind !== 'harness' ? 4.5 : 0,
     reverse: edge.flow === 'reverse'
   }
 }
@@ -197,6 +254,13 @@ export function parseCssColor(value: string): Rgba | null {
 /** The form the 3D library and three.js both read; the alpha becomes the material's opacity. */
 export function rgbaString(c: Rgba): string {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`
+}
+
+/** A translucent colour laid over an opaque one. A solid mesh has no alpha to spend, so a token like the
+ *  45% tint is drawn as what it would look like on the panel, not as the full tint. */
+export function compositeOver(c: Rgba, under: Rgba): Rgba {
+  const mix = (top: number, bottom: number): number => clampByte(top * c.a + bottom * (1 - c.a))
+  return { r: mix(c.r, under.r), g: mix(c.g, under.g), b: mix(c.b, under.b), a: 1 }
 }
 
 export function rgbHex(c: Rgba): string {

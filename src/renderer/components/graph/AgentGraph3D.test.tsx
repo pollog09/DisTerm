@@ -18,11 +18,13 @@ interface Fake {
   canvas: HTMLCanvasElement
   renderer: { domElement: HTMLCanvasElement; forceContextLoss: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }
   scene: { add: ReturnType<typeof vi.fn> }
+  camera: PerspectiveCamera
 }
 
 const lib = vi.hoisted(() => ({ instances: [] as Fake[], throwOnCreate: false }))
 
-vi.mock('3d-force-graph', () => {
+vi.mock('3d-force-graph', async () => {
+  const { PerspectiveCamera } = await import('three')
   function ForceGraph3D(this: unknown, el: HTMLElement, config: unknown) {
     if (lib.throwOnCreate) throw new Error('Error creating WebGL context.')
     const canvas = document.createElement('canvas')
@@ -32,8 +34,12 @@ vi.mock('3d-force-graph', () => {
       props: {},
       canvas,
       renderer: { domElement: canvas, forceContextLoss: vi.fn(), dispose: vi.fn() },
-      scene: { add: vi.fn() }
+      scene: { add: vi.fn() },
+      // Where the picking tests' ray starts, so a name drawn a fixed size on screen is measured from it.
+      camera: new PerspectiveCamera()
     }
+    fake.camera.position.set(0, 0, 100)
+    fake.camera.updateMatrixWorld()
     ;(window as unknown as { scene?: unknown }).scene = fake.scene
     lib.instances.push(fake)
     const proxy: unknown = new Proxy(fake, {
@@ -43,6 +49,7 @@ vi.mock('3d-force-graph', () => {
           target.calls.push({ name: prop, args })
           if (prop === 'renderer') return target.renderer
           if (prop === 'scene') return target.scene
+          if (prop === 'camera') return target.camera
           if (prop === 'd3Force') return args.length > 1 ? proxy : { strength: () => undefined }
           if (prop === 'emitParticle') {
             const link = args[0] as { __singleHopPhotonsObj?: { children: unknown[] } }
@@ -105,6 +112,8 @@ function view(edges: GraphEdge[] = [message()], over: { shown?: boolean; nodes?:
 
 async function mount(edges?: GraphEdge[]): Promise<Fake> {
   host = document.createElement('div')
+  // jsdom lays nothing out; a name's size on screen is worked out from the view's height.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 900, height: 600, right: 900, bottom: 600, x: 0, y: 0, toJSON: () => ({}) })
   document.body.appendChild(host)
   root = createRoot(host)
   await act(async () => root.render(view(edges)))
@@ -280,9 +289,47 @@ describe('picking', () => {
       // Outside the core (radius 7), inside the halo (10.85) and the aura (15.4).
       expect(hits(group, 10, 0), id).toEqual([])
       expect(hits(group, 0, -13), id).toEqual([])
-      expect(hits(group, 0, 12), id).toEqual([label])
+      // The name stands on the node's top (7 + 1.2) and is 22 px tall: 3.4 units from 100 away in a
+      // 600 px view at three's default 50-degree field of view.
+      expect(hits(group, 0, 10), id).toEqual([label])
+      expect(hits(group, 0, 12.5), id).toEqual([])
       expect([halo, aura].some((o) => hits(group, 0, 0).includes(o))).toBe(false)
     }
+  })
+})
+
+describe('names on screen', () => {
+  const camera = new PerspectiveCamera()
+  camera.position.set(0, 0, 100)
+  camera.updateMatrixWorld()
+  const hits = (group: Object3D, x: number, y: number): Object3D[] => {
+    const ray = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
+    ray.camera = camera
+    return ray.intersectObject(group, true).map((h) => h.object)
+  }
+  /** One frame's label pass: the component hangs it on the sky, which is drawn every frame. */
+  const frame = (fake: Fake): void => {
+    const sky = fake.scene.add.mock.calls.map((c) => c[0] as Object3D).find((o) => o.constructor.name === 'Points')
+    sky!.onBeforeRender()
+  }
+
+  it('of two names on the same spot, one shows; the other hides and stops taking the pointer', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    const a = nodeGroup(fake, 'session:a')
+    const b = nodeGroup(fake, 'session:b')
+    frame(fake)
+    const [labelA, labelB] = [parts(a).label, parts(b).label]
+    expect([labelA.visible, labelB.visible]).toEqual([true, false])
+    a.updateMatrixWorld(true)
+    b.updateMatrixWorld(true)
+    expect(hits(a, 0, 10)).toEqual([labelA])
+    expect(hits(b, 0, 10)).toEqual([])
+    b.position.set(40, 0, 0)
+    frame(fake)
+    expect([labelA.visible, labelB.visible]).toEqual([true, true])
+    b.updateMatrixWorld(true)
+    expect(hits(b, 40, 10)).toEqual([labelB])
   })
 })
 

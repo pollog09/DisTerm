@@ -22,6 +22,14 @@ declare module 'three' {
     y: number
     z: number
     set(x: number, y: number, z: number): this
+    /** To normalised device coordinates: x and y in -1..1 on screen, z above 1 behind the camera. */
+    project(camera: Camera): this
+  }
+
+  export interface Vector2Like {
+    x: number
+    y: number
+    set(x: number, y: number): this
   }
 
   export interface Intersection {
@@ -45,12 +53,15 @@ declare module 'three' {
     /** Called each frame this object is drawn: the agent graph's per-frame motion hangs off it. */
     onBeforeRender: () => void
     frustumCulled: boolean
+    getWorldPosition(target: Vector3): Vector3
   }
   export class Group extends Object3D {}
   export class Scene extends Object3D {}
   export class Camera extends Object3D {}
   export class PerspectiveCamera extends Camera {
     constructor(fov?: number, aspect?: number, near?: number, far?: number)
+    /** Vertical field of view, in degrees. */
+    fov: number
   }
 
   export class Raycaster {
@@ -139,6 +150,8 @@ declare module 'three' {
   export class Sprite extends Object3D {
     constructor(material?: SpriteMaterial)
     material: SpriteMaterial
+    /** The point of the sprite at its position, 0..1 from the bottom left. */
+    center: Vector2Like
   }
 
   export class Texture {

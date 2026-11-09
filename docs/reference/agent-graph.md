@@ -230,10 +230,24 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   2.5 the closest pair keeps 0.84 of it and the graph is about a sixth as deep as it is wide, so turning
   it still shows depth; at 3 it is flat. A collision force was tried and dropped: in 3D the nodes were
   already clear of each other, and what overlapped was on screen, which only the depth pull fixes.
-  `agentGraph3d.test.ts` runs the real simulation on the reported picture and pins all three.
-  **Not verified:** label overlap when the camera is
-  turned, or on a dense graph. Labels are world-sized sprites, so one near the camera grows and can
-  cover another.
+  `agentGraph3d.test.ts` runs the real simulation on the reported picture and pins all three. A
+  translucent node colour (the 45% tint of a stage or the Harness) is drawn as it would look over the
+  panel (`compositeOver`), because a solid mesh has no alpha to spend: the full tint was white in dark
+  and black in light, louder than the sessions. The Harness is drawn smaller than a session (6, not
+  8): it is a hub, and the sessions are what the graph is about.
+- **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
+  (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
+  (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of
+  view, and resized with the view), and stands on its node's top. It is drawn over lines and nodes
+  (`depthTest` off): world-sized names grew near the camera, covered their neighbours once the view was
+  turned, and had lines and arrowheads running through them. Each frame the names are placed on screen
+  and kept by rank (session, then Harness, then stages and subagents, skills and MCP, notes, ghosts:
+  `labelRank`), then nearest first; one that would come within `LABEL_GAP_PX` of a name already kept is
+  hidden. A session's name is bold and full ink, every other name medium weight at 80%. A hidden name
+  also stops taking the pointer (its `raycast` is `noPick` until it shows again), because the raycaster
+  ignores `visible`. Hovering its node still shows the name in the tooltip. The pass runs from the star
+  field's `onBeforeRender`, which is never culled, so it adds no frames and runs only on frames the gate
+  allows; a change it makes shows on the next frame.
 - **The 3D frame loop runs only while something can change and somebody can see it**
   (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, something is live
   (`graph3dHasLiveMotion`, and never under Reduce Motion), the pointer is over the view, or a camera

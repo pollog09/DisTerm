@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { forceCenter, forceLink, forceManyBody, forceSimulation, type Force, type LinkForce, type SimNode } from 'd3-force-3d'
 import {
+  compositeOver,
   GRAPH3D_CHARGE,
   graph3dLayoutForces,
   graph3dEngineSettings,
@@ -9,11 +10,14 @@ import {
   graph3dLoopShouldRun,
   graph3dNodeLook,
   graph3dNodeMotion,
+  graph3dPixelScale,
+  graph3dShownLabels,
   MAX_SATELLITES,
   parseCssColor,
   rgbaString,
   rgbHex,
   toGraph3dData,
+  type Graph3dLabelBox,
   type Graph3dLoopInput
 } from './agentGraph3d'
 import type { GraphEdge, GraphNode } from './agentGraphModel'
@@ -130,16 +134,16 @@ describe('toGraph3dData', () => {
 
 describe('graph3dNodeLook', () => {
   it.each([
-    ['a Claude session, working', session('s', { agentId: 'claude', state: 'working' }), { shape: 'sphere', radius: 7, color: '#d97757', glow: 'working', glowColor: 'var(--state-working)', label: 's' }],
-    ['a Codex session that needs you', session('s', { agentId: 'codex', state: 'waiting' }), { shape: 'sphere', radius: 7, color: '#10a37f', glow: 'attention', glowColor: 'var(--state-attention)', label: 's' }],
-    ['an idle session of an unknown agent', session('s', { agentId: 'custom:x', state: 'done' }), { shape: 'sphere', radius: 7, color: '#888888', glow: 'idle', glowColor: 'var(--state-success)', label: 's' }],
-    ['a session with no signal yet', session('s'), { shape: 'sphere', radius: 7, color: '#888888', label: 's' }],
-    ['a running stage with a colour and runs', { id: 'st', kind: 'stage', title: 'impl', color: 'blue', activity: 'running', runs: 2 } as GraphNode, { shape: 'dodecahedron', radius: 5, color: 'var(--sys-blue)', glow: 'working', glowColor: 'var(--state-working)', label: 'impl ×2' }],
-    ['a skill', { id: 'k', kind: 'skill', title: 'grill', runs: 3 } as GraphNode, { shape: 'octahedron', radius: 4.5, color: 'var(--sys-teal)', label: 'grill ×3' }],
-    ['an MCP server', { id: 'm', kind: 'mcp', title: 'demo' } as GraphNode, { shape: 'box', radius: 4, color: 'var(--sys-indigo)', label: 'demo' }],
-    ['the harness', { id: 'h', kind: 'harness', title: 'Harness' } as GraphNode, { shape: 'icosahedron', radius: 8, color: 'rgba(var(--tint-rgb), 0.45)', label: 'Harness' }],
-    ['a note', { id: 'n', kind: 'note', title: 'Plan' } as GraphNode, { shape: 'tetrahedron', radius: 4, color: 'var(--state-automation)', label: 'Plan' }],
-    ['a ghost', { id: 'g', kind: 'ghost', title: 'Outside' } as GraphNode, { shape: 'sphere', radius: 3.5, color: 'rgba(var(--tint-rgb), 0.45)', faded: true, label: 'Outside' }]
+    ['a Claude session, working', session('s', { agentId: 'claude', state: 'working' }), { shape: 'sphere', radius: 7, color: '#d97757', glow: 'working', glowColor: 'var(--state-working)', label: 's', labelRank: 0 }],
+    ['a Codex session that needs you', session('s', { agentId: 'codex', state: 'waiting' }), { shape: 'sphere', radius: 7, color: '#10a37f', glow: 'attention', glowColor: 'var(--state-attention)', label: 's', labelRank: 0 }],
+    ['an idle session of an unknown agent', session('s', { agentId: 'custom:x', state: 'done' }), { shape: 'sphere', radius: 7, color: '#888888', glow: 'idle', glowColor: 'var(--state-success)', label: 's', labelRank: 0 }],
+    ['a session with no signal yet', session('s'), { shape: 'sphere', radius: 7, color: '#888888', label: 's', labelRank: 0 }],
+    ['a running stage with a colour and runs', { id: 'st', kind: 'stage', title: 'impl', color: 'blue', activity: 'running', runs: 2 } as GraphNode, { shape: 'dodecahedron', radius: 5, color: 'var(--sys-blue)', glow: 'working', glowColor: 'var(--state-working)', label: 'impl ×2', labelRank: 2 }],
+    ['a skill', { id: 'k', kind: 'skill', title: 'grill', runs: 3 } as GraphNode, { shape: 'octahedron', radius: 4.5, color: 'var(--sys-teal)', label: 'grill ×3', labelRank: 3 }],
+    ['an MCP server', { id: 'm', kind: 'mcp', title: 'demo' } as GraphNode, { shape: 'box', radius: 4, color: 'var(--sys-indigo)', label: 'demo', labelRank: 3 }],
+    ['the harness', { id: 'h', kind: 'harness', title: 'Harness' } as GraphNode, { shape: 'icosahedron', radius: 6, color: 'rgba(var(--tint-rgb), 0.45)', label: 'Harness', labelRank: 1 }],
+    ['a note', { id: 'n', kind: 'note', title: 'Plan' } as GraphNode, { shape: 'tetrahedron', radius: 4, color: 'var(--state-automation)', label: 'Plan', labelRank: 4 }],
+    ['a ghost', { id: 'g', kind: 'ghost', title: 'Outside' } as GraphNode, { shape: 'sphere', radius: 3.5, color: 'rgba(var(--tint-rgb), 0.45)', faded: true, label: 'Outside', labelRank: 5 }]
   ])('%s', (_name, node, look) => {
     expect(graph3dNodeLook(node)).toEqual(look)
   })
@@ -147,12 +151,12 @@ describe('graph3dNodeLook', () => {
 
 describe('graph3dLinkLook', () => {
   it.each([
-    ['a delivered message', edge('m', 'a', 'b', { latest: 'delivered' }), { color: 'var(--state-success)', width: 0.45, dashed: false, arrow: true, reverse: false }],
-    ['a refused message', edge('m', 'a', 'b', { latest: 'refused' }), { color: 'var(--state-error)', width: 0.45, dashed: false, arrow: true, reverse: false }],
-    ['the harness line', edge('h', 'h', 'a', { kind: 'harness', flow: 'reverse' }), { color: 'rgba(var(--tint-rgb), 0.28)', width: 0.45, dashed: false, arrow: false, reverse: true }],
-    ['a re-entry', edge('r', 'a', 'b', { kind: 'ship-reject', loop: true, traversals: 1 }), { color: 'var(--state-attention)', width: 1.1, dashed: true, arrow: true, reverse: false }],
-    ['a context link', edge('c', 'a', 'b', { kind: 'context' }), { color: 'var(--state-automation)', width: 0.45, dashed: true, arrow: true, reverse: false }],
-    ['a skill call', edge('u', 'a', 'k', { kind: 'uses-skill' }), { color: 'var(--sys-teal)', width: 0.45, dashed: false, arrow: true, reverse: false }]
+    ['a delivered message', edge('m', 'a', 'b', { latest: 'delivered' }), { color: 'var(--state-success)', width: 0.7, dashed: false, arrowLength: 4.5, reverse: false }],
+    ['a refused message', edge('m', 'a', 'b', { latest: 'refused' }), { color: 'var(--state-error)', width: 0.7, dashed: false, arrowLength: 4.5, reverse: false }],
+    ['the harness line', edge('h', 'h', 'a', { kind: 'harness', flow: 'reverse' }), { color: 'rgba(var(--tint-rgb), 0.28)', width: 0.7, dashed: false, arrowLength: 0, reverse: true }],
+    ['a re-entry', edge('r', 'a', 'b', { kind: 'ship-reject', loop: true, traversals: 1 }), { color: 'var(--state-attention)', width: 1.6, dashed: true, arrowLength: 4.5, reverse: false }],
+    ['a context link', edge('c', 'a', 'b', { kind: 'context' }), { color: 'var(--state-automation)', width: 0.7, dashed: true, arrowLength: 4.5, reverse: false }],
+    ['a skill call', edge('u', 'a', 'k', { kind: 'uses-skill' }), { color: 'var(--sys-teal)', width: 0.7, dashed: false, arrowLength: 4.5, reverse: false }]
   ])('%s', (_name, e, look) => {
     expect(graph3dLinkLook(e)).toEqual(look)
   })
@@ -300,5 +304,45 @@ describe('graph3dLayoutForces', () => {
     expect(mean(before)).toBeGreaterThan(0.9)
     expect(mean(after)).toBeGreaterThan(0.1)
     expect(mean(after)).toBeLessThan(0.3)
+  })
+})
+
+describe('graph3dShownLabels', () => {
+  const box = (id: string, left: number, top: number, over: Partial<Graph3dLabelBox> = {}): Graph3dLabelBox => ({ id, left, top, width: 100, height: 22, depth: 0.5, rank: 2, ...over })
+
+  it('shows every name when none covers another', () => {
+    expect([...graph3dShownLabels([box('a', 0, 0), box('b', 0, 30), box('c', 120, 0)])].sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('a session keeps its name over a stage it would cover, wherever either sits', () => {
+    expect([...graph3dShownLabels([box('stage', 0, 0, { depth: 0.1 }), box('session', 40, 10, { rank: 0, depth: 0.9 })])]).toEqual(['session'])
+  })
+
+  it('within a rank the nearer name wins', () => {
+    expect([...graph3dShownLabels([box('far', 0, 0, { depth: 0.9 }), box('near', 50, 5, { depth: 0.2 })])]).toEqual(['near'])
+  })
+
+  it('names closer than the gap count as covering', () => {
+    expect([...graph3dShownLabels([box('a', 0, 0), box('b', 0, 24)])]).toEqual(['a'])
+    expect([...graph3dShownLabels([box('a', 0, 0), box('b', 0, 26)])].sort()).toEqual(['a', 'b'])
+  })
+
+  it('a name hidden by another does not hide a third', () => {
+    expect([...graph3dShownLabels([box('a', 0, 0, { rank: 0 }), box('b', 60, 0), box('c', 120, 0)])].sort()).toEqual(['a', 'c'])
+  })
+})
+
+describe('graph3dPixelScale', () => {
+  it('draws a name the same number of pixels tall in any view', () => {
+    // A 90-degree field of view: the half height of a 900 px view is 450 px at scale 1.
+    expect(graph3dPixelScale(22, 900, 90)).toBeCloseTo(22 / 450, 6)
+    expect(graph3dPixelScale(22, 450, 90)).toBeCloseTo(22 / 225, 6)
+  })
+})
+
+describe('compositeOver', () => {
+  it('draws a translucent token as it looks on the panel', () => {
+    expect(compositeOver({ r: 255, g: 255, b: 255, a: 0.45 }, { r: 40, g: 40, b: 40, a: 1 })).toEqual({ r: 137, g: 137, b: 137, a: 1 })
+    expect(compositeOver({ r: 217, g: 119, b: 87, a: 1 }, { r: 40, g: 40, b: 40, a: 1 })).toEqual({ r: 217, g: 119, b: 87, a: 1 })
   })
 })
