@@ -57,10 +57,23 @@ export function toGraph3dData(model: Pick<AgentGraphModel, 'nodes' | 'edges'>, p
   return { key, nodes, links }
 }
 
-export type Graph3dShape = 'sphere' | 'icosahedron' | 'dodecahedron' | 'octahedron' | 'box' | 'tetrahedron'
+/** What a planet's surface is painted as. Each kind of node is its own kind of world, so the picture
+ *  still tells a session from a stage from a note once every node is round. */
+export type Graph3dSurface = 'gas' | 'rock' | 'ice' | 'asteroid'
+
+/** A node as a planet: what it is made of, and what it wears around it. */
+export interface Graph3dPlanet {
+  surface: Graph3dSurface
+  /** A flat ring around its equator. */
+  ring: boolean
+  /** A thin haze past its edge. */
+  atmosphere: boolean
+  /** From the node's id, so the same node is always painted, tilted and turned the same way. */
+  seed: number
+}
 
 export interface Graph3dNodeLook {
-  shape: Graph3dShape
+  planet: Graph3dPlanet
   /** World units. */
   radius: number
   /** A CSS colour: an agent's brand hex, or a role token to resolve against the theme. */
@@ -74,15 +87,29 @@ export interface Graph3dNodeLook {
   labelRank: number
 }
 
-const NODE_SHAPE: Readonly<Record<GraphNodeKind, { shape: Graph3dShape; radius: number }>> = {
-  session: { shape: 'sphere', radius: 7 },
-  harness: { shape: 'icosahedron', radius: 6 },
-  stage: { shape: 'dodecahedron', radius: 5 },
-  subagent: { shape: 'dodecahedron', radius: 5 },
-  skill: { shape: 'octahedron', radius: 4.5 },
-  mcp: { shape: 'box', radius: 4 },
-  note: { shape: 'tetrahedron', radius: 4 },
-  ghost: { shape: 'sphere', radius: 3.5 }
+/** Sessions are the gas giants, the Harness the ringed hub, stages and subagents rocky worlds, skills and
+ *  MCP servers icy moons (a server with a ring), notes asteroids. */
+const NODE_BODY: Readonly<Record<GraphNodeKind, Omit<Graph3dPlanet, 'seed'> & { radius: number }>> = {
+  session: { surface: 'gas', ring: false, atmosphere: true, radius: 7 },
+  harness: { surface: 'gas', ring: true, atmosphere: false, radius: 6 },
+  stage: { surface: 'rock', ring: false, atmosphere: false, radius: 5 },
+  subagent: { surface: 'rock', ring: false, atmosphere: false, radius: 5 },
+  skill: { surface: 'ice', ring: false, atmosphere: false, radius: 4.5 },
+  mcp: { surface: 'ice', ring: true, atmosphere: false, radius: 4 },
+  note: { surface: 'asteroid', ring: false, atmosphere: false, radius: 4 },
+  ghost: { surface: 'rock', ring: false, atmosphere: false, radius: 3.5 }
+}
+
+/** FNV-1a over the id: a stable 32-bit number per node. */
+export function graph3dSeed(id: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
+/** How a planet sits when nothing turns it: an axial tilt and the face it shows, both from its seed. */
+export function graph3dPlanetPose(seed: number): { tilt: number; turn: number } {
+  return { tilt: (((seed >>> 8) % 1000) / 1000 - 0.5) * 0.8, turn: ((seed % 1000) / 1000) * Math.PI * 2 }
 }
 
 const NEUTRAL = 'rgba(var(--tint-rgb), 0.45)'
@@ -105,13 +132,13 @@ function nodeColor(node: GraphNode): string {
   }
 }
 
-/** How a node looks: its shape by kind, a session's colour by agent, and the glow of its status. A run
+/** How a node looks: its planet by kind, a session's colour by agent, and the glow of its status. A run
  *  in progress glows as working, as its box's border does in 2D. */
 export function graph3dNodeLook(node: GraphNode): Graph3dNodeLook {
-  const { shape, radius } = NODE_SHAPE[node.kind]
+  const { radius, ...body } = NODE_BODY[node.kind]
   const glow = sessionGlow(node) ?? (node.activity === 'running' ? 'working' : undefined)
   return {
-    shape,
+    planet: { ...body, seed: graph3dSeed(node.id) },
     radius,
     color: nodeColor(node),
     ...(glow ? { glow, glowColor: GLOW_COLOR[glow] } : {}),

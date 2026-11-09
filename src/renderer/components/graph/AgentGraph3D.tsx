@@ -1,25 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph'
 import {
+  AmbientLight,
   BackSide,
-  BoxGeometry,
   BufferAttribute,
   CanvasTexture,
-  DodecahedronGeometry,
+  DirectionalLight,
+  DoubleSide,
   Group,
   IcosahedronGeometry,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  OctahedronGeometry,
   type PerspectiveCamera,
   Points,
   PointsMaterial,
   SphereGeometry,
   Sprite,
   SpriteMaterial,
+  RingGeometry,
   SRGBColorSpace,
-  TetrahedronGeometry,
   Vector3,
   BufferGeometry,
   type Object3D
@@ -39,6 +39,7 @@ import {
   graph3dNodeLook,
   graph3dNodeMotion,
   graph3dPixelScale,
+  graph3dPlanetPose,
   graph3dShownLabels,
   STREAM_EVERY_MS,
   type Graph3dLabelBox,
@@ -51,11 +52,12 @@ import {
   type Graph3dData,
   type Graph3dLink,
   type Graph3dNode,
-  type Graph3dShape,
+  type Graph3dPlanet,
   type Rgba
 } from '../../lib/agentGraph3d'
 import { useReducedMotion, useWindowWatched } from '../../lib/reducedMotion'
 import { WEBGL_LOST_NOTICE, WEBGL_UNAVAILABLE_NOTICE } from '../../lib/webgl'
+import { paintSurface, SURFACE_HEIGHT, SURFACE_WIDTH, tone } from './planetSurface'
 
 /**
  * The agent graph in 3D: the same boxes and lines as the 2D view, as a force layout you can turn. This
@@ -109,21 +111,39 @@ const FALLBACK_TEXT: Rgba = { r: 200, g: 200, b: 200, a: 0.85 }
 const FALLBACK_PANEL: Rgba = { r: 40, g: 40, b: 40, a: 1 }
 const FALLBACK_LINE: Rgba = { r: 150, g: 150, b: 150, a: 0.6 }
 
-function geometryFor(shape: Graph3dShape, radius: number): BufferGeometry {
-  switch (shape) {
-    case 'icosahedron':
-      return new IcosahedronGeometry(radius, 0)
-    case 'dodecahedron':
-      return new DodecahedronGeometry(radius, 0)
-    case 'octahedron':
-      return new OctahedronGeometry(radius, 0)
-    case 'tetrahedron':
-      return new TetrahedronGeometry(radius, 0)
-    case 'box':
-      return new BoxGeometry(radius * 1.5, radius * 1.5, radius * 1.5)
-    default:
-      return new SphereGeometry(radius, 28, 18)
+/** A sphere, or for an asteroid a lumpy rock: each corner pushed in or out by where it points, so the
+ *  copies of one corner in the unindexed mesh move together and the surface stays closed. */
+function geometryFor(planet: Graph3dPlanet, radius: number): BufferGeometry {
+  if (planet.surface !== 'asteroid') return new SphereGeometry(radius, 40, 28)
+  const rock = new IcosahedronGeometry(radius, 1)
+  const at = rock.getAttribute('position')
+  const k = 1 + (planet.seed % 7)
+  for (let i = 0; i < at.count; i++) {
+    const [x, y, z] = [at.array[i * 3], at.array[i * 3 + 1], at.array[i * 3 + 2]].map((v) => v / radius)
+    const lump = 1 + 0.2 * Math.sin(x * 3.1 * k + y * 1.7) * Math.cos(z * 2.3 + y * k) - 0.1 * Math.abs(y)
+    at.array.set([x * radius * lump, y * radius * lump * 0.85, z * radius * lump], i * 3)
   }
+  at.needsUpdate = true
+  rock.computeVertexNormals()
+  return rock
+}
+
+/** The planet's map, or null where there is no 2D canvas (the label sprite's rule). */
+function surfaceTexture(planet: Graph3dPlanet, base: Rgba): CanvasTexture | null {
+  const canvas = document.createElement('canvas')
+  canvas.width = SURFACE_WIDTH
+  canvas.height = SURFACE_HEIGHT
+  let ctx: CanvasRenderingContext2D | null = null
+  try {
+    ctx = canvas.getContext('2d')
+  } catch {
+    ctx = null
+  }
+  if (!ctx) return null
+  paintSurface(ctx, planet.surface, base, planet.seed)
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  return texture
 }
 
 /** Resolves a CSS colour (a role token or a literal) against the live theme, by reading it back from
@@ -188,6 +208,13 @@ function labelSprite(text: string, ink: Rgba, panel: Rgba, strong: boolean): { s
 interface NodeVisual {
   group: Group
   core: Mesh<BufferGeometry, MeshLambertMaterial>
+  planet: Graph3dPlanet
+  /** Its axial tilt and the face it shows at rest. */
+  pose: { tilt: number; turn: number }
+  /** What the map was painted from, so it is painted again only when that changes. */
+  surfaceKey: string
+  atmosphere: Mesh<BufferGeometry, MeshBasicMaterial> | null
+  rings: Array<Mesh<BufferGeometry, MeshBasicMaterial>>
   halo: Mesh<BufferGeometry, MeshBasicMaterial>
   aura: Mesh<BufferGeometry, MeshBasicMaterial>
   /** Turns as one, so each satellite keeps its place on the ring. */
@@ -380,7 +407,18 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const styleNode = (visual: NodeVisual, node: GraphNode): void => {
       const look = graph3dNodeLook(node)
       const base = compositeOver(colors.get(look.color, FALLBACK_LINE), panel())
-      visual.core.material.color.set(rgbHex(base))
+      const surfaceKey = `${rgbHex(base)}|${visual.planet.surface}|${visual.planet.seed}`
+      if (surfaceKey !== visual.surfaceKey) {
+        visual.core.material.map?.dispose()
+        const map = surfaceTexture(visual.planet, base)
+        visual.core.material.map = map
+        // The map carries the colour; the material's own colour multiplies it.
+        visual.core.material.color.set(map ? '#ffffff' : rgbHex(base))
+        visual.core.material.needsUpdate = true
+        visual.surfaceKey = surfaceKey
+      }
+      visual.atmosphere?.material.color.set(rgbHex(tone(base, 0.4)))
+      for (const ring of visual.rings) ring.material.color.set(rgbHex(tone(base, 0.3)))
       visual.core.material.opacity = look.faded ? 0.4 : 1
       visual.core.material.transparent = !!look.faded
       if (look.glowColor) {
@@ -454,7 +492,8 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     const animate = (visual: NodeVisual): void => {
       const m = reducedRef.current ? REST : visual.motion
       const t = performance.now() / 1000
-      if (m.spin) visual.core.rotation.set(t * SPIN_SPEED * 0.5, t * SPIN_SPEED, 0)
+      // A running world turns on its own tilted axis, as a planet does.
+      if (m.spin) visual.core.rotation.set(visual.pose.tilt, visual.pose.turn + t * SPIN_SPEED, 0)
       const k = m.breathe ? 1 + 0.14 * Math.sin(t * BREATHE_SPEED + visual.phase) : 1
       visual.halo.scale.set(k, k, k)
       visual.aura.scale.set(k * k, k * k, k * k)
@@ -465,9 +504,33 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
 
     const nodeObject = (n3: Graph3dNode): Object3D => {
       const node = nodesById.current.get(n3.id)
-      const look = node ? graph3dNodeLook(node) : { shape: 'sphere' as const, radius: 4 }
+      const look = node ? graph3dNodeLook(node) : { planet: { surface: 'rock' as const, ring: false, atmosphere: false, seed: 0 }, radius: 4 }
+      const { planet } = look
       const group = new Group()
-      const core = new Mesh(geometryFor(look.shape, look.radius), new MeshLambertMaterial({ flatShading: look.shape !== 'sphere' }))
+      const core = new Mesh(geometryFor(planet, look.radius), new MeshLambertMaterial({ flatShading: planet.surface === 'asteroid' }))
+      const pose = graph3dPlanetPose(planet.seed)
+      core.rotation.set(pose.tilt, pose.turn, 0)
+      // Haze and rings ride on the world, so they tilt with it, and like the glow shells never take the
+      // pointer. They are the core's children, so the group keeps its order: core, halo, aura, orbit, name.
+      const atmosphere = planet.atmosphere
+        ? new Mesh(new SphereGeometry(look.radius * 1.09, 32, 20), new MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false, side: BackSide }))
+        : null
+      const rings = planet.ring
+        ? [
+            [1.4, 1.75, 0.55],
+            [1.85, 2.15, 0.32]
+          ].map(([inner, outer, opacity]) => {
+            const ring = new Mesh(new RingGeometry(look.radius * inner, look.radius * outer, 64), new MeshBasicMaterial({ transparent: true, opacity, depthWrite: false, side: DoubleSide }))
+            // Flat on the equator, then leaned toward the first view so it reads as a ring, not a line.
+            ring.rotation.set(Math.PI / 2 - 0.5, 0, 0)
+            return ring
+          })
+        : []
+      for (const extra of [atmosphere, ...rings]) {
+        if (!extra) continue
+        extra.raycast = noPick
+        core.add(extra)
+      }
       const halo = new Mesh(new SphereGeometry(look.radius * 1.55, 24, 16), new MeshBasicMaterial({ transparent: true, opacity: 0.26, depthWrite: false, side: BackSide }))
       const aura = new Mesh(new SphereGeometry(look.radius * 2.2, 24, 16), new MeshBasicMaterial({ transparent: true, opacity: 0.09, depthWrite: false, side: BackSide }))
       // The raycaster ignores `visible`, and the library ranks any node hit above any line hit, so a
@@ -480,6 +543,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       const visual: NodeVisual = {
         group,
         core,
+        planet,
+        pose,
+        surfaceKey: '',
+        atmosphere,
+        rings,
         halo,
         aura,
         orbit,
@@ -564,6 +632,11 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         }
         evaluate()
       })
+    // The library's light is mostly ambient, which leaves a sphere a flat disc. A planet needs a lit side
+    // and a night side: less ambient, and one sun up and to the left of the first view.
+    const sun = new DirectionalLight(0xffffff, 3.6)
+    sun.position.set(-0.8, 1, 1.3)
+    graph.lights([new AmbientLight(0xffffff, 0.55), sun])
     const stars = starField()
     stars.material.color.set(rgbHex(ink()))
     // The sky is drawn on every frame and never culled, so it carries the once-a-frame label pass.
@@ -648,6 +721,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       const w = window as unknown as { scene?: unknown }
       if (w.scene === scene) delete w.scene
       for (const visual of visuals.current.values()) {
+        visual.core.material.map?.dispose()
         if (visual.label) disposeSprite(visual.label)
         for (const sat of visual.satellites) sat.mesh.material.dispose()
       }

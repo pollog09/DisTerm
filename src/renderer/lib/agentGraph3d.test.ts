@@ -11,6 +11,8 @@ import {
   graph3dNodeLook,
   graph3dNodeMotion,
   graph3dPixelScale,
+  graph3dPlanetPose,
+  graph3dSeed,
   graph3dShownLabels,
   MAX_SATELLITES,
   parseCssColor,
@@ -133,19 +135,36 @@ describe('toGraph3dData', () => {
 })
 
 describe('graph3dNodeLook', () => {
+  const planet = (surface: string, id: string, extra: { ring?: boolean; atmosphere?: boolean } = {}) => ({ surface, ring: false, atmosphere: false, ...extra, seed: graph3dSeed(id) })
   it.each([
-    ['a Claude session, working', session('s', { agentId: 'claude', state: 'working' }), { shape: 'sphere', radius: 7, color: '#d97757', glow: 'working', glowColor: 'var(--state-working)', label: 's', labelRank: 0 }],
-    ['a Codex session that needs you', session('s', { agentId: 'codex', state: 'waiting' }), { shape: 'sphere', radius: 7, color: '#10a37f', glow: 'attention', glowColor: 'var(--state-attention)', label: 's', labelRank: 0 }],
-    ['an idle session of an unknown agent', session('s', { agentId: 'custom:x', state: 'done' }), { shape: 'sphere', radius: 7, color: '#888888', glow: 'idle', glowColor: 'var(--state-success)', label: 's', labelRank: 0 }],
-    ['a session with no signal yet', session('s'), { shape: 'sphere', radius: 7, color: '#888888', label: 's', labelRank: 0 }],
-    ['a running stage with a colour and runs', { id: 'st', kind: 'stage', title: 'impl', color: 'blue', activity: 'running', runs: 2 } as GraphNode, { shape: 'dodecahedron', radius: 5, color: 'var(--sys-blue)', glow: 'working', glowColor: 'var(--state-working)', label: 'impl ×2', labelRank: 2 }],
-    ['a skill', { id: 'k', kind: 'skill', title: 'grill', runs: 3 } as GraphNode, { shape: 'octahedron', radius: 4.5, color: 'var(--sys-teal)', label: 'grill ×3', labelRank: 3 }],
-    ['an MCP server', { id: 'm', kind: 'mcp', title: 'demo' } as GraphNode, { shape: 'box', radius: 4, color: 'var(--sys-indigo)', label: 'demo', labelRank: 3 }],
-    ['the harness', { id: 'h', kind: 'harness', title: 'Harness' } as GraphNode, { shape: 'icosahedron', radius: 6, color: 'rgba(var(--tint-rgb), 0.45)', label: 'Harness', labelRank: 1 }],
-    ['a note', { id: 'n', kind: 'note', title: 'Plan' } as GraphNode, { shape: 'tetrahedron', radius: 4, color: 'var(--state-automation)', label: 'Plan', labelRank: 4 }],
-    ['a ghost', { id: 'g', kind: 'ghost', title: 'Outside' } as GraphNode, { shape: 'sphere', radius: 3.5, color: 'rgba(var(--tint-rgb), 0.45)', faded: true, label: 'Outside', labelRank: 5 }]
+    ['a Claude session, working', session('s', { agentId: 'claude', state: 'working' }), { planet: planet('gas', 's', { atmosphere: true }), radius: 7, color: '#d97757', glow: 'working', glowColor: 'var(--state-working)', label: 's', labelRank: 0 }],
+    ['a Codex session that needs you', session('s', { agentId: 'codex', state: 'waiting' }), { planet: planet('gas', 's', { atmosphere: true }), radius: 7, color: '#10a37f', glow: 'attention', glowColor: 'var(--state-attention)', label: 's', labelRank: 0 }],
+    ['an idle session of an unknown agent', session('s', { agentId: 'custom:x', state: 'done' }), { planet: planet('gas', 's', { atmosphere: true }), radius: 7, color: '#888888', glow: 'idle', glowColor: 'var(--state-success)', label: 's', labelRank: 0 }],
+    ['a session with no signal yet', session('s'), { planet: planet('gas', 's', { atmosphere: true }), radius: 7, color: '#888888', label: 's', labelRank: 0 }],
+    ['a running stage with a colour and runs', { id: 'st', kind: 'stage', title: 'impl', color: 'blue', activity: 'running', runs: 2 } as GraphNode, { planet: planet('rock', 'st'), radius: 5, color: 'var(--sys-blue)', glow: 'working', glowColor: 'var(--state-working)', label: 'impl ×2', labelRank: 2 }],
+    ['a skill', { id: 'k', kind: 'skill', title: 'grill', runs: 3 } as GraphNode, { planet: planet('ice', 'k'), radius: 4.5, color: 'var(--sys-teal)', label: 'grill ×3', labelRank: 3 }],
+    ['an MCP server', { id: 'm', kind: 'mcp', title: 'demo' } as GraphNode, { planet: planet('ice', 'm', { ring: true }), radius: 4, color: 'var(--sys-indigo)', label: 'demo', labelRank: 3 }],
+    ['the harness', { id: 'h', kind: 'harness', title: 'Harness' } as GraphNode, { planet: planet('gas', 'h', { ring: true }), radius: 6, color: 'rgba(var(--tint-rgb), 0.45)', label: 'Harness', labelRank: 1 }],
+    ['a note', { id: 'n', kind: 'note', title: 'Plan' } as GraphNode, { planet: planet('asteroid', 'n'), radius: 4, color: 'var(--state-automation)', label: 'Plan', labelRank: 4 }],
+    ['a ghost', { id: 'g', kind: 'ghost', title: 'Outside' } as GraphNode, { planet: planet('rock', 'g'), radius: 3.5, color: 'rgba(var(--tint-rgb), 0.45)', faded: true, label: 'Outside', labelRank: 5 }]
   ])('%s', (_name, node, look) => {
     expect(graph3dNodeLook(node)).toEqual(look)
+  })
+})
+
+describe('graph3dSeed and graph3dPlanetPose', () => {
+  it('the same id is always the same world, and two ids are not', () => {
+    expect(graph3dSeed('session:a')).toBe(graph3dSeed('session:a'))
+    expect(graph3dSeed('session:a')).not.toBe(graph3dSeed('session:b'))
+    expect(graph3dSeed('')).toBe(0x811c9dc5)
+  })
+
+  it('a world leans no more than about 23 degrees and may show any face', () => {
+    const poses = Array.from({ length: 200 }, (_, i) => graph3dPlanetPose(graph3dSeed(`node:${i}`)))
+    expect(Math.max(...poses.map((p) => Math.abs(p.tilt)))).toBeLessThanOrEqual(0.4)
+    expect(Math.min(...poses.map((p) => p.turn))).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...poses.map((p) => p.turn))).toBeLessThan(Math.PI * 2)
+    expect(new Set(poses.map((p) => p.turn.toFixed(2))).size).toBeGreaterThan(120)
   })
 })
 

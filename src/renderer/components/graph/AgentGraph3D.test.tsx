@@ -159,7 +159,7 @@ afterEach(async () => {
 const canvas2d = (works: boolean) =>
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) =>
     works && kind === '2d'
-      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {} }
+      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {}, fillRect() {}, arc() {}, ellipse() {}, moveTo() {}, lineTo() {} }
       : null) as never)
 /** What the library would build for a node: the component's own `nodeThreeObject`. */
 const nodeGroup = (fake: Fake, id: string): Object3D => (fake.props.nodeThreeObject as (n: { id: string; kind: string }) => Object3D)({ id, kind: 'session' })
@@ -330,6 +330,60 @@ describe('names on screen', () => {
     expect([labelA.visible, labelB.visible]).toEqual([true, true])
     b.updateMatrixWorld(true)
     expect(hits(b, 40, 10)).toEqual([labelB])
+  })
+})
+
+describe('planets', () => {
+  const camera = new PerspectiveCamera()
+  camera.position.set(0, 0, 100)
+  camera.updateMatrixWorld()
+  const hits = (group: Object3D, x: number, y: number): Object3D[] => {
+    const ray = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
+    ray.camera = camera
+    return ray.intersectObject(group, true).map((h) => h.object)
+  }
+  const HARNESS: GraphNode = { id: 'h', kind: 'harness', title: 'Harness' }
+  const withHarness = async (state?: string) =>
+    act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], ...(state ? { state } : {}) }, NODES[1], HARNESS] })))
+
+  it('a ringed world wears two rings, and neither ring nor haze takes the pointer anywhere', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    await withHarness()
+    const ringed = nodeGroup(fake, 'h')
+    const hazy = nodeGroup(fake, 'session:a')
+    for (const group of [ringed, hazy]) group.updateMatrixWorld(true)
+    expect(parts(ringed).core.children).toHaveLength(2)
+    expect(parts(hazy).core.children).toHaveLength(1)
+    for (const group of [ringed, hazy]) {
+      const { core, label } = parts(group)
+      const taken = new Set<Object3D>()
+      for (let x = -15; x <= 15; x++) for (let y = -15; y <= 15; y++) for (const o of hits(group, x, y)) taken.add(o)
+      expect([...taken].every((o) => o === core || o === label)).toBe(true)
+      expect(taken.has(core)).toBe(true)
+    }
+  })
+
+  it('a world is painted once, kept through a status change, and given back on unmount', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    await withHarness()
+    const { core } = parts(nodeGroup(fake, 'session:a'))
+    const map = core.material.map
+    expect(map).not.toBeNull()
+    const dispose = vi.spyOn(map!, 'dispose')
+    await withHarness('waiting')
+    expect(core.material.map).toBe(map)
+    await act(async () => root.unmount())
+    expect(dispose).toHaveBeenCalled()
+  })
+
+  it('with no 2D canvas, a world is its plain colour', async () => {
+    canvas2d(false)
+    const fake = await mount()
+    const { core } = parts(nodeGroup(fake, 'session:a'))
+    expect(core.material.map).toBeNull()
+    expect(core.material.color.getHexString()).toBe('d97757')
   })
 })
 

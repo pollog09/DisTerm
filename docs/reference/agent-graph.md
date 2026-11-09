@@ -235,6 +235,20 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   panel (`compositeOver`), because a solid mesh has no alpha to spend: the full tint was white in dark
   and black in light, louder than the sessions. The Harness is drawn smaller than a session (6, not
   8): it is a hub, and the sessions are what the graph is about.
+- **3D nodes are planets, and each kind is its own kind of world** (`graph3dNodeLook().planet`,
+  `NODE_BODY`). Once every node is round, the surface carries the kind the polyhedra used to: sessions
+  are banded gas giants in their agent's colour with a thin haze, the Harness a ringed grey giant,
+  stages and subagents cratered rock, skills icy moons, MCP servers icy moons with a ring, notes lumpy
+  asteroids, ghosts faded rock. The map is painted once per node on a 256 by 128 canvas
+  (`components/graph/planetSurface.ts`), seeded by the node's id (`graph3dSeed`), so a node is always
+  the same world, with the same tilt and face at rest (`graph3dPlanetPose`). It is painted again only
+  when its colour changes (a theme or accent change), never for a status change, and given back on
+  unmount. Where there is no 2D canvas the world is its plain colour. A running world turns on its own
+  tilted axis, under the same rule as before. Haze and rings are children of the core, so they tilt
+  with it and the group keeps its order, and like the glow shells they never take the pointer. The
+  library's light is mostly ambient, which draws a sphere as a flat disc, so the view sets its own:
+  ambient 0.55 and one sun (3.6) up and to the left of the first view. A darker night side turned into
+  black discs on the light theme's cream.
 - **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
   (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
   (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of

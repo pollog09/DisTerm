@@ -73,9 +73,17 @@ declare module 'three' {
   export class BufferGeometry {
     dispose(): void
     setAttribute(name: string, attribute: BufferAttribute): this
+    getAttribute(name: string): BufferAttribute
+    computeVertexNormals(): void
   }
   export class BufferAttribute {
     constructor(array: Float32Array, itemSize: number)
+    array: Float32Array
+    count: number
+    needsUpdate: boolean
+  }
+  export class RingGeometry extends BufferGeometry {
+    constructor(innerRadius?: number, outerRadius?: number, thetaSegments?: number)
   }
   export class SphereGeometry extends BufferGeometry {
     constructor(radius?: number, widthSegments?: number, heightSegments?: number)
@@ -120,6 +128,7 @@ declare module 'three' {
   }
   export class MeshLambertMaterial extends Material {
     constructor(parameters?: MaterialParameters)
+    map: Texture | null
     color: Color
     emissive: Color
     emissiveIntensity: number
@@ -175,6 +184,17 @@ declare module 'three' {
     failIfMajorPerformanceCaveat?: boolean
   }
 
+  export class Light extends Object3D {
+    intensity: number
+  }
+  export class AmbientLight extends Light {
+    constructor(color?: string | number, intensity?: number)
+  }
+  export class DirectionalLight extends Light {
+    constructor(color?: string | number, intensity?: number)
+  }
+
   export const BackSide: number
+  export const DoubleSide: number
   export const SRGBColorSpace: string
 }
