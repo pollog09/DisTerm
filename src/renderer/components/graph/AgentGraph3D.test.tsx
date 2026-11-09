@@ -17,7 +17,7 @@ interface Fake {
   props: Record<string, unknown>
   canvas: HTMLCanvasElement
   renderer: { domElement: HTMLCanvasElement; forceContextLoss: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }
-  scene: object
+  scene: { add: ReturnType<typeof vi.fn> }
 }
 
 const lib = vi.hoisted(() => ({ instances: [] as Fake[], throwOnCreate: false }))
@@ -32,7 +32,7 @@ vi.mock('3d-force-graph', () => {
       props: {},
       canvas,
       renderer: { domElement: canvas, forceContextLoss: vi.fn(), dispose: vi.fn() },
-      scene: {}
+      scene: { add: vi.fn() }
     }
     ;(window as unknown as { scene?: unknown }).scene = fake.scene
     lib.instances.push(fake)
@@ -156,8 +156,8 @@ const canvas2d = (works: boolean) =>
 const nodeGroup = (fake: Fake, id: string): Object3D => (fake.props.nodeThreeObject as (n: { id: string; kind: string }) => Object3D)({ id, kind: 'session' })
 /** Children in the order the component adds them: core, halo, aura, then the label when there is one. */
 const parts = (group: Object3D) => {
-  const [core, halo, aura, label] = group.children
-  return { core: core as Mesh<never, MeshLambertMaterial>, halo, aura, label }
+  const [core, halo, aura, orbit, label] = group.children
+  return { core: core as Mesh<never, MeshLambertMaterial>, halo, aura, orbit, label }
 }
 
 describe('AgentGraph3D', () => {
@@ -432,5 +432,100 @@ describe('under reduced motion', () => {
     const fit = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Fit')!
     await act(async () => fit.click())
     expect(named(fake, 'zoomToFit').at(-1)).toEqual([0, 40])
+  })
+})
+
+describe('live subagents', () => {
+  const LIVE = [
+    { id: 'r1', type: 'Explore', startedAt: 1 },
+    { id: 'r2', type: 'Explore', startedAt: 2 },
+    { id: 'r3', type: 'Explore', startedAt: 3 }
+  ]
+  const busy: GraphNode[] = [
+    { id: 'session:a', kind: 'session', title: 'Orchestrator', sessionId: 'a', agentId: 'claude', state: 'working' },
+    { id: 'sub:a:Explore', kind: 'subagent', title: 'Explore', sessionId: 'a', activity: 'running', runs: 3, live: LIVE }
+  ]
+  const spawned: GraphEdge = { id: 'spawned:a:Explore', source: 'session:a', target: 'sub:a:Explore', kind: 'spawned', traversals: 3, running: true, movedAt: 2 }
+
+  const camera = new PerspectiveCamera()
+  camera.position.set(0, 0, 100)
+  camera.updateMatrixWorld()
+  const hits = (group: Object3D, x: number, y: number): Object3D[] => {
+    const ray = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
+    ray.camera = camera
+    return ray.intersectObject(group, true).map((h) => h.object)
+  }
+
+  async function mountBusy(nodes: GraphNode[] = busy, edges: GraphEdge[] = [spawned]): Promise<Fake> {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    await act(async () => root.render(view(edges, { nodes })))
+    return lib.instances[lib.instances.length - 1]
+  }
+
+  it('each live run is a satellite of its box, and none takes the pointer', async () => {
+    canvas2d(true)
+    const fake = await mountBusy()
+    const group = nodeGroup(fake, 'sub:a:Explore')
+    group.updateMatrixWorld(true)
+    const { core, orbit } = parts(group)
+    expect(orbit.children).toHaveLength(3)
+    // A ray through every satellite's position hits nothing but what was already pickable.
+    for (const sat of orbit.children) {
+      expect(hits(group, sat.position.x, sat.position.y).filter((o) => orbit.children.includes(o))).toEqual([])
+    }
+    expect(hits(group, 0, 0)).toContain(core)
+  })
+
+  it('a run that ends takes its satellite away', async () => {
+    canvas2d(true)
+    const fake = await mountBusy()
+    await act(async () => root.render(view([spawned], { nodes: [busy[0], { ...busy[1], live: LIVE.slice(1) }] })))
+    expect(parts(nodeGroup(fake, 'sub:a:Explore')).orbit.children).toHaveLength(2)
+  })
+
+  it('keeps frames while something runs, streams along the running line, and stops when it is over', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await mountBusy()
+    await settle(fake)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(running(fake)).toBe(true)
+    expect(named(fake, 'emitParticle').length).toBeGreaterThanOrEqual(2)
+    const done: GraphNode[] = [busy[0], { ...busy[1], activity: 'done', live: undefined }]
+    await act(async () => root.render(view([{ ...spawned, running: undefined, movedAt: undefined }], { nodes: done })))
+    // The stand-in's particles never land; the real ones do within a couple of seconds.
+    for (const l of (fake.props.graphData as { links: Array<{ __singleHopPhotonsObj?: { children: unknown[] } }> }).links) l.__singleHopPhotonsObj?.children.splice(0)
+    const before = named(fake, 'emitParticle').length
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(running(fake)).toBe(false)
+    expect(named(fake, 'emitParticle').length).toBe(before)
+  })
+
+  it('under reduced motion, nothing runs for it and nothing streams', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    reducedMotion = true
+    const fake = await mountBusy()
+    await settle(fake)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(running(fake)).toBe(false)
+    expect(named(fake, 'emitParticle')).toEqual([])
+  })
+
+  it('an idle window stops it', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await mountBusy()
+    await settle(fake)
+    await act(async () => {
+      document.documentElement.setAttribute('data-nt-window', 'idle')
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(running(fake)).toBe(false)
   })
 })

@@ -206,19 +206,23 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   are re-resolved on a `data-theme`, `data-nt-glass`, `style` or `class` change on the root. The WebGL
   canvas is transparent, so the view's background is the theme's. A dashed 2D line is a fainter tube
   (`DASHED_LINK_ALPHA`), because a tube has no dash. A status glow is a still halo, never a pulse, so a
-  settled graph needs no frames. **The halo and aura shells never take the pointer** (`raycast = noPick`).
+  settled graph needs no frames. A session that is only working keeps that still halo too: a turn can
+  last hours. What moves is under **Live subagents in 3D** below. **The halo and aura shells never take the pointer** (`raycast = noPick`).
   three's raycaster ignores `visible`, and 3d-force-graph ranks any node hit above any line hit. A
   pickable shell, even a hidden one, would take hovers from nearby lines, whose words show only on hover,
   and clicks meant for the node behind it. The core shape and the name label stay pickable, as a click on
   a 2D box's title opens it. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
-  seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. None is emitted under
+  seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. A line in transit by
+  the 2D rule (`edgeInTransit`) also sends one every `STREAM_EVERY_MS` (900 ms), under the same cap, as
+  the 2D chevrons keep moving along it. None is emitted under
   Reduce Motion or while nobody can see the view, and an event missed then is not replayed later. The
   map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
   session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would
   replay an event already shown. It costs one number per line id until the view unmounts.
 - **The 3D frame loop runs only while something can change and somebody can see it**
-  (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, the pointer is over
-  the view, or a camera move was asked for. It never runs while the window is idle or hidden (`data-nt-window`,
+  (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, something is live
+  (`graph3dHasLiveMotion`, and never under Reduce Motion), the pointer is over the view, or a camera
+  move was asked for. It never runs while the window is idle or hidden (`data-nt-window`,
   the CSS gate's own signal) or the terminal modal covers the view. While it runs, the gate is re-checked
   every 250 ms. 3d-force-graph's own loop is a rAF every frame forever, so without the gate a settled graph
   nobody points at would hold the window at display rate. Under Reduce Motion the layout is computed before
@@ -230,6 +234,22 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   change made while the view was covered or the window idle, then a pause longer than 4 s, ends the
   engine with zero ticks and leaves the new shapes piled where they started. A settled engine is never
   reheated, and Reduce Motion still settles at once.
+- **Live subagents in 3D: only what is running moves, and only on frames the gate allows.** The model
+  puts each live run (`isLive`, the staleness line of a box's activity) on the box it is drawn in
+  (`GraphNode.live`, `attachLiveRuns`), by the rule a skill call leaves by: one certain box in `subBox`,
+  else its session. It is content, so it never moves the layout. Both views word it the same way
+  (`graphNodeBadges`, "2 subagents running" or "1 running now", and a `Now:` line naming the newest four).
+  In 3D (`graph3dNodeMotion`) each live run is a satellite on a ring around its box, at most
+  `MAX_SATELLITES` (8, the newest), and a box with a live run turns (not a session sphere) and its halo
+  breathes. A session that is only working does not breathe, so an agent at work for hours with no
+  subagent costs no frames. The motion is set from `Mesh.onBeforeRender` on the core, so it adds no loop
+  of its own: frames run while `graph3dHasLiveMotion` says something is live and the window is watched,
+  and stop with the window idle or hidden, the modal up, or the last run over. Restyling sets the pose
+  at once, so a box that stopped rests at full size even with no frame after it. Satellites and the star
+  field take no pointer (`noPick`), as the glow shells do. Under Reduce Motion satellites are drawn
+  still, and nothing turns, breathes or streams. The star field is a fixed scatter of faint points in
+  the theme's text colour, drawn only on frames something else asked for. **Not verified:** the frame
+  cost of a busy graph on real WebGL; jsdom has none.
 - **Unmounting the 3D view gives its WebGL context back.** It calls `_destructor` (scene, controls,
   renderer) and then `forceContextLoss`. `dispose` alone keeps the context, and Chromium evicts the oldest
   context past its cap, which can be a terminal's. The terminal budget (`terminal/webgl-budget.ts`) stays

@@ -10,7 +10,7 @@
  * new has to find a place.
  */
 import { AGENT_CONFIG, FALLBACK_AGENT_COLOR, type BuiltinAgentId } from '@shared/agents/config'
-import { agentGraphStructureKey, type AgentGraphModel, type GraphEdge, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from './agentGraphModel'
+import { agentGraphStructureKey, edgeInTransit, type AgentGraphModel, type GraphEdge, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from './agentGraphModel'
 import { graphEdgeColor, graphEdgeDashed, MCP_LINE, SKILL_LINE } from './agentGraphEdgeText'
 import { GLOW_COLOR, sessionGlow, type GraphGlow } from './agentGraphNodeText'
 
@@ -202,6 +202,47 @@ export function rgbHex(c: Rgba): string {
   return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`
 }
 
+/** Satellites one box carries: one per live subagent run, the newest kept. More is a count in its text. */
+export const MAX_SATELLITES = 8
+
+/** What moves on one node while frames run. Only what is true moves: a box turns and breathes while
+ *  work it stands for is running, and each live subagent run is a satellite around it. */
+export interface Graph3dNodeMotion {
+  /** The core turns: a subagent or stage with a run going on. A session sphere would not show it. */
+  spin: boolean
+  /** The halo swells and fades: a box with a live subagent run. A session that is only working keeps
+   *  its still halo, because a turn can last hours and its breath would hold frames all that time. */
+  breathe: boolean
+  /** Live run ids, oldest first, at most `MAX_SATELLITES`. */
+  satellites: string[]
+}
+
+export function graph3dNodeMotion(node: GraphNode): Graph3dNodeMotion {
+  const live = node.live ?? []
+  const running = node.activity === 'running' || live.length > 0
+  return {
+    spin: running && node.kind !== 'session' && node.kind !== 'ghost',
+    breathe: running,
+    satellites: live.slice(-MAX_SATELLITES).map((r) => r.id)
+  }
+}
+
+/**
+ * Whether anything on screen is moving because something is happening: a box breathing or carrying a
+ * satellite, or a line in transit by the 2D rule (`edgeInTransit`). This is what keeps frames running on
+ * a graph whose layout has settled, so it answers no for anything that is merely there.
+ */
+export function graph3dHasLiveMotion(nodes: readonly GraphNode[], edges: readonly GraphEdge[], now: number): boolean {
+  if (edges.some((e) => edgeInTransit(e, now))) return true
+  return nodes.some((n) => {
+    const m = graph3dNodeMotion(n)
+    return m.breathe || m.satellites.length > 0
+  })
+}
+
+/** How often a line in transit sends another particle, so a running hand-off reads as a stream. */
+export const STREAM_EVERY_MS = 900
+
 /** What keeps the 3D view drawing frames. */
 export interface Graph3dLoopInput {
   /** Mounted and not covered by the terminal modal. */
@@ -214,6 +255,8 @@ export interface Graph3dLoopInput {
   particlesInFlight: boolean
   /** The pointer is over the view: hover, a drag that turns the camera, the wheel. */
   pointerInside: boolean
+  /** Something is running (`graph3dHasLiveMotion`), and Reduce Motion is off. */
+  liveMotion: boolean
   /** A camera move or a redraw was asked for until then. */
   busyUntil: number
   now: number
@@ -226,7 +269,7 @@ export interface Graph3dLoopInput {
  */
 export function graph3dLoopShouldRun(s: Graph3dLoopInput): boolean {
   if (!s.shown || !s.watched) return false
-  return s.engineRunning || s.particlesInFlight || s.pointerInside || s.busyUntil > s.now
+  return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.busyUntil > s.now
 }
 
 /** Layout settings. Under reduced motion the layout is computed before the first frame and never

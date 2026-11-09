@@ -72,6 +72,11 @@ time are siblings. Going back to a type first seen earlier in the run is drawn i
 run in the same turn; it does not say which, and its hover text says so. Add a file to tell them apart.
 A new prompt or a `/clear` does separate them.
 
+A box says how many of its subagents are running right now ("3 running now", or "2 subagents running"
+on a session), and its hover names the newest four. In 3D each one is a small satellite circling its box,
+the box turns while they run, and a line a run is passing along streams dots. With Reduce Motion on, the
+satellites stay still and nothing streams.
+
 ## With a file
 
 `.claude/ship-graph.json` in the project replaces `~/.claude/ship-graph.json` whole; they are not
