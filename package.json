@@ -72,6 +72,10 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
       }
     ],
     "linux": {
@@ -224,6 +228,7 @@
     "@xterm/addon-webgl": "0.18.0",
     "@xterm/xterm": "^5.5.0",
     "@xyflow/react": "^12.12.0",
+    "3d-force-graph": "1.80.1",
     "css-tree": "^3.2.1",
     "electron": "^42.11.18",
     "electron-builder": "^26.18.0",
@@ -233,6 +238,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^4.3.1",
+    "three": "0.186.1",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^5.0.5"
@@ -251,6 +257,9 @@
       "@excalidraw/mermaid-to-excalidraw": {
         "nanoid": "5.1.16"
       }
+    },
+    "3d-force-graph": {
+      "float-tooltip": "1.7.5"
     }
   }
 }

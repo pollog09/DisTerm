@@ -1,0 +1,436 @@
+// @vitest-environment jsdom
+//
+// The 3D view against a stand-in for 3d-force-graph: jsdom has no WebGL, so what is checked here is
+// what the component asks of the library (when the frame loop runs, what it is fed, what is given
+// back on unmount), never real rendering.
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PerspectiveCamera, Raycaster, Vector3, type Mesh, type MeshLambertMaterial, type Object3D } from 'three'
+import type { GraphEdge, GraphNode } from '../../lib/agentGraphModel'
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+type Call = { name: string; args: unknown[] }
+interface Fake {
+  calls: Call[]
+  props: Record<string, unknown>
+  canvas: HTMLCanvasElement
+  renderer: { domElement: HTMLCanvasElement; forceContextLoss: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }
+  scene: object
+}
+
+const lib = vi.hoisted(() => ({ instances: [] as Fake[], throwOnCreate: false }))
+
+vi.mock('3d-force-graph', () => {
+  function ForceGraph3D(this: unknown, el: HTMLElement, config: unknown) {
+    if (lib.throwOnCreate) throw new Error('Error creating WebGL context.')
+    const canvas = document.createElement('canvas')
+    el.appendChild(canvas)
+    const fake: Fake = {
+      calls: [{ name: 'new', args: [config] }],
+      props: {},
+      canvas,
+      renderer: { domElement: canvas, forceContextLoss: vi.fn(), dispose: vi.fn() },
+      scene: {}
+    }
+    ;(window as unknown as { scene?: unknown }).scene = fake.scene
+    lib.instances.push(fake)
+    const proxy: unknown = new Proxy(fake, {
+      get(target, prop: string) {
+        if (prop === 'then') return undefined
+        return (...args: unknown[]) => {
+          target.calls.push({ name: prop, args })
+          if (prop === 'renderer') return target.renderer
+          if (prop === 'scene') return target.scene
+          if (prop === 'd3Force') return { strength: () => undefined }
+          if (prop === 'emitParticle') {
+            const link = args[0] as { __singleHopPhotonsObj?: { children: unknown[] } }
+            ;(link.__singleHopPhotonsObj ??= { children: [] }).children.push({})
+            return proxy
+          }
+          if (args.length === 0 && prop in target.props) return target.props[prop]
+          if (args.length > 0) target.props[prop] = args[0]
+          return proxy
+        }
+      }
+    })
+    return proxy
+  }
+  return { default: ForceGraph3D }
+})
+
+let AgentGraph3D: typeof import('./AgentGraph3D').default
+let MAX_FLOW_DOTS: number
+
+beforeAll(async () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+  )
+  ;({ default: AgentGraph3D } = await import('./AgentGraph3D'))
+  ;({ MAX_FLOW_DOTS } = await import('../../lib/agentGraphLayout'))
+})
+
+const MOUNTED_AT = 1000
+const pulseOf = (ts: number | undefined): number => (ts !== undefined && ts > MOUNTED_AT ? ts : 0)
+const NODES: GraphNode[] = [
+  { id: 'session:a', kind: 'session', title: 'Orchestrator', sessionId: 'a', agentId: 'claude', state: 'working' },
+  { id: 'session:b', kind: 'session', title: 'Worker', sessionId: 'b', agentId: 'claude' }
+]
+const message = (ts?: number): GraphEdge => ({ id: 'm:a:b', source: 'session:a', target: 'session:b', kind: 'message', latest: 'delivered', ...(ts ? { lastEventTs: ts } : {}) })
+
+let root: Root
+let host: HTMLDivElement
+const onNodeClick = vi.fn()
+const onUnsupported = vi.fn()
+
+function view(edges: GraphEdge[] = [message()], over: { shown?: boolean; nodes?: GraphNode[] } = {}) {
+  return (
+    <AgentGraph3D
+      nodes={over.nodes ?? NODES}
+      edges={edges}
+      pulseOf={pulseOf}
+      showMachine={false}
+      shown={over.shown ?? true}
+      onNodeClick={onNodeClick}
+      onUnsupported={onUnsupported}
+    />
+  )
+}
+
+async function mount(edges?: GraphEdge[]): Promise<Fake> {
+  host = document.createElement('div')
+  document.body.appendChild(host)
+  root = createRoot(host)
+  await act(async () => root.render(view(edges)))
+  return lib.instances[lib.instances.length - 1]
+}
+
+const named = (fake: Fake, name: string): unknown[][] => fake.calls.filter((c) => c.name === name).map((c) => c.args)
+/** Whether the library's loop is running, by the last pause or resume asked of it (it starts running). */
+const running = (fake: Fake): boolean => {
+  const last = [...fake.calls].reverse().find((c) => c.name === 'pauseAnimation' || c.name === 'resumeAnimation')
+  return last ? last.name === 'resumeAnimation' : true
+}
+const settle = async (fake: Fake): Promise<void> => {
+  await act(async () => (fake.props.onEngineStop as () => void)())
+}
+
+let reducedMotion = false
+beforeEach(() => {
+  lib.instances.length = 0
+  lib.throwOnCreate = false
+  reducedMotion = false
+  onNodeClick.mockReset()
+  onUnsupported.mockReset()
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    matches: q.includes('reduce') && reducedMotion,
+    media: q,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  }))
+  document.documentElement.removeAttribute('data-nt-window')
+})
+
+afterEach(async () => {
+  await act(async () => root?.unmount())
+  host?.remove()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+  document.documentElement.removeAttribute('data-theme')
+})
+
+/** jsdom draws no canvas. Labels need only a context that answers; `null` means no label. */
+const canvas2d = (works: boolean) =>
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((kind: string) =>
+    works && kind === '2d'
+      ? { font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textBaseline: '', measureText: () => ({ width: 120 }), beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillText() {} }
+      : null) as never)
+/** What the library would build for a node: the component's own `nodeThreeObject`. */
+const nodeGroup = (fake: Fake, id: string): Object3D => (fake.props.nodeThreeObject as (n: { id: string; kind: string }) => Object3D)({ id, kind: 'session' })
+/** Children in the order the component adds them: core, halo, aura, then the label when there is one. */
+const parts = (group: Object3D) => {
+  const [core, halo, aura, label] = group.children
+  return { core: core as Mesh<never, MeshLambertMaterial>, halo, aura, label }
+}
+
+describe('AgentGraph3D', () => {
+  it('feeds the library the same nodes and lines, and turns the camera by drag, not the nodes', async () => {
+    const fake = await mount()
+    expect(named(fake, 'new')[0][0]).toMatchObject({ controlType: 'orbit' })
+    const data = fake.props.graphData as { nodes: { id: string }[]; links: { id: string }[] }
+    expect(data.nodes.map((n) => n.id)).toEqual(['session:a', 'session:b'])
+    expect(data.links.map((l) => l.id)).toEqual(['m:a:b'])
+    expect(fake.props.enableNodeDrag).toBe(false)
+  })
+
+  it('a status change restyles in place and does not hand the layout new data', async () => {
+    const fake = await mount()
+    const fed = named(fake, 'graphData').length
+    await act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], state: 'waiting' }, NODES[1]] })))
+    expect(named(fake, 'graphData').length).toBe(fed)
+  })
+
+  it('a status change shows on the drawn nodes and lines, without rebuilding them', async () => {
+    canvas2d(false)
+    const fake = await mount()
+    const a = parts(nodeGroup(fake, 'session:a'))
+    const b = parts(nodeGroup(fake, 'session:b'))
+    expect([a.halo.visible, a.aura.visible, a.core.material.emissiveIntensity]).toEqual([true, true, 0.35])
+    expect([b.halo.visible, b.core.material.emissiveIntensity]).toEqual([false, 0])
+    const linkStyled = named(fake, 'linkColor').length
+    await act(async () => root.render(view([message()], { nodes: [{ ...NODES[0], state: undefined }, { ...NODES[1], state: 'waiting' }] })))
+    expect([a.halo.visible, a.aura.visible, a.core.material.emissiveIntensity]).toEqual([false, false, 0])
+    expect([b.halo.visible, b.core.material.emissiveIntensity]).toEqual([true, 0.35])
+    expect(named(fake, 'linkColor').length).toBeGreaterThan(linkStyled)
+  })
+
+  it('a theme change re-resolves every colour', async () => {
+    canvas2d(false)
+    // jsdom resolves no theme, so the computed colour stands in for one: dark, then light.
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      () => ({ color: document.documentElement.dataset.theme === 'light' ? 'rgb(10, 20, 30)' : 'rgb(200, 100, 50)' }) as CSSStyleDeclaration
+    )
+    const fake = await mount()
+    const a = parts(nodeGroup(fake, 'session:a'))
+    expect(a.core.material.color.getHexString()).toBe('c86432')
+    const linkColor = () => (fake.props.linkColor as (l: { id: string }) => string)({ id: 'm:a:b' })
+    expect(linkColor()).toBe('rgba(200, 100, 50, 1)')
+    await act(async () => {
+      document.documentElement.setAttribute('data-theme', 'light')
+      await Promise.resolve()
+    })
+    expect(a.core.material.color.getHexString()).toBe('0a141e')
+    expect(linkColor()).toBe('rgba(10, 20, 30, 1)')
+  })
+
+  it('a click on a session hands back the model node, as the 2D box does', async () => {
+    const fake = await mount()
+    await act(async () => (fake.props.onNodeClick as (n: { id: string }) => void)({ id: 'session:b' }))
+    expect(onNodeClick).toHaveBeenCalledWith(NODES[1])
+  })
+
+  it('hover shows what the box says', async () => {
+    const fake = await mount()
+    await act(async () => (fake.props.onNodeHover as (n: { id: string } | null) => void)({ id: 'session:a' }))
+    const tip = host.querySelector('[role="tooltip"]')
+    expect([...(tip?.children ?? [])].map((c) => c.textContent)).toEqual(['Orchestrator', 'Claude Code · working'])
+    await act(async () => (fake.props.onNodeHover as (n: null) => void)(null))
+    expect(host.querySelector('[role="tooltip"]')).toBeNull()
+  })
+
+  it('the Fit control frames the graph', async () => {
+    const fake = await mount()
+    const fit = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Fit')!
+    await act(async () => fit.click())
+    expect(named(fake, 'zoomToFit').at(-1)).toEqual([600, 40])
+  })
+
+  it('no WebGL: says so through onUnsupported, and leaves nothing behind', async () => {
+    lib.throwOnCreate = true
+    await mount()
+    expect(onUnsupported).toHaveBeenCalledWith(expect.stringContaining('needs WebGL'))
+    expect(host.querySelector('canvas')).toBeNull()
+  })
+
+  it('a lost context hands back to 2D', async () => {
+    const fake = await mount()
+    await act(async () => fake.canvas.dispatchEvent(new Event('webglcontextlost')))
+    expect(onUnsupported).toHaveBeenCalledWith(expect.stringContaining('lost its graphics context'))
+  })
+
+  it('unmounting disposes the scene, the controls and the renderer, and gives the context back', async () => {
+    const fake = await mount()
+    await act(async () => root.unmount())
+    expect(named(fake, 'pauseAnimation').length).toBeGreaterThan(0)
+    expect(named(fake, '_destructor')).toHaveLength(1)
+    expect(fake.renderer.forceContextLoss).toHaveBeenCalledTimes(1)
+    expect(fake.canvas.isConnected).toBe(false)
+    expect((window as unknown as { scene?: unknown }).scene).toBeUndefined()
+  })
+})
+
+describe('picking', () => {
+  // three's raycaster ignores `visible`, and the library ranks any node hit above any line hit, so a
+  // glow shell that took part would steal hovers from lines and clicks from the node behind it.
+  const camera = new PerspectiveCamera()
+  camera.position.set(0, 0, 100)
+  camera.updateMatrixWorld()
+  const hits = (group: Object3D, x: number, y: number): Object3D[] => {
+    const ray = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
+    ray.camera = camera
+    return ray.intersectObject(group, true).map((h) => h.object)
+  }
+
+  it('the glow shells let the pointer through, lit or not; the core and the label take it', async () => {
+    canvas2d(true)
+    const fake = await mount()
+    for (const id of ['session:a', 'session:b']) {
+      const group = nodeGroup(fake, id)
+      group.updateMatrixWorld(true)
+      const { core, halo, aura, label } = parts(group)
+      expect(label, id).toBeDefined()
+      expect(new Set(hits(group, 0, 0)), id).toEqual(new Set([core]))
+      // Outside the core (radius 7), inside the halo (10.85) and the aura (15.4).
+      expect(hits(group, 10, 0), id).toEqual([])
+      expect(hits(group, 0, -13), id).toEqual([])
+      expect(hits(group, 0, 12), id).toEqual([label])
+      expect([halo, aura].some((o) => hits(group, 0, 0).includes(o))).toBe(false)
+    }
+  })
+})
+
+describe('the 3D frame loop', () => {
+  it('stops once the layout has settled and nobody points at it, and runs again under the pointer', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await mount()
+    expect(running(fake)).toBe(true)
+    await settle(fake)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(running(fake)).toBe(false)
+    await act(async () => host.querySelector('.agent-graph-3d')!.dispatchEvent(new Event('pointerenter')))
+    expect(running(fake)).toBe(true)
+  })
+
+  it('pauses while the window is idle, and resumes when it is looked at again', async () => {
+    const fake = await mount()
+    expect(running(fake)).toBe(true)
+    await act(async () => {
+      document.documentElement.setAttribute('data-nt-window', 'idle')
+      await Promise.resolve()
+    })
+    expect(running(fake)).toBe(false)
+    await act(async () => {
+      document.documentElement.removeAttribute('data-nt-window')
+      await Promise.resolve()
+    })
+    expect(running(fake)).toBe(true)
+  })
+
+  it('pauses while the page is hidden', async () => {
+    const fake = await mount()
+    await act(async () => {
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(running(fake)).toBe(false)
+  })
+
+  it('pauses while the terminal modal covers it', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message()], { shown: false })))
+    expect(running(fake)).toBe(false)
+  })
+
+  // The layout's cooldown runs on the wall clock from the last data update, but the layout only moves on
+  // frames. A structure change while paused, then a pause longer than the cooldown, used to stop the
+  // engine on the first frame with no layout done, and the camera framed a pile of unplaced nodes.
+  const third: GraphNode = { id: 'session:c', kind: 'session', title: 'Reviewer', sessionId: 'c', agentId: 'claude' }
+  const order = (fake: Fake): string[] => fake.calls.map((c) => c.name).filter((n) => n === 'd3ReheatSimulation' || n === 'resumeAnimation' || n === 'pauseAnimation')
+
+  it('a structure change while covered restarts the cooldown before frames resume', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message()], { shown: false })))
+    await act(async () => root.render(view([message()], { shown: false, nodes: [...NODES, third] })))
+    expect(running(fake)).toBe(false)
+    const before = order(fake).length
+    await act(async () => root.render(view([message()], { nodes: [...NODES, third] })))
+    expect(order(fake).slice(before)).toEqual(['d3ReheatSimulation', 'resumeAnimation'])
+  })
+
+  it('a settled layout is not reheated when frames resume, and a stopped loop is never reheated', async () => {
+    const fake = await mount()
+    await settle(fake)
+    await act(async () => root.render(view([message()], { shown: false })))
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+    await act(async () => root.render(view([message()])))
+    expect(running(fake)).toBe(true)
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+  })
+
+  it('a window gone idle mid-layout gets the same restart when it is looked at again', async () => {
+    const fake = await mount()
+    await act(async () => {
+      document.documentElement.setAttribute('data-nt-window', 'idle')
+      await Promise.resolve()
+    })
+    expect(running(fake)).toBe(false)
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(0)
+    const before = order(fake).length
+    await act(async () => {
+      document.documentElement.removeAttribute('data-nt-window')
+      await Promise.resolve()
+    })
+    expect(order(fake).slice(before)).toEqual(['d3ReheatSimulation', 'resumeAnimation'])
+  })
+})
+
+describe('particles', () => {
+  it('one per new event, none for what happened before the view, at most MAX_FLOW_DOTS on a line', async () => {
+    const fake = await mount([message(500)])
+    expect(named(fake, 'emitParticle')).toHaveLength(0)
+    await act(async () => root.render(view([message(2000)])))
+    expect(named(fake, 'emitParticle')).toHaveLength(1)
+    await act(async () => root.render(view([message(2000)])))
+    expect(named(fake, 'emitParticle')).toHaveLength(1)
+    for (const ts of [3000, 4000, 5000, 6000]) await act(async () => root.render(view([message(ts)])))
+    expect(named(fake, 'emitParticle')).toHaveLength(MAX_FLOW_DOTS)
+  })
+
+  it('an event already on screen when 3D opens does not replay', async () => {
+    const fake = await mount([message(2000)])
+    expect(named(fake, 'emitParticle')).toHaveLength(0)
+  })
+
+  it('runs backwards on a line whose data flows against the way it points', async () => {
+    const fake = await mount()
+    const speed = fake.props.linkDirectionalParticleSpeed as (l: { id: string }) => number
+    await act(async () => root.render(view([message(), { id: 'h', source: 'session:a', target: 'session:b', kind: 'harness', flow: 'reverse' }])))
+    expect(speed({ id: 'm:a:b' })).toBeGreaterThan(0)
+    expect(speed({ id: 'h' })).toBeLessThan(0)
+  })
+})
+
+describe('under reduced motion', () => {
+  beforeEach(() => {
+    reducedMotion = true
+  })
+
+  it('the layout is computed before the first frame and never animates', async () => {
+    const fake = await mount()
+    expect(fake.props.warmupTicks).toBe(300)
+    expect(fake.props.cooldownTicks).toBe(0)
+  })
+
+  it('no particles', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message(2000)])))
+    expect(named(fake, 'emitParticle')).toHaveLength(0)
+  })
+
+  it('a restart after a pause still settles at once: the layout keeps no cooldown to animate', async () => {
+    const fake = await mount()
+    await act(async () => root.render(view([message()], { shown: false })))
+    await act(async () => root.render(view([message()])))
+    expect(named(fake, 'd3ReheatSimulation')).toHaveLength(1)
+    expect(fake.props.cooldownTicks).toBe(0)
+    expect(fake.props.warmupTicks).toBe(300)
+  })
+
+  it('the camera jumps instead of flying', async () => {
+    const fake = await mount()
+    await settle(fake)
+    expect(named(fake, 'zoomToFit').at(-1)).toEqual([0, 40])
+    const fit = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Fit')!
+    await act(async () => fit.click())
+    expect(named(fake, 'zoomToFit').at(-1)).toEqual([0, 40])
+  })
+})

@@ -64,8 +64,12 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
 - **Config polling is on leases, and re-routes each tick** (`holdShipConfigLease`,
   `registerShipConfigHandlers`). A crashed renderer or a dropped relay peer sends no unsubscribe, and an
   SSH project's route changes when its master connects. Both shapes leaked real work before.
-- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element, and only an event
-  newer than the view's mount pulses, so opening the view does not flash the past.
+- **Arrival is a finite pulse, and needs no gate.** `pulseKey` remounts the element. Only an event newer
+  than `max(mountedAt, shown2d.since)` pulses or sends a dot (`pulseOf`), so opening the view does not
+  flash the past. `shown2d.since` is when 2D was last drawn again after 3D. Coming back from 3D remounts
+  every box and line, and a remounted dot or pulse cannot tell an event it already played from a new one.
+  The floor is set during render, not in an effect, because the boxes mount in that same render and must
+  not see the old floor. The boxes and lines do fade in again on that return; their events do not replay.
 - **The one loop is the direction marks, and only motion that is true may run** (`edgeInTransit`,
   `TRANSIT_WINDOW_MS` = 15 s). Every line but a context link has three chevrons (`edgeShowsDirection`).
   They move for a delivered message for 15 s after it lands, and for a used line while the run it led to
@@ -175,6 +179,86 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `1` iteration and must not read `--nt-anim-state`. The Harness line points harness to session so the
   layout ranks the harness left, and carries `flow: 'reverse'` so its dot runs the way hooks flow. An idle graph
   runs no animation. `agent-graph.css.test.ts` pins it.
+- **2D motion is finite, and the glows rest lit.** A box (`.agent-graph .react-flow__node`) and a line
+  (`g.agent-graph-edge`, its label) fade in once. React Flow keeps each element by id, so a status change
+  never replays it. The box grows in with `scale`, not `transform`, which React Flow owns on the wrapper.
+  A session's status glow (`data-glow` from `sessionGlow`: working, needs you, idle) pulses four times
+  (2.6 s working, 2 s needs you) and rests at the base `box-shadow`, which is where its keyframes start
+  and end. Idle is lit and still. **Each pulsing status has its own keyframes**
+  (`agent-graph-glow-working`, `agent-graph-glow-attention`), with the same frames. The box survives a
+  status change, and an animation whose name is unchanged is not restarted. With one shared name, a
+  session that went from working to needs you after its pulse ended never pulsed again. An idle window sets `animation: none` on the glows, so they rest lit rather than freeze mid-pulse. The
+  entrance has no window gate, because it is short and runs once. Reduce Motion sets `animation: none`
+  on the entrance and the glows. None of it reads `--nt-anim-state`. `agent-graph.css.test.ts` and
+  `styles.animation-gate.test.ts` pin the shorthands, the rest and the gates. What a box says lives in
+  `lib/agentGraphNodeText.ts`, so the 3D tooltip cannot word it differently.
+- **The 3D view renders the same model** (`components/graph/AgentGraph3D.tsx`; the pure shape is in
+  `lib/agentGraph3d.ts`). `toGraph3dData` returns the SAME object while `agentGraphStructureKey` is
+  unchanged and no node changed kind (`sameKinds`). A kind is not structure in 2D, but in 3D it is the
+  shape, so a session that turned ghost needs a new object and a new mesh. On a rebuild it keeps every
+  surviving node object of the same kind. The force layout writes positions onto those objects, so new
+  ones would throw the graph back to the start. A line object is kept only while each end is its id
+  string or the very object now in `nodes` for that id (`endIsLive`). d3-force-3d's `forceLink` keeps an
+  end that is already an object, so a line tied to a replaced node would stay pinned to an object no
+  longer simulated. Content (status,
+  counts, colours) is restyled in place. Colours are the 2D tokens, resolved against the live theme
+  through a probe element. `parseCssColor` reads what Chromium computes, `color(srgb …)` included. They
+  are re-resolved on a `data-theme`, `data-nt-glass`, `style` or `class` change on the root. The WebGL
+  canvas is transparent, so the view's background is the theme's. A dashed 2D line is a fainter tube
+  (`DASHED_LINK_ALPHA`), because a tube has no dash. A status glow is a still halo, never a pulse, so a
+  settled graph needs no frames. **The halo and aura shells never take the pointer** (`raycast = noPick`).
+  three's raycaster ignores `visible`, and 3d-force-graph ranks any node hit above any line hit. A
+  pickable shell, even a hidden one, would take hovers from nearby lines, whose words show only on hover,
+  and clicks meant for the node behind it. The core shape and the name label stay pickable, as a click on
+  a 2D box's title opens it. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
+  seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. None is emitted under
+  Reduce Motion or while nobody can see the view, and an event missed then is not replayed later. The
+  map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
+  session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would
+  replay an event already shown. It costs one number per line id until the view unmounts.
+- **The 3D frame loop runs only while something can change and somebody can see it**
+  (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, the pointer is over
+  the view, or a camera move was asked for. It never runs while the window is idle or hidden (`data-nt-window`,
+  the CSS gate's own signal) or the terminal modal covers the view. While it runs, the gate is re-checked
+  every 250 ms. 3d-force-graph's own loop is a rAF every frame forever, so without the gate a settled graph
+  nobody points at would hold the window at display rate. Under Reduce Motion the layout is computed before
+  the first frame (`cooldownTicks` 0), the camera jumps (`zoomToFit(0)`) and there are no particles.
+  **Resuming frames reheats a layout that has not settled.** three-forcegraph's cooldown is wall-clock
+  (`cooldownTime`, 4 s), and a data update restarts it even while frames are paused, but the layout only
+  advances on frames. So when frames resume while the engine still counts as running, `evaluate()` calls
+  `d3ReheatSimulation()` (alpha 1 and a new countdown) before `resumeAnimation()`. Without it, a structure
+  change made while the view was covered or the window idle, then a pause longer than 4 s, ends the
+  engine with zero ticks and leaves the new shapes piled where they started. A settled engine is never
+  reheated, and Reduce Motion still settles at once.
+- **Unmounting the 3D view gives its WebGL context back.** It calls `_destructor` (scene, controls,
+  renderer) and then `forceContextLoss`. `dispose` alone keeps the context, and Chromium evicts the oldest
+  context past its cap, which can be a terminal's. The terminal budget (`terminal/webgl-budget.ts`) stays
+  under the platform cap with room to spare, and this view takes one of those spare slots. Unmount also
+  deletes the `window.scene` global the library sets.
+- **3D never leaves a blank pane.** WebGL is probed before the chunk is fetched (`lib/webgl.ts`), and the
+  probe's context is released at once. No WebGL, a lost context, or a chunk that fails to load or throws
+  (`Graph3DBoundary`) shows 2D with a notice. The boundary tells the last two apart: the lazy import
+  wraps its rejection as `Graph3DLoadError`, which gets `GRAPH_3D_LOAD_FAILED_NOTICE` ("could not be
+  loaded"), and any other throw gets `GRAPH_3D_FAILED_NOTICE` ("stopped with an error"). The person's
+  choice is kept. After no WebGL, a lost context
+  or a render-time throw, a click on 3D or the next open tries again: the probe re-runs and the boundary
+  remounts. **A chunk that failed to load does not retry.** `lazy()` is at module level in
+  `AgentGraphView.tsx`, so React keeps the rejected promise for the renderer's life, and Chromium's module
+  map keeps the failed import of that URL too. Every try shows the notice again until a restart or a window
+  reload. The choice is a display preference in localStorage (`state/agentGraphDisplay.ts`,
+  `nodeterm.agentGraphView`). It is one for all projects, and anything but a literal `3d` reads as 2D.
+- **The 3D code loads only when 3D opens, and only its bundled chunk ships.** `AgentGraph3D` is a
+  `lazy()` chunk, the only one holding `three` and `3d-force-graph`. Both are exact-pinned
+  devDependencies: Vite bundles them into that chunk (about 1.6 MB, in `out/renderer`, which ships), and
+  electron-builder packs only `dependencies`, so their ~58 MB `node_modules` subtree stays out of the
+  installer. Their licences are in `THIRD-PARTY-NOTICES.md`, which every installer carries. `three/webgpu` is aliased to a stub
+  (`three-webgpu-stub.ts`, in `electron.vite.config.ts`). three-render-objects imports the WebGPU renderer
+  but never builds it here, and the stub halves the chunk (3.24 MB to 1.63 MB). `three` ships no types and
+  `@types/three` is not a dependency, so `src/renderer/three-subset.d.ts` declares only what the view
+  calls. A new three API must be added there first. `package.json` overrides 3d-force-graph's
+  `float-tooltip` to 1.7.5, because 1.8.0 was days old and pulled a days-old preact. **Not verified:**
+  real WebGL rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the
+  Server Edition in a browser, Liquid Glass. Mobile N/A.
 - **The Harness box is per machine and only for session boxes**, never a note, ghost or template. A figure the
   config cannot state for that machine (`shipDescribes`) is left off, not zero. Which box a subagent's call
   leaves (`subBox`) is certain or it is the session: a guessed, uncertain, twice-drawn or unknown run falls back.

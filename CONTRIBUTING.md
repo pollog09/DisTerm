@@ -339,7 +339,7 @@ projects, so do not add a platform check, and do not list distributions yourself
 ## The agent graph view
 
 The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
-Four things to know before touching a view:
+Five things to know before touching a view:
 
 - **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
   the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
@@ -356,10 +356,22 @@ Four things to know before touching a view:
   `animation-play-state: var(--nt-anim-state);` (the animation-gate test reads that sheet too) and a
   still form under Reduce Motion. What moves is decided by `edgeInTransit` in the model: a moving line
   keeps the window at display rate, so a line moves only while something is passing along it.
+- **The 3D view (`AgentGraph3D.tsx`) is a lazy chunk with its own rules.** CSS cannot pause its WebGL
+  frame loop, so anything new that moves must keep `graph3dLoopShouldRun` true while it moves, and false
+  otherwise. `three` has no types here: `src/renderer/three-subset.d.ts` declares only what the view
+  calls, so a new three API is a compile error until you declare it there. Do not add `@types/three`.
+  `three/webgpu` is aliased to a stub that throws, so the WebGPU renderer does not exist in this build.
+  `three` and `3d-force-graph` are exact-pinned devDependencies: Vite bundles them, and electron-builder
+  packs only `dependencies`, so a move to `dependencies` adds ~58 MB to the installer.
 
 Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
 and `release:mac` already builds both. Nothing in a feature may branch on arch, and a new dependency has to
 work on darwin-x64, which in practice means pure JS or a prebuild that ships for it.
+
+**A new renderer dependency needs a line in `THIRD-PARTY-NOTICES.md`.** Vite strips licence comments
+from the bundle, so that file is the only place the notices reach users. Every installer ships it
+through a top-level `build.extraResources` entry (`src/main/package-scripts.test.ts` pins it). This
+holds for a devDependency too, because Vite bundles it.
 
 **Before trusting an x64 `.dmg`, check it.** None of this has been verified from a non-Mac, and two
 things can go wrong quietly:

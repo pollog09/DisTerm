@@ -63,7 +63,10 @@ export default defineConfig({
         '@shared': resolve(__dirname, 'src/shared'),
         // The whiteboard's Excalidraw would otherwise bundle all of mermaid (~7.3 MB) for its
         // "text to diagram" tool. See the stub's header.
-        '@excalidraw/mermaid-to-excalidraw': resolve(__dirname, 'src/renderer/whiteboard/mermaid-stub.ts')
+        '@excalidraw/mermaid-to-excalidraw': resolve(__dirname, 'src/renderer/whiteboard/mermaid-stub.ts'),
+        // The agent graph's 3D view draws with WebGL; the WebGPU renderer it never builds would
+        // otherwise be most of its chunk. See the stub's header.
+        'three/webgpu': resolve(__dirname, 'src/renderer/components/graph/three-webgpu-stub.ts')
       }
     },
     // excalidrawAssetsPlugin: the whiteboard node's fonts, served offline (see the plugin's doc).

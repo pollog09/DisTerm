@@ -143,7 +143,9 @@ passing along a line, and that sheet re-scopes `--nt-anim-state` so the marks fo
 rather than the covered gate (see **Agent graph view**). So while a run is live in a FOCUSED window, the
 graph holds the window at display rate for as long as that run lasts, and a graph with nothing in transit
 runs no loop. The idle gate still pauses it. **This cost has not been measured**; none of the numbers in
-this section describe it.
+this section describe it. Its 3D view draws with a WebGL frame loop that CSS cannot reach, so it gates
+itself on the same `data-nt-window` signal and runs only while something on it can change
+(`graph3dLoopShouldRun`, see **Agent graph view**); that cost has not been measured either.
 
 **The viewport is never promoted — not even while the camera moves.** A `will-change: transform`
 on `.react-flow__viewport` during pan/zoom was tried (00c9c5fc, measured 41–48% → 30–36% CPU on

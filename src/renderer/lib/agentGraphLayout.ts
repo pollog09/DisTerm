@@ -132,6 +132,10 @@ export function routeLength(points: readonly GraphPoint[]): number {
 
 /** Marks per line. Fixed, so a long loop costs what a short step does. */
 export const EDGE_CHEVRONS = 3
+
+/** At most this many dots (2D) or particles (3D) on one line at once: a burst of calls is a few dots,
+ *  not a queue. */
+export const MAX_FLOW_DOTS = 3
 const CHEVRON_SPEED_PX_S = 60
 const CHEVRON_MIN_S = 1.5
 

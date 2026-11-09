@@ -15,6 +15,13 @@ zip, `--publish never`). `release.yml` (mac + Linux) is `workflow_dispatch` only
 against a version tag. It attaches the packages to a GitHub Release that stays a prerelease, and
 publishes no feed. Windows has its own tag-triggered workflow (**Releasing** below).
 
+**`THIRD-PARTY-NOTICES.md` is how the installers ship licence notices.** Vite strips licence comments
+from the bundles, so no other file carries them, and some licences (the BSD-3-Clause ngraph packages
+under the 3D graph) ask for the notice in the binary. The file is a top-level `build.extraResources`
+entry, so it lands in `resources/` on mac, Windows and Linux: electron-builder 26 concatenates the
+top-level list with each platform's own. `src/main/package-scripts.test.ts` pins both. A new
+dependency that ends up in the renderer bundle or the installer needs its licence added to that file.
+
 **Releasing.** `npm run release [-- patch|minor|major]` (patch by default; `scripts/release.mjs`) bumps
 `package.json` and the lockfile with `npm version`, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z`
 and pushes `main` and the tag in one `git push --atomic`. When that push fails it deletes its own
