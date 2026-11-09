@@ -315,14 +315,40 @@ describe('remoteAtomicWrite', { timeout: REAL_SHELL_TIMEOUT_MS }, () => {
 
 // BSD/macOS chmod does not permute: its getopt stops at the MODE operand, so in `chmod 600 -- f`
 // the `--` is a FILE operand ("chmod: --: No such file or directory", exit 1) and the publish never
-// happens. GNU chmod with POSIXLY_CORRECT parses the same way, which is how CI can stand in for a
-// macOS host. `chmod <mode> -- <temp>` shipped from v0.3.3 for the hook endpoint and node tokens.
+// happens. `chmod <mode> -- <temp>` shipped from v0.3.3 for the hook endpoint and node tokens.
+//
+// The stand-in parses arguments the BSD way itself, then hands each file to the host's chmod behind
+// `--`. It used to be GNU chmod under POSIXLY_CORRECT, but Ubuntu 26.04's chmod is uutils, which
+// ignores POSIXLY_CORRECT and permutes anyway: the control case below caught it.
+const BSD_CHMOD = (real: string): string => `#!/bin/sh
+opts=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --) shift; break ;;
+    -?*) opts="$opts $1"; shift ;;
+    *) break ;;
+  esac
+done
+mode=$1
+shift
+status=0
+for f in "$@"; do
+  if [ -e "$f" ] || [ -L "$f" ]; then
+    '${real}' $opts -- "$mode" "$f" || status=$?
+  else
+    echo "chmod: $f: No such file or directory" >&2
+    status=1
+  fi
+done
+exit $status
+`
+
 describe.skipIf(!SHELL || process.platform === 'win32')('publishing under a non-permuting chmod (BSD/macOS)', () => {
   function bsdChmodPath(): string {
     const bin = mkdtempSync(path.join(os.tmpdir(), 'nt-bsd-chmod-'))
     roots.push(bin)
     const real = execFileSync(SHELL!, ['-c', 'command -v chmod'], { encoding: 'utf8' }).trim()
-    writeFileSync(path.join(bin, 'chmod'), `#!/bin/sh\nPOSIXLY_CORRECT=1 exec '${real}' "$@"\n`)
+    writeFileSync(path.join(bin, 'chmod'), BSD_CHMOD(real))
     chmodSync(path.join(bin, 'chmod'), 0o755)
     return `${bin}:${process.env.PATH ?? '/usr/bin:/bin'}`
   }
