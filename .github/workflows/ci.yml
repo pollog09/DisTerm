@@ -25,19 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: TEMP diagnose tmux pane_current_path
-        run: |
-          set +e
-          head -2 /etc/os-release; which -a tmux; tmux -V; ls -l "$(command -v tmux)"; id
-          echo "TMUX=[$TMUX] TMUX_TMPDIR=[$TMUX_TMPDIR] cwd=$(pwd)"
-          T=$(mktemp -d); export TMUX_TMPDIR=$T; mkdir "$T/proj"
-          tmux -L s -f /dev/null new-session -d -s v -c "$T/proj" "sleep 60"; sleep 0.5
-          P=$(tmux -L s display-message -p -t "=v:" "#{pane_pid}")
-          S=$(tmux -L s display-message -p "#{pid}")
-          echo "pane_current_path=[$(tmux -L s display-message -p -t "=v:" "#{pane_current_path}")] want $T/proj"
-          echo "pane_pid=$P cwd=[$(readlink /proc/"$P"/cwd)]  server_pid=$S cwd=[$(readlink /proc/"$S"/cwd)]"
-          ps -o pid,pgid,sid,tpgid,tty,comm -p "$P","$S"
-          tmux -L s kill-server
 
       - uses: actions/setup-node@v7
         with:
