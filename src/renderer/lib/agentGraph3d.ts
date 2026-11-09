@@ -9,6 +9,7 @@
  * on structure, not content"), and keeps each surviving node object when it is not, so only what is
  * new has to find a place.
  */
+import { forceX, forceY, forceZ, type Force } from 'd3-force-3d'
 import { AGENT_CONFIG, FALLBACK_AGENT_COLOR, type BuiltinAgentId } from '@shared/agents/config'
 import { agentGraphStructureKey, edgeInTransit, type AgentGraphModel, type GraphEdge, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from './agentGraphModel'
 import { graphEdgeColor, graphEdgeDashed, MCP_LINE, SKILL_LINE } from './agentGraphEdgeText'
@@ -56,10 +57,23 @@ export function toGraph3dData(model: Pick<AgentGraphModel, 'nodes' | 'edges'>, p
   return { key, nodes, links }
 }
 
-export type Graph3dShape = 'sphere' | 'icosahedron' | 'dodecahedron' | 'octahedron' | 'box' | 'tetrahedron'
+/** What a planet's surface is painted as. Each kind of node is its own kind of world, so the picture
+ *  still tells a session from a stage from a note once every node is round. */
+export type Graph3dSurface = 'gas' | 'rock' | 'ice' | 'asteroid'
+
+/** A node as a planet: what it is made of, and what it wears around it. */
+export interface Graph3dPlanet {
+  surface: Graph3dSurface
+  /** A flat ring around its equator. */
+  ring: boolean
+  /** A thin haze past its edge. */
+  atmosphere: boolean
+  /** From the node's id, so the same node is always painted, tilted and turned the same way. */
+  seed: number
+}
 
 export interface Graph3dNodeLook {
-  shape: Graph3dShape
+  planet: Graph3dPlanet
   /** World units. */
   radius: number
   /** A CSS colour: an agent's brand hex, or a role token to resolve against the theme. */
@@ -69,17 +83,33 @@ export interface Graph3dNodeLook {
   /** A box the 2D view draws faded. */
   faded?: boolean
   label: string
+  /** Which name wins when two would cover each other on screen: lower first. */
+  labelRank: number
 }
 
-const NODE_SHAPE: Readonly<Record<GraphNodeKind, { shape: Graph3dShape; radius: number }>> = {
-  session: { shape: 'sphere', radius: 7 },
-  harness: { shape: 'icosahedron', radius: 8 },
-  stage: { shape: 'dodecahedron', radius: 5 },
-  subagent: { shape: 'dodecahedron', radius: 5 },
-  skill: { shape: 'octahedron', radius: 4.5 },
-  mcp: { shape: 'box', radius: 4 },
-  note: { shape: 'tetrahedron', radius: 4 },
-  ghost: { shape: 'sphere', radius: 3.5 }
+/** Sessions are the gas giants, the Harness the ringed hub, stages and subagents rocky worlds, skills and
+ *  MCP servers icy moons (a server with a ring), notes asteroids. */
+const NODE_BODY: Readonly<Record<GraphNodeKind, Omit<Graph3dPlanet, 'seed'> & { radius: number }>> = {
+  session: { surface: 'gas', ring: false, atmosphere: true, radius: 7 },
+  harness: { surface: 'gas', ring: true, atmosphere: false, radius: 6 },
+  stage: { surface: 'rock', ring: false, atmosphere: false, radius: 5 },
+  subagent: { surface: 'rock', ring: false, atmosphere: false, radius: 5 },
+  skill: { surface: 'ice', ring: false, atmosphere: false, radius: 4.5 },
+  mcp: { surface: 'ice', ring: true, atmosphere: false, radius: 4 },
+  note: { surface: 'asteroid', ring: false, atmosphere: false, radius: 4 },
+  ghost: { surface: 'rock', ring: false, atmosphere: false, radius: 3.5 }
+}
+
+/** FNV-1a over the id: a stable 32-bit number per node. */
+export function graph3dSeed(id: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
+/** How a planet sits when nothing turns it: an axial tilt and the face it shows, both from its seed. */
+export function graph3dPlanetPose(seed: number): { tilt: number; turn: number } {
+  return { tilt: (((seed >>> 8) % 1000) / 1000 - 0.5) * 0.8, turn: ((seed % 1000) / 1000) * Math.PI * 2 }
 }
 
 const NEUTRAL = 'rgba(var(--tint-rgb), 0.45)'
@@ -102,19 +132,92 @@ function nodeColor(node: GraphNode): string {
   }
 }
 
-/** How a node looks: its shape by kind, a session's colour by agent, and the glow of its status. A run
+/** How a node looks: its planet by kind, a session's colour by agent, and the glow of its status. A run
  *  in progress glows as working, as its box's border does in 2D. */
 export function graph3dNodeLook(node: GraphNode): Graph3dNodeLook {
-  const { shape, radius } = NODE_SHAPE[node.kind]
+  const { radius, ...body } = NODE_BODY[node.kind]
   const glow = sessionGlow(node) ?? (node.activity === 'running' ? 'working' : undefined)
   return {
-    shape,
+    planet: { ...body, seed: graph3dSeed(node.id) },
     radius,
     color: nodeColor(node),
     ...(glow ? { glow, glowColor: GLOW_COLOR[glow] } : {}),
     ...(node.kind === 'ghost' ? { faded: true } : {}),
-    label: node.runs ? `${node.title} ×${node.runs}` : node.title
+    label: node.runs ? `${node.title} ×${node.runs}` : node.title,
+    labelRank: LABEL_RANK[node.kind]
   }
+}
+
+/** The sessions are what the graph is about, so their names are the last to give way. */
+const LABEL_RANK: Readonly<Record<GraphNodeKind, number>> = {
+  session: 0,
+  harness: 1,
+  stage: 2,
+  subagent: 2,
+  skill: 3,
+  mcp: 3,
+  note: 4,
+  ghost: 5
+}
+
+/**
+ * The current step: where work is going on right now, drawn as the system's sun. Of the nodes with
+ * something running (a working session, a running box, a live subagent run), the one with the newest
+ * event; a tie goes to the more important kind. Nothing running is no sun: the view never claims a step
+ * that is not happening.
+ */
+export function graph3dCurrentStep(nodes: readonly GraphNode[]): string | null {
+  let best: GraphNode | null = null
+  for (const n of nodes) {
+    const running = n.activity === 'running' || (n.kind === 'session' && n.state === 'working') || (n.live?.length ?? 0) > 0
+    if (!running) continue
+    const ts = n.lastEventTs ?? -Infinity
+    const bestTs = best?.lastEventTs ?? -Infinity
+    if (!best || ts > bestTs || (ts === bestTs && LABEL_RANK[n.kind] < LABEL_RANK[best.kind])) best = n
+  }
+  return best?.id ?? null
+}
+
+/** A name's place on screen, in CSS pixels from the view's top left. */
+export interface Graph3dLabelBox {
+  id: string
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Distance from the camera, for ties within a rank: the nearer name wins. */
+  depth: number
+  rank: number
+}
+
+/** Space kept between two names, in CSS pixels. */
+export const LABEL_GAP_PX = 3
+
+/**
+ * The names to draw: by rank, then nearest first, each one that does not cover a name already kept. A
+ * name that gives way is not lost: hovering its node shows it in the tooltip, and turning the view
+ * brings it back. Labels sit at a fixed size on screen, so without this a turned graph stacks them.
+ */
+export function graph3dShownLabels(boxes: readonly Graph3dLabelBox[]): Set<string> {
+  const kept: Graph3dLabelBox[] = []
+  const covers = (a: Graph3dLabelBox, b: Graph3dLabelBox): boolean =>
+    a.left < b.left + b.width + LABEL_GAP_PX &&
+    b.left < a.left + a.width + LABEL_GAP_PX &&
+    a.top < b.top + b.height + LABEL_GAP_PX &&
+    b.top < a.top + a.height + LABEL_GAP_PX
+  for (const box of [...boxes].sort((a, b) => a.rank - b.rank || a.depth - b.depth)) {
+    if (!kept.some((k) => covers(k, box))) kept.push(box)
+  }
+  return new Set(kept.map((k) => k.id))
+}
+
+/**
+ * The world scale that draws a sprite `px` CSS pixels tall at any distance. With `sizeAttenuation` off,
+ * three multiplies a sprite's scale by its distance, so it covers `scale * cot(fov / 2)` of the half
+ * height of the view whatever its depth.
+ */
+export function graph3dPixelScale(px: number, viewHeight: number, fovDegrees: number): number {
+  return (2 * px * Math.tan((fovDegrees * Math.PI) / 360)) / Math.max(1, viewHeight)
 }
 
 export interface Graph3dLinkLook {
@@ -124,8 +227,8 @@ export interface Graph3dLinkLook {
   width: number
   /** A dashed 2D line, drawn fainter here: a tube has no dash. */
   dashed: boolean
-  /** Every line but the Harness one carries an arrow, as in 2D. */
-  arrow: boolean
+  /** World units. Every line but the Harness one carries an arrow, as in 2D; that one's is 0. */
+  arrowLength: number
   /** The dot runs from target to source (`GraphEdge.flow`). */
   reverse: boolean
 }
@@ -133,9 +236,9 @@ export interface Graph3dLinkLook {
 export function graph3dLinkLook(edge: GraphEdge): Graph3dLinkLook {
   return {
     color: graphEdgeColor(edge),
-    width: edge.loop ? 1.1 : 0.45,
+    width: edge.loop ? 1.6 : 0.7,
     dashed: graphEdgeDashed(edge),
-    arrow: edge.kind !== 'harness',
+    arrowLength: edge.kind !== 'harness' ? 4.5 : 0,
     reverse: edge.flow === 'reverse'
   }
 }
@@ -198,6 +301,13 @@ export function rgbaString(c: Rgba): string {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`
 }
 
+/** A translucent colour laid over an opaque one. A solid mesh has no alpha to spend, so a token like the
+ *  45% tint is drawn as what it would look like on the panel, not as the full tint. */
+export function compositeOver(c: Rgba, under: Rgba): Rgba {
+  const mix = (top: number, bottom: number): number => clampByte(top * c.a + bottom * (1 - c.a))
+  return { r: mix(c.r, under.r), g: mix(c.g, under.g), b: mix(c.b, under.b), a: 1 }
+}
+
 export function rgbHex(c: Rgba): string {
   return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`
 }
@@ -257,6 +367,8 @@ export interface Graph3dLoopInput {
   pointerInside: boolean
   /** Something is running (`graph3dHasLiveMotion`), and Reduce Motion is off. */
   liveMotion: boolean
+  /** A fly key is held down. */
+  flying: boolean
   /** A camera move or a redraw was asked for until then. */
   busyUntil: number
   now: number
@@ -269,11 +381,98 @@ export interface Graph3dLoopInput {
  */
 export function graph3dLoopShouldRun(s: Graph3dLoopInput): boolean {
   if (!s.shown || !s.watched) return false
-  return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.busyUntil > s.now
+  return s.engineRunning || s.particlesInFlight || s.liveMotion || s.pointerInside || s.flying || s.busyUntil > s.now
+}
+
+/** How hard every pair of nodes pushes apart (`forceManyBody`). */
+export const GRAPH3D_CHARGE = -140
+
+/**
+ * How hard each node is pulled toward the middle, on each axis (`forceX`/`forceY`/`forceZ`). The
+ * library's own `center` force only moves the whole graph's centroid, so two parts with no line between
+ * them (a ship template beside the sessions) pushed each other apart with nothing pulling back: eight
+ * line lengths apart, and fitting both left every node a speck. This keeps them about two lines apart
+ * and leaves a line's own length alone.
+ */
+export const GRAPH3D_GRAVITY = 0.1
+
+/** The pull toward the screen's plane is this many times stronger. The first view looks down the depth
+ *  axis, and with an even pull nodes sat behind each other there. At 2.5 the graph is about a sixth as
+ *  deep as it is wide: the first view shows nodes side by side, and turning it still shows depth. */
+export const GRAPH3D_DEPTH_FLATTEN = 2.5
+
+/** The forces the view adds to the library's own `link`, `charge` and `center`, by name. */
+export function graph3dLayoutForces(): Record<string, Force> {
+  return {
+    x: forceX(0).strength(GRAPH3D_GRAVITY),
+    y: forceY(0).strength(GRAPH3D_GRAVITY),
+    z: forceZ(0).strength(GRAPH3D_GRAVITY * GRAPH3D_DEPTH_FLATTEN)
+  }
 }
 
 /** Layout settings. Under reduced motion the layout is computed before the first frame and never
  *  animates; otherwise it settles on screen and stops. */
 export function graph3dEngineSettings(reducedMotion: boolean): { warmupTicks: number; cooldownTicks: number; cooldownTime: number } {
   return reducedMotion ? { warmupTicks: 300, cooldownTicks: 0, cooldownTime: 0 } : { warmupTicks: 0, cooldownTicks: 300, cooldownTime: 4000 }
+}
+
+/** A way to fly the camera. */
+export type Graph3dFlyMove = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down'
+
+/** By the key's place on the keyboard (`KeyboardEvent.code`), so W A S D sit under the same fingers
+ *  on any layout. The arrows do the same as W A S D. */
+const FLY_KEYS: Readonly<Record<string, Graph3dFlyMove>> = {
+  KeyW: 'forward',
+  ArrowUp: 'forward',
+  KeyS: 'back',
+  ArrowDown: 'back',
+  KeyA: 'left',
+  ArrowLeft: 'left',
+  KeyD: 'right',
+  ArrowRight: 'right',
+  Space: 'up',
+  ShiftLeft: 'down',
+  ShiftRight: 'down'
+}
+
+/** The move a key makes, or null. A key held with ⌘, Ctrl or Alt is a shortcut, never a move, so the
+ *  app's own chords (⌘W among them) still reach it while the view has focus. */
+export function graph3dFlyMove(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): Graph3dFlyMove | null {
+  if (e.metaKey || e.ctrlKey || e.altKey) return null
+  return FLY_KEYS[e.code] ?? null
+}
+
+export interface Vec3 {
+  x: number
+  y: number
+  z: number
+}
+
+/** Fly speed, as a share per second of the distance to what the camera turns round, so a close look
+ *  moves gently and a far one crosses the graph in a few seconds. Never slower than the floor. */
+export const FLY_RATE = 0.35
+export const FLY_MIN_SPEED = 25
+/** A frame longer than this (a hitch, or the first after a pause) moves no further than this would. */
+const FLY_MAX_STEP_S = 0.05
+
+/**
+ * How far the camera, and the point it turns round, move this frame. Forward is the way the camera
+ * looks, left and right stay level, up and down are the world's. Both move by the same amount, so
+ * dragging still turns the view round what is in front of it.
+ */
+export function graph3dFlyStep(camera: Vec3, target: Vec3, held: ReadonlySet<Graph3dFlyMove>, seconds: number): Vec3 {
+  const toTarget = { x: target.x - camera.x, y: target.y - camera.y, z: target.z - camera.z }
+  const distance = Math.hypot(toTarget.x, toTarget.y, toTarget.z)
+  const f = distance > 0 ? { x: toTarget.x / distance, y: toTarget.y / distance, z: toTarget.z / distance } : { x: 0, y: 0, z: -1 }
+  const level = Math.hypot(f.z, f.x)
+  const r = level > 1e-6 ? { x: -f.z / level, y: 0, z: f.x / level } : { x: 1, y: 0, z: 0 }
+  const axis = (a: Graph3dFlyMove, b: Graph3dFlyMove): number => (held.has(a) ? 1 : 0) - (held.has(b) ? 1 : 0)
+  const ahead = axis('forward', 'back')
+  const side = axis('right', 'left')
+  const rise = axis('up', 'down')
+  const dir = { x: f.x * ahead + r.x * side, y: f.y * ahead + rise, z: f.z * ahead + r.z * side }
+  const length = Math.hypot(dir.x, dir.y, dir.z)
+  if (length === 0) return { x: 0, y: 0, z: 0 }
+  const step = (Math.max(FLY_MIN_SPEED, distance * FLY_RATE) * Math.min(Math.max(0, seconds), FLY_MAX_STEP_S)) / length
+  return { x: dir.x * step, y: dir.y * step, z: dir.z * step }
 }

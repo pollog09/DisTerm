@@ -219,6 +219,78 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
   session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would
   replay an event already shown. It costs one number per line id until the view unmounts.
+- **The 3D layout pulls every node toward the middle, harder in depth** (`graph3dLayoutForces`). The
+  library's own forces are `link`, `charge` and `center`, and `center` only moves the whole graph's
+  centroid. Two parts with no line between them (a ship template beside the sessions, a note on its own)
+  pushed each other apart with nothing pulling back: 7.6 line lengths apart in the reported picture,
+  and fitting both left every node a speck. `forceX`/`forceY` at `GRAPH3D_GRAVITY` (0.1) keep them
+  about two line lengths apart and leave a line's own length alone. `forceZ` is `GRAPH3D_DEPTH_FLATTEN`
+  (2.5) times stronger, because the first view looks down z: with an even pull, nodes sat behind each
+  other there (closest pair at 0.05 of the room a halo and a name need, over eight start orders). At
+  2.5 the closest pair keeps 0.84 of it and the graph is about a sixth as deep as it is wide, so turning
+  it still shows depth; at 3 it is flat. A collision force was tried and dropped: in 3D the nodes were
+  already clear of each other, and what overlapped was on screen, which only the depth pull fixes.
+  `agentGraph3d.test.ts` runs the real simulation on the reported picture and pins all three. A
+  translucent node colour (the 45% tint of a stage or the Harness) is drawn as it would look over the
+  panel (`compositeOver`), because a solid mesh has no alpha to spend: the full tint was white in dark
+  and black in light, louder than the sessions. The Harness is drawn smaller than a session (6, not
+  8): it is a hub, and the sessions are what the graph is about.
+- **3D nodes are planets, and each kind is its own kind of world** (`graph3dNodeLook().planet`,
+  `NODE_BODY`). Once every node is round, the surface carries the kind the polyhedra used to: sessions
+  are banded gas giants in their agent's colour with a thin haze, the Harness a ringed grey giant,
+  stages and subagents cratered rock, skills icy moons, MCP servers icy moons with a ring, notes lumpy
+  asteroids, ghosts faded rock. The map is painted once per node on a 256 by 128 canvas
+  (`components/graph/planetSurface.ts`), seeded by the node's id (`graph3dSeed`), so a node is always
+  the same world, with the same tilt and face at rest (`graph3dPlanetPose`). It is painted again only
+  when its colour changes (a theme or accent change), never for a status change, and given back on
+  unmount. Where there is no 2D canvas the world is its plain colour. A running world turns on its own
+  tilted axis, under the same rule as before. Haze and rings are children of the core, so they tilt
+  with it and the group keeps its order, and like the glow shells they never take the pointer. The
+  library's light is mostly ambient, which draws a sphere as a flat disc, so the view sets its own:
+  ambient 0.55 and one sun (3.6) up and to the left of the first view. A darker night side turned into
+  black discs on the light theme's cream.
+- **The current step is the 3D view's sun** (`graph3dCurrentStep`). Of the nodes with something running
+  (a working session, a running box, a live subagent run), the one with the newest event is drawn as a
+  star: 1.7 times its size (drawn only; the layout keeps its size), lit from within, in a corona of
+  rays in its own colour, with "CURRENT STEP" under its name, which never gives way (`labelRank` -1).
+  Its glow shells hide, because the corona is its glow. A tie goes to the more important kind. With
+  nothing running there is no sun: the view never claims a step that is not happening. Every world also
+  wears a soft glow in its colour, and three still nebula clouds sit far behind the graph. **Light lives
+  outside the nodes** (one `lightLayer` in the scene) and follows them from the core's
+  `onBeforeRender`: the library fits the camera to every geometry under a node
+  (`getGraphBbox`), and a corona fifteen radii wide inside one pushed the whole graph into the
+  distance. A node that leaves, or is rebuilt as another kind, takes its glow with it (`dropGlow`).
+  Light adds up on a dark sky and vanishes on a pale one, so on a light theme glow and corona are laid
+  over (normal blending) instead of added, and the nebula is hidden. Corona, glow and nebula are painted
+  once, in white, and tinted by the sprite that wears them. They take no frames of their own and never
+  take the pointer.
+- **The 3D view can be flown** (`graph3dFlyMove`, `graph3dFlyStep`). Clicking the view focuses it;
+  then W A S D (or the arrows) fly forward, back and sideways, Space and Shift rise and sink in the
+  world's up, drag still turns and scroll still zooms. A step moves the camera AND the orbit target by
+  the same amount, so dragging afterwards turns round what is in front, not round where the graph
+  was. Speed is `FLY_RATE` (35%) of the distance to the target per second, never under
+  `FLY_MIN_SPEED`: at 90% one tap of D crossed the whole system. A long frame moves no further than
+  50 ms would, so a hitch never jumps. Two keys at once are no faster than one. Frames run while a key
+  is held (`flying` in `graph3dLoopShouldRun`) and stop after, under the same window gate as the rest.
+  Blur lets go of every key, because a key released elsewhere never sends its keyup here. Which keys,
+  and why they are not registry commands: `keybindings.md`. A card of the keys sits over the lower left
+  corner, shown until someone hides it (`nodeterm.agentGraphFlyHelp`, a display preference), with a
+  **Keys** button to bring it back. Its last line always says where the keys go ("Click the graph, then
+  fly." or "Keys go to the graph."): a card that grew a line when focus left moved its own close button
+  out from under the pointer between press and release. Mobile N/A: no keyboard.
+- **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
+  (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
+  (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of
+  view, and resized with the view), and stands on its node's top. It is drawn over lines and nodes
+  (`depthTest` off): world-sized names grew near the camera, covered their neighbours once the view was
+  turned, and had lines and arrowheads running through them. Each frame the names are placed on screen
+  and kept by rank (session, then Harness, then stages and subagents, skills and MCP, notes, ghosts:
+  `labelRank`), then nearest first; one that would come within `LABEL_GAP_PX` of a name already kept is
+  hidden. A session's name is bold (700) and every other name semibold (600), all in full ink: lighter names, or ink at 80%, washed out on the light theme's pills once scaled down to 22 px. A hidden name
+  also stops taking the pointer (its `raycast` is `noPick` until it shows again), because the raycaster
+  ignores `visible`. Hovering its node still shows the name in the tooltip. The pass runs from the star
+  field's `onBeforeRender`, which is never culled, so it adds no frames and runs only on frames the gate
+  allows; a change it makes shows on the next frame.
 - **The 3D frame loop runs only while something can change and somebody can see it**
   (`graph3dLoopShouldRun`). It runs while the layout moves, a particle is in flight, something is live
   (`graph3dHasLiveMotion`, and never under Reduce Motion), the pointer is over the view, or a camera
@@ -275,7 +347,7 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   (`three-webgpu-stub.ts`, in `electron.vite.config.ts`). three-render-objects imports the WebGPU renderer
   but never builds it here, and the stub halves the chunk (3.24 MB to 1.63 MB). `three` ships no types and
   `@types/three` is not a dependency, so `src/renderer/three-subset.d.ts` declares only what the view
-  calls. A new three API must be added there first. `package.json` overrides 3d-force-graph's
+  calls. A new three API must be added there first. `d3-force-3d` (the library's own layout engine, already in the chunk) is an exact-pinned devDependency too, so the view can add forces to it, and `src/renderer/d3-force-3d-subset.d.ts` declares only what the view and its tests call. `package.json` overrides 3d-force-graph's
   `float-tooltip` to 1.7.5, because 1.8.0 was days old and pulled a days-old preact. **Not verified:**
   real WebGL rendering (jsdom has none; the component tests drive a stand-in library), its frame cost, the
   Server Edition in a browser, Liquid Glass. Mobile N/A.

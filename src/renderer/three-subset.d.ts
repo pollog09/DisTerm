@@ -22,6 +22,14 @@ declare module 'three' {
     y: number
     z: number
     set(x: number, y: number, z: number): this
+    /** To normalised device coordinates: x and y in -1..1 on screen, z above 1 behind the camera. */
+    project(camera: Camera): this
+  }
+
+  export interface Vector2Like {
+    x: number
+    y: number
+    set(x: number, y: number): this
   }
 
   export interface Intersection {
@@ -45,12 +53,15 @@ declare module 'three' {
     /** Called each frame this object is drawn: the agent graph's per-frame motion hangs off it. */
     onBeforeRender: () => void
     frustumCulled: boolean
+    getWorldPosition(target: Vector3): Vector3
   }
   export class Group extends Object3D {}
   export class Scene extends Object3D {}
   export class Camera extends Object3D {}
   export class PerspectiveCamera extends Camera {
     constructor(fov?: number, aspect?: number, near?: number, far?: number)
+    /** Vertical field of view, in degrees. */
+    fov: number
   }
 
   export class Raycaster {
@@ -62,9 +73,17 @@ declare module 'three' {
   export class BufferGeometry {
     dispose(): void
     setAttribute(name: string, attribute: BufferAttribute): this
+    getAttribute(name: string): BufferAttribute
+    computeVertexNormals(): void
   }
   export class BufferAttribute {
     constructor(array: Float32Array, itemSize: number)
+    array: Float32Array
+    count: number
+    needsUpdate: boolean
+  }
+  export class RingGeometry extends BufferGeometry {
+    constructor(innerRadius?: number, outerRadius?: number, thetaSegments?: number)
   }
   export class SphereGeometry extends BufferGeometry {
     constructor(radius?: number, widthSegments?: number, heightSegments?: number)
@@ -101,6 +120,7 @@ declare module 'three' {
     sizeAttenuation?: boolean
   }
   export class Material {
+    blending: number
     opacity: number
     transparent: boolean
     depthWrite: boolean
@@ -109,6 +129,7 @@ declare module 'three' {
   }
   export class MeshLambertMaterial extends Material {
     constructor(parameters?: MaterialParameters)
+    map: Texture | null
     color: Color
     emissive: Color
     emissiveIntensity: number
@@ -124,6 +145,7 @@ declare module 'three' {
   export class SpriteMaterial extends Material {
     constructor(parameters?: MaterialParameters)
     map: Texture | null
+    color: Color
   }
 
   export class Mesh<G extends BufferGeometry = BufferGeometry, M extends Material = Material> extends Object3D {
@@ -139,6 +161,8 @@ declare module 'three' {
   export class Sprite extends Object3D {
     constructor(material?: SpriteMaterial)
     material: SpriteMaterial
+    /** The point of the sprite at its position, 0..1 from the bottom left. */
+    center: Vector2Like
   }
 
   export class Texture {
@@ -162,6 +186,19 @@ declare module 'three' {
     failIfMajorPerformanceCaveat?: boolean
   }
 
+  export class Light extends Object3D {
+    intensity: number
+  }
+  export class AmbientLight extends Light {
+    constructor(color?: string | number, intensity?: number)
+  }
+  export class DirectionalLight extends Light {
+    constructor(color?: string | number, intensity?: number)
+  }
+
   export const BackSide: number
+  export const DoubleSide: number
+  export const NormalBlending: number
+  export const AdditiveBlending: number
   export const SRGBColorSpace: string
 }
