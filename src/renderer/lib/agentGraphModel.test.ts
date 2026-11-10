@@ -469,6 +469,28 @@ describe('skills and MCP servers that were used', () => {
     expect(m.nodes.find((n) => n.id === 'session:a')!.lastEventTs).toBe(77)
   })
 
+  it('a skill or server line moves for a moment after each call, the way the call went, then rests', () => {
+    const m = build({
+      sessions: [session('a')],
+      snapshot: snap([access('a', 'skill', 'grill', 2, 1_000), access('a', 'mcp', 'demo', 1, 900, { tool: 'echo_it' })])
+    })
+    const skill = edge(m.edges, 'uses:session:a:skill:grill')!
+    const mcp = edge(m.edges, 'uses:session:a:mcp:demo')!
+    expect([skill.movedAt, mcp.movedAt]).toEqual([1_000, 900])
+    expect([skill.source, skill.target]).toEqual(['session:a', 'skill:grill'])
+    expect(edgeInTransit(skill, 1_000 + TRANSIT_WINDOW_MS - 1)).toBe(true)
+    expect(edgeInTransit(skill, 1_000 + TRANSIT_WINDOW_MS + 1)).toBe(false)
+  })
+
+  it('a typed /name moves its line as a call does', () => {
+    const m = build({
+      sessions: [session('a')],
+      ship: ship({ skills: ['grill'] }),
+      snapshot: snap([access('a', 'skill', 'grill', 1, 500, { typed: true })])
+    })
+    expect(edge(m.edges, 'uses:session:a:skill:grill')!.movedAt).toBe(500)
+  })
+
   it('what is only installed is not a box: nothing drawn without a call', () => {
     const m = build({ sessions: [session('a')], ship: ship({ skills: ['grill', 'tdd'], mcpServers: [{ name: 'demo', scope: 'global', transport: 'stdio' }], mcpRead: true }) })
     expect(m.nodes.some((n) => n.kind === 'skill' || n.kind === 'mcp')).toBe(false)
