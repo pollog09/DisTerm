@@ -100,6 +100,8 @@ export interface GraphNode {
   missingAgent?: boolean
   color?: ShipAgentColor
   description?: string
+  /** The `model:` its agent file declares, as written there. Changed from the Ship process panel. */
+  model?: string
   /** Newest event that touched this node, for the arrival pulse. */
   lastEventTs?: number
   /** `harness` only. A figure the machine's config could not state is absent, never 0. */
@@ -649,6 +651,7 @@ function addPipeline(
       ...(agent ? {} : { missingAgent: true }),
       ...(agent?.color ? { color: agent.color } : {}),
       ...(agent?.description ? { description: agent.description } : {}),
+      ...(agent?.model ? { model: agent.model } : {}),
       ...(stageRuns.length ? { lastEventTs: newestTs(stageRuns) } : {})
     })
   }
@@ -732,6 +735,7 @@ function addObserved(
       runs: typeRuns.length,
       ...(agent?.color ? { color: agent.color } : {}),
       ...(agent?.description ? { description: agent.description } : {}),
+      ...(agent?.model ? { model: agent.model } : {}),
       lastEventTs: newestTs(typeRuns)
     })
   }

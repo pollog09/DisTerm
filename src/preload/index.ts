@@ -917,6 +917,7 @@ const api: NodeTerminalApi = {
     readShipConfig: (projectId) => ipcRenderer.invoke(IPC.shipConfigRead, projectId),
     createShipGraph: (projectId, scope) => ipcRenderer.invoke(IPC.shipGraphCreate, projectId, scope),
     createShipTemplate: (projectId) => ipcRenderer.invoke(IPC.shipTemplateCreate, projectId),
+    setAgentModel: (projectId, scope, agent, model) => ipcRenderer.invoke(IPC.shipAgentSetModel, projectId, scope, agent, model),
     onShipConfigChanged: (projectId, cb) => {
       const ch = IPC.shipConfigChanged(projectId)
       const handler = (): void => cb()

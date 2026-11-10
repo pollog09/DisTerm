@@ -84,6 +84,11 @@ function cleanName(raw: string): string | null {
   return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(name) ? name : null
 }
 
+/** A bare `*.md` file name, the only kind the model picker will resolve inside an `agents` folder. */
+export function isAgentLeaf(fileName: string): boolean {
+  return /^[^/\\\0\n]+\.md$/i.test(fileName) && fileName !== '..' && !fileName.startsWith('.')
+}
+
 /** One agent file, as a card. Null when neither its frontmatter nor its filename gives a usable name. */
 export function parseAgentFile(fileName: string, text: string, scope: ShipScope): ShipAgent | null {
   const { fields } = parseFrontmatter(text)
@@ -101,6 +106,7 @@ export function parseAgentFile(fileName: string, text: string, scope: ShipScope)
   return {
     name,
     scope,
+    ...(isAgentLeaf(fileName) ? { fileName } : {}),
     ...(description ? { description } : {}),
     ...(model ? { model } : {}),
     ...(isColor(color) ? { color } : {}),

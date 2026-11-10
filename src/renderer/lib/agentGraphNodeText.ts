@@ -18,7 +18,7 @@ export function graphAgentLabel(agentId: string): string {
 
 export interface GraphNodeBadge {
   text: string
-  role?: 'state' | 'loop' | 'warning'
+  role?: 'state' | 'loop' | 'warning' | 'model'
   title?: string
   machine?: GraphMachine['kind']
   outcome?: NonNullable<GraphNode['outcome']>
@@ -36,6 +36,7 @@ export function graphNodeBadges(node: GraphNode, showMachine: boolean): GraphNod
     if (facts.mcpConfigured !== undefined) out.push({ text: `${facts.mcpConfigured} MCP configured` })
   }
   if (node.agentId) out.push({ text: graphAgentLabel(node.agentId) })
+  if (node.model) out.push({ text: node.model, role: 'model', title: 'The model in this agent\'s file. Change it under Ship process.' })
   if (showMachine && node.machine && node.kind !== 'harness') out.push({ text: node.machine.label, machine: node.machine.kind })
   if (node.state) out.push({ text: GRAPH_STATE_LABEL[node.state] ?? node.state, role: 'state' })
   if (node.handedOver) out.push({ text: 'handed work' })

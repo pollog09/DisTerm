@@ -511,10 +511,11 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.relayHostedPendingClosed,
   IPC.relayHostedSharedChanged,
   // A machine's Claude config (its global agents and commands) belongs to the host's user, and a
-  // viewer's graph is observation only. Create writes a file on the host.
+  // viewer's graph is observation only. Create writes a file on the host, and setting a model edits one.
   IPC.shipConfigRead,
   IPC.shipGraphCreate,
   IPC.shipTemplateCreate,
+  IPC.shipAgentSetModel,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
   // Server→client events (see the doc comment): what a non-editor receives is VIEW_EVENTS.

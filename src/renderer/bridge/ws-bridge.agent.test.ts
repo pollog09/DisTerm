@@ -52,6 +52,15 @@ describe('buildAgentApi agentGraph', () => {
   })
 })
 
+describe('buildAgentApi agentGraph.setAgentModel', () => {
+  it('is a real request on the Server Edition, carrying names only', async () => {
+    const request = vi.fn(() => Promise.resolve({ ok: true, model: 'opus' }))
+    const api = buildAgentApi({ subscribe: vi.fn(), request, cast: vi.fn() } as never)
+    await expect(api.agentGraph.setAgentModel('P', 'global', 'coder', 'opus')).resolves.toEqual({ ok: true, model: 'opus' })
+    expect(request).toHaveBeenCalledWith(IPC.shipAgentSetModel, 'P', 'global', 'coder', 'opus')
+  })
+})
+
 describe('buildAgentApi', () => {
   it('onAgentStatus / onSubagentActivity subscribe to the right channels and return an unsub', () => {
     const c = fakeClient()

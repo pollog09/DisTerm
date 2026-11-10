@@ -70,7 +70,7 @@ const PIPELINE: ShipPipeline = {
 const ship = (over: Partial<ShipConfig> = {}): ShipConfig => ({
   machine: { kind: 'local', label: '' },
   agents: [
-    { name: 'implementer', scope: 'global', color: 'blue', description: 'writes code' },
+    { name: 'implementer', scope: 'global', color: 'blue', description: 'writes code', model: 'sonnet' },
     { name: 'doc-writer', scope: 'global' },
     { name: 'change-reviewer', scope: 'global' }
   ],
@@ -284,7 +284,7 @@ describe('with a ship graph', () => {
   it('live subagents map onto stages by agent name', () => {
     const m = build({ sessions: [session('p')], ship: ship(), snapshot: snap(run(['1', 'implementer', 10, 20], ['2', 'doc-writer', 30])) })
     const stage = (id: string) => m.nodes.find((n) => n.id === `stage:p:ship-change:${id}`)!
-    expect(stage('impl')).toMatchObject({ activity: 'done', runs: 1, sessionId: 'p', color: 'blue', description: 'writes code' })
+    expect(stage('impl')).toMatchObject({ activity: 'done', runs: 1, sessionId: 'p', color: 'blue', description: 'writes code', model: 'sonnet' })
     expect(stage('docs')).toMatchObject({ activity: 'running', runs: 1 })
     expect(stage('review')).toMatchObject({ activity: 'idle', runs: 0 })
     expect(edge(m.edges, 'spawned:p:ship-change:impl')).toMatchObject({ source: 'session:p', kind: 'spawned' })

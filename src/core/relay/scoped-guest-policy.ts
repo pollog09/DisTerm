@@ -517,6 +517,7 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.shipConfigRead,
   IPC.shipGraphCreate,
   IPC.shipTemplateCreate,
+  IPC.shipAgentSetModel,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
   // A whole-workspace write from a peer would replace the host's other projects.

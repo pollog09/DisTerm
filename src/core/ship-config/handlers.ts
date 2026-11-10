@@ -7,6 +7,8 @@ import {
   SHIP_LEASE_MS,
   SHIP_NO_FOLDER_MESSAGE,
   SHIP_SHARED_CONFIG_MESSAGE,
+  isShipAgentModel,
+  type ShipAgentModelResult,
   type ShipConfigResult,
   type ShipGraphCreateResult,
   type ShipMachine,
@@ -15,8 +17,12 @@ import {
 } from '../../shared/ship-config'
 import { posixQuote, quoteRemotePath } from '../../shared/ssh'
 import type { CorePlatform } from '../platform'
+import { updateTextFile } from '../agents/hooks/settings-file'
+import { updateRemoteTextFile, type SettingsRunner } from '../agents/hooks/remote-settings-file'
+import { setFrontmatterModel } from './agent-model'
 import {
   buildShipConfig,
+  isAgentLeaf,
   REMOTE_GLOBAL_DIR,
   newShipScriptNonce,
   parseRemoteShipOutput,
@@ -30,7 +36,15 @@ export type ShipConfigRoute =
   /** `cwd` null = a canvas with no folder: this machine's global config, and no project half. */
   | { kind: 'local'; cwd: string | null }
   /** `runScript` feeds a POSIX sh script to the host (`sh -s` over the project's ControlMaster). */
-  | { kind: 'remote'; remoteCwd: string; host: string; runScript: (script: string) => Promise<{ code: number; stdout: string }> }
+  | {
+      kind: 'remote'
+      remoteCwd: string
+      host: string
+      runScript: (script: string) => Promise<{ code: number; stdout: string }>
+      /** Runs `command` on the host with `stdin`, for the guarded edit of an existing file
+       *  (`updateRemoteTextFile`). Absent = this route cannot edit, and says so. */
+      runCommand?: SettingsRunner
+    }
   | { kind: 'unsupported'; reason: string }
 
 export interface ShipConfigRouter {
@@ -96,6 +110,8 @@ export async function readShipConfig(projectId: unknown, router: ShipConfigRoute
 /** The folders a template writes into. `createShipGraph` writes only into `.claude` itself. */
 const TEMPLATE_SUBS = ['', 'agents', 'commands'] as const
 const GRAPH_SUBS = [''] as const
+/** A project agent's folders, checked before its model is set. */
+const AGENT_SUBS = ['', 'agents'] as const
 
 /** A path as the filesystem resolves it, for one that may not exist yet: the deepest part that does,
  *  resolved, plus the rest as written. A link to something missing is followed, because it says where a
@@ -252,6 +268,125 @@ export async function createShipGraph(
   } catch (err) {
     return { ok: false, reason: 'failed', message: errorText(err) }
   }
+}
+
+/**
+ * `script` as one command any login shell hands to POSIX `sh` unchanged. The ssh exec channel runs a
+ * command through the user's login shell, which may be fish or tcsh, and the guarded edit is POSIX sh
+ * (functions, `${VAR:-x}`, `case`, `trap`). Its stdin carries the file's bytes, so it cannot arrive on
+ * `sh -s` the way discovery's script does. Instead every byte goes as a `%b` octal escape inside one
+ * single-quoted word that holds no quote and no doubled backslash: fish, tcsh and every POSIX shell pass
+ * that word through as written, and `sh` decodes and runs it. Stdin goes to the script untouched.
+ */
+export function viaPosixSh(script: string): string {
+  let octal = ''
+  for (const byte of Buffer.from(script, 'utf8')) octal += `\\0${byte.toString(8).padStart(3, '0')}`
+  return `sh -c 'eval "$(printf %b "${octal}")"'`
+}
+
+/**
+ * Set one agent's `model:` line, in the file discovery read it from. The ONE ship-config write that edits
+ * a file the person already has, so it takes nothing but names from the caller: the agent is looked up in
+ * a fresh read of the machine by scope and name, and its path is built here from that scope's folder and
+ * the leaf discovery recorded. Only a model from `SHIP_AGENT_MODELS` is written.
+ *
+ * WRITTEN THROUGH THE LINK. Agents installed from a shared kit are symlinks, and the kit's file is the
+ * agent; replacing the link with a copy would quietly fork it from the kit. `updateTextFile` and
+ * `updateRemoteTextFile` resolve the link, lock, keep the mode, and refuse to publish over a file that
+ * changed since it was read. So a global agent's model changes for every project, and a kit agent's change
+ * shows up in the kit's git status: the panel says the first, and the second is the point.
+ */
+export async function setShipAgentModel(
+  projectId: unknown,
+  scope: unknown,
+  agentName: unknown,
+  model: unknown,
+  router: ShipConfigRouter
+): Promise<ShipAgentModelResult> {
+  const unsupported = (message: string): ShipAgentModelResult => ({ ok: false, reason: 'unsupported', message })
+  if (typeof projectId !== 'string' || !projectId) return unsupported('No project.')
+  if (scope !== 'project' && scope !== 'global') return unsupported('Unknown location.')
+  if (typeof agentName !== 'string' || !agentName) return unsupported('No agent.')
+  if (!isShipAgentModel(model)) return unsupported('That model is not one this view can set.')
+  let route: ShipConfigRoute
+  try {
+    route = router.route(projectId)
+  } catch (err) {
+    return unsupported(errorText(err))
+  }
+  if (route.kind === 'unsupported') return unsupported(route.reason)
+  if (route.kind === 'remote' && !route.runCommand) return unsupported('This connection cannot edit agent files.')
+  const read = await readShipConfig(projectId, router)
+  if (!read.ok) return { ok: false, reason: 'failed', message: read.reason }
+  const agent = read.config.agents.find((a) => a.name === agentName && a.scope === scope)
+  if (!agent) return { ok: false, reason: 'missing', message: `There is no ${scope} agent named ${agentName} on this machine now.` }
+  if (!agent.fileName || !isAgentLeaf(agent.fileName)) {
+    return { ok: false, reason: 'missing', message: `Could not tell which file declares ${agentName}.` }
+  }
+  if (agent.model === model) return { ok: true, model, unchanged: true }
+
+  let missing = false
+  let noFrontmatter = false
+  const update = (before: string | null): string | null => {
+    if (before === null) {
+      missing = true
+      return null
+    }
+    const next = setFrontmatterModel(before, model)
+    if (next === null) noFrontmatter = true
+    return next === before ? null : next
+  }
+  let outcome: 'written' | 'unchanged' | 'failed'
+  let shown: string
+  // A project folder can lead into the machine's own config (the home folder itself, or agents linked to
+  // the global ones), and then every global agent reads as a project agent. Setting one "for this
+  // project" would rewrite it for every project, so it is refused as the create paths refuse it.
+  if (route.kind === 'local') {
+    if (scope === 'project' && !route.cwd) return unsupported(SHIP_NO_FOLDER_MESSAGE)
+    const dir = scope === 'project' ? path.join(route.cwd!, '.claude') : localGlobalDir()
+    shown = path.join(dir, 'agents', agent.fileName)
+    if (scope === 'project') {
+      try {
+        if (await leadsIntoGlobalConfig(dir, localGlobalDir(), AGENT_SUBS)) return unsupported(SHIP_SHARED_CONFIG_MESSAGE)
+      } catch (err) {
+        return { ok: false, reason: 'failed', message: `Could not tell whether ${shown} is this machine's own Claude config: ${errorText(err)}. Nothing was written.` }
+      }
+    }
+    outcome = updateTextFile(shown, update)
+  } else {
+    const dir = scope === 'project' ? `${quoteRemotePath(route.remoteCwd)}/.claude` : `"${REMOTE_GLOBAL_DIR}"`
+    shown = `${scope === 'project' ? route.remoteCwd.replace(/\/+$/, '') + '/.claude' : '~/.claude'}/agents/${agent.fileName}`
+    if (scope === 'project') {
+      const nonce = newShipScriptNonce()
+      const check =
+        `nt_ship_model_check() {\nroot=${dir}\nglob="${REMOTE_GLOBAL_DIR}"\n` +
+        remoteSharedConfigCheck(nonce, AGENT_SUBS) +
+        `printf '\\n${nonce} clear\\n'\n}\nnt_ship_model_check\n`
+      let stdout: string
+      try {
+        stdout = (await route.runScript(check)).stdout
+      } catch (err) {
+        return { ok: false, reason: 'failed', message: `Could not check ${shown} on the host: ${errorText(err)}. Nothing was written.` }
+      }
+      const refused = remoteConfigRefusal(nonce, stdout, route.remoteCwd)
+      if (refused) return refused
+      if (!stdout.includes(`${nonce} clear`)) {
+        return { ok: false, reason: 'failed', message: `Could not check ${shown} on the host. Nothing was written.` }
+      }
+    }
+    const runCommand = route.runCommand!
+    const run: SettingsRunner = (command, stdin) => runCommand(viaPosixSh(command), stdin)
+    outcome = await updateRemoteTextFile({ pathExpr: `${dir}/agents/${posixQuote(agent.fileName)}`, label: shown }, run, update)
+  }
+  if (missing) return { ok: false, reason: 'missing', message: `${shown} is gone.` }
+  if (noFrontmatter) return { ok: false, reason: 'failed', message: `${shown} has no frontmatter block to hold a model line. Nothing was written.` }
+  if (outcome === 'failed') {
+    const cause = route.kind === 'local'
+      ? 'it changed while this ran, another DisTerm writer holds it, or it could not be read'
+      : 'the host could not run the edit, the file changed while this ran, another DisTerm writer holds it, or it could not be read'
+    return { ok: false, reason: 'failed', message: `Could not write ${shown}: ${cause}. Nothing was written.` }
+  }
+  return outcome === 'unchanged' ? { ok: true, model, unchanged: true } : { ok: true, model }
 }
 
 function templateOutcome(root: string, created: readonly string[], kept: readonly string[], failure: string | null): ShipTemplateCreateResult {
@@ -423,6 +558,13 @@ export function registerShipConfigHandlers(platform: CorePlatform, router: ShipC
   platform.handle(IPC.shipConfigRead, (projectId: unknown) => readShipConfig(projectId, router))
   platform.handle(IPC.shipGraphCreate, (projectId: unknown, scope: unknown) => createShipGraph(projectId, scope, router))
   platform.handle(IPC.shipTemplateCreate, (projectId: unknown) => createShipTemplate(projectId, router))
+  platform.handle(IPC.shipAgentSetModel, async (projectId: unknown, scope: unknown, agent: unknown, model: unknown) => {
+    const result = await setShipAgentModel(projectId, scope, agent, model, router)
+    // Every view of this project re-reads now instead of on its next poll. Harmless twice: the poll's
+    // own push follows only if its signature differs from what it last saw.
+    if (result.ok && !result.unchanged && typeof projectId === 'string') platform.broadcast(IPC.shipConfigChanged(projectId), projectId)
+    return result
+  })
 
   interface Sub {
     leases: Map<string, number>

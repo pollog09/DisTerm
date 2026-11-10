@@ -2290,7 +2290,9 @@ app.whenReady().then(async () => {
           remoteCwd: ref.remoteCwd,
           host: ref.conn.host,
           runScript: (script) =>
-            sshProjectManager!.sshRun(childArgs(ref.conn, ref.controlPath, 'sh -s'), script, { timeoutMs: 20_000 })
+            sshProjectManager!.sshRun(childArgs(ref.conn, ref.controlPath, 'sh -s'), script, { timeoutMs: 20_000 }),
+          runCommand: (command, stdin) =>
+            sshProjectManager!.sshRun(childArgs(ref.conn, ref.controlPath, command), stdin, { timeoutMs: 20_000 })
         }
       }
       if (workspaceStore.projectTargetInfo(projectId)?.ssh) {
