@@ -37,7 +37,9 @@ import {
   graph3dFlyMove,
   graph3dFlyStep,
   type Graph3dFlyMove,
+  graph3dCaptions,
   graph3dCurrentStep,
+  type Graph3dCaption,
   graph3dHasLiveMotion,
   graph3dLayoutForces,
   graph3dLinkLook,
@@ -198,7 +200,7 @@ function labelSprite(
   ink: Rgba,
   panel: Rgba,
   strong: boolean,
-  caption?: { text: string; color: Rgba }
+  captions: ReadonlyArray<Graph3dCaption & { color: Rgba }> = []
 ): { sprite: Sprite; aspect: number; tall: number } | null {
   const canvas = document.createElement('canvas')
   let ctx: CanvasRenderingContext2D | null = null
@@ -208,15 +210,17 @@ function labelSprite(
     ctx = null
   }
   if (!ctx) return null
-  const shown = text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text
+  const clip = (t: string): string => (t.length > LABEL_MAX ? `${t.slice(0, LABEL_MAX - 1)}…` : t)
+  const shown = clip(text)
   const font = `${strong ? 700 : 600} 30px system-ui, -apple-system, "Segoe UI", sans-serif`
+  // The step is a small-caps tag, the task a line of plain text: tracking only on the tag.
+  const lines = captions.map((c) => ({ ...c, text: clip(c.text), font: `${c.kind === 'step' ? 700 : 600} 22px system-ui, -apple-system, "Segoe UI", sans-serif`, spacing: c.kind === 'step' ? 2 : 0 }))
   ctx.font = font
-  const height = PILL_HEIGHT + (caption ? CAPTION_HEIGHT : 0)
-  const captionFont = '700 22px system-ui, -apple-system, "Segoe UI", sans-serif'
+  const height = PILL_HEIGHT + lines.length * CAPTION_HEIGHT
   let width = Math.ceil(ctx.measureText(shown).width) + 28
-  if (caption) {
-    ctx.font = captionFont
-    width = Math.max(width, Math.ceil(ctx.measureText(caption.text).width + caption.text.length * 2) + 28)
+  for (const line of lines) {
+    ctx.font = line.font
+    width = Math.max(width, Math.ceil(ctx.measureText(line.text).width + line.text.length * line.spacing) + 28)
   }
   canvas.width = width
   canvas.height = height
@@ -232,12 +236,12 @@ function labelSprite(
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'center'
   ctx.fillText(shown, width / 2, PILL_HEIGHT / 2 + 1)
-  if (caption) {
-    ctx.font = captionFont
-    ctx.letterSpacing = '2px'
-    ctx.fillStyle = rgbaString({ ...caption.color, a: 1 })
-    ctx.fillText(caption.text, width / 2, PILL_HEIGHT + CAPTION_HEIGHT / 2 - 7)
-  }
+  lines.forEach((line, i) => {
+    ctx.font = line.font
+    ctx.letterSpacing = `${line.spacing}px`
+    ctx.fillStyle = rgbaString({ ...line.color, a: 1 })
+    ctx.fillText(line.text, width / 2, PILL_HEIGHT + i * CAPTION_HEIGHT + CAPTION_HEIGHT / 2 - 7)
+  })
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
   // A fixed size on screen, drawn over lines and nodes: a name a line runs through, or one that grows
@@ -578,14 +582,21 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       animate(visual)
       const text = ink()
       const back = panel()
-      const labelKey = `${look.label}|${look.labelRank}|${sun}|${rgbaString(text)}|${rgbaString(back)}`
+      const captions = graph3dCaptions(node, sun)
+      const labelKey = `${look.label}|${look.labelRank}|${sun}|${captions.map((c) => c.text).join('|')}|${rgbaString(text)}|${rgbaString(back)}`
       if (labelKey !== visual.labelKey) {
         if (visual.label) {
           visual.group.remove(visual.label)
           disposeSprite(visual.label)
         }
-        const caption = sun ? { text: 'CURRENT STEP', color: tone(base, dark ? 0.35 : -0.25) } : undefined
-        const made = labelSprite(look.label, text, back, sun || look.labelRank === 0, caption)
+        const accent = tone(base, dark ? 0.35 : -0.25)
+        const made = labelSprite(
+          look.label,
+          text,
+          back,
+          sun || look.labelRank === 0,
+          captions.map((c) => ({ ...c, color: c.kind === 'step' ? accent : text }))
+        )
         visual.label = made?.sprite ?? null
         visual.labelAspect = made?.aspect ?? 1
         visual.labelPx = LABEL_PX * (made?.tall ?? 1)

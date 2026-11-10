@@ -178,6 +178,22 @@ export function graph3dCurrentStep(nodes: readonly GraphNode[]): string | null {
   return best?.id ?? null
 }
 
+/** What a running world is doing: its newest live run's task, as the 2D box writes it under its name. */
+export function graph3dTask(node: Pick<GraphNode, 'live'>): string | undefined {
+  return [...(node.live ?? [])].reverse().find((run) => run.label)?.label
+}
+
+/** A line under a world's name: that it is the current step, or what it is doing now. */
+export interface Graph3dCaption {
+  kind: 'step' | 'task'
+  text: string
+}
+
+export function graph3dCaptions(node: Pick<GraphNode, 'live'>, sun: boolean): Graph3dCaption[] {
+  const task = graph3dTask(node)
+  return [...(sun ? [{ kind: 'step' as const, text: 'CURRENT STEP' }] : []), ...(task ? [{ kind: 'task' as const, text: task }] : [])]
+}
+
 /** A name's place on screen, in CSS pixels from the view's top left. */
 export interface Graph3dLabelBox {
   id: string

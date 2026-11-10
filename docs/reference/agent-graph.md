@@ -74,7 +74,12 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   `TRANSIT_WINDOW_MS` = 15 s). Every line but a context link has three chevrons (`edgeShowsDirection`).
   They move for a delivered message for 15 s after it lands, and for a used line while the run it led to
   is live (`GraphEdge.running`, by the same staleness line as a box's activity) and for 15 s after that
-  run started (`GraphEdge.movedAt`). A queued, failed or refused message never moves, nor does `opened`,
+  run started (`GraphEdge.movedAt`). A skill or MCP line moves for 15 s after its newest call
+  (`addAccess` sets `movedAt` from the access row's `ts`): a call is a move a hook named (`PreToolUse`
+  with the tool's name), the way the call went, typed `/name` calls included. Before this those lines
+  never moved in either view, only pulsed once per call while the view was open, so a skill or server in
+  use read as a fact from the past. A call later denied still moves its line, as it still counts (the
+  notice under the header says so). A queued, failed or refused message never moves, nor does `opened`,
   `dependency`, `context`, a declared line nothing has used, or a `maybe`: motion would state a route hooks
   cannot confirm. A move placed by a guess is the same case, on the line into the guess and the line out
   of it: it is counted, but sets neither `running` nor `movedAt`. So motion reads `movedAt` and never
@@ -306,6 +311,12 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   **Keys** button to bring it back. Its last line always says where the keys go ("Click the graph, then
   fly." or "Keys go to the graph."): a card that grew a line when focus left moved its own close button
   out from under the pointer between press and release. Mobile N/A: no keyboard.
+- **A running world in 3D says what it is doing** (`graph3dCaptions`, `graph3dTask`). Under its name, a
+  box with a live run shows that run's task, the newest one that has one (`GraphLiveRun.label`, the same
+  text the 2D box writes under its name). The current step shows "CURRENT STEP" first and its task under
+  it. Each is its own row of the name's pill, so the pill grows and the collision pass measures the taller
+  box (`labelPx`). A task is clipped to `LABEL_MAX` like a name. The task text is content, so it changes
+  the label in place and never the layout.
 - **3D names are a fixed size on screen, drawn on top, and the weaker one gives way**
   (`graph3dShownLabels`). A name is `LABEL_PX` (22 CSS px) tall at any depth or zoom
   (`sizeAttenuation` off, scaled by `graph3dPixelScale` from the view's height and the camera's field of

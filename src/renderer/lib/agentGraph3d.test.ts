@@ -14,6 +14,7 @@ import {
   graph3dLoopShouldRun,
   graph3dNodeLook,
   graph3dNodeMotion,
+  graph3dCaptions,
   graph3dCurrentStep,
   graph3dPixelScale,
   graph3dPlanetPose,
@@ -330,6 +331,26 @@ describe('graph3dLayoutForces', () => {
     expect(mean(before)).toBeGreaterThan(0.9)
     expect(mean(after)).toBeGreaterThan(0.1)
     expect(mean(after)).toBeLessThan(0.3)
+  })
+})
+
+describe('graph3dCaptions', () => {
+  const run = (id: string, label?: string) => ({ id, type: 'Explore', startedAt: 1, ...(label ? { label } : {}) })
+  it('a running world says what it is doing: its newest run that has a task', () => {
+    expect(graph3dCaptions({ live: [run('r1', 'Read the docs'), run('r2', 'Find the 3D labels'), run('r3')] }, false)).toEqual([
+      { kind: 'task', text: 'Find the 3D labels' }
+    ])
+  })
+  it('the current step says so first, and then what it is doing', () => {
+    expect(graph3dCaptions({ live: [run('r1', 'Fix CI')] }, true)).toEqual([
+      { kind: 'step', text: 'CURRENT STEP' },
+      { kind: 'task', text: 'Fix CI' }
+    ])
+  })
+  it('a world with nothing running has no line under its name, unless it is the current step', () => {
+    expect(graph3dCaptions({}, false)).toEqual([])
+    expect(graph3dCaptions({ live: [run('r1')] }, false)).toEqual([])
+    expect(graph3dCaptions({}, true)).toEqual([{ kind: 'step', text: 'CURRENT STEP' }])
   })
 })
 

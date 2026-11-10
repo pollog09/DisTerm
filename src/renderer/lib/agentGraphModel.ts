@@ -877,6 +877,8 @@ function addAccess(
     }
     line.traversals! += e.count
     if (e.typed) line.typedCalls! += e.count
+    // A call is a move a hook named, so the line moves for a moment after it, the way the call went.
+    line.movedAt = Math.max(line.movedAt ?? 0, e.ts)
     if (e.ts >= (line.lastEventTs ?? 0)) {
       line.lastEventTs = e.ts
       if (e.tool) line.tool = e.tool
