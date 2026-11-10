@@ -144,7 +144,12 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   not the login shell** (`viaPosixSh`): it needs stdin for the file's bytes, so it cannot ride `sh -s`
   like discovery, and is sent instead as `sh -c` over one single-quoted word of `%b` octal escapes, which
   holds no quote and no doubled backslash, so fish, tcsh and POSIX shells all pass it through untouched.
-  Handed to the login shell raw, it failed on every non-POSIX one. On success the core pushes `shipConfigChanged`
+  Handed to the login shell raw, it failed on every non-POSIX one. **A project agent that is really a
+  global one is refused** (`leadsIntoGlobalConfig` locally, `remoteSharedConfigCheck` on a host, over the
+  project's `.claude` and `.claude/agents`, with `SHIP_SHARED_CONFIG_MESSAGE`), as the create paths refuse
+  it. A project folder that IS the home folder, or whose agents are linked to the global ones, reads every
+  global agent as a project agent, and setting one "for this project" rewrote it for every project. A
+  check that cannot run refuses too. On success the core pushes `shipConfigChanged`
   rather than waiting for the poll. Classified with the other ship writes: Editor-only and
   `SCOPED_REFUSED`. Desktop (local and SSH) and Server Edition (local) have a real leg; the Server
   Edition answers `unsupported` for SSH as it does for reads. Kanban: N/A (agent definitions are not

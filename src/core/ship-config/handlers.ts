@@ -110,6 +110,8 @@ export async function readShipConfig(projectId: unknown, router: ShipConfigRoute
 /** The folders a template writes into. `createShipGraph` writes only into `.claude` itself. */
 const TEMPLATE_SUBS = ['', 'agents', 'commands'] as const
 const GRAPH_SUBS = [''] as const
+/** A project agent's folders, checked before its model is set. */
+const AGENT_SUBS = ['', 'agents'] as const
 
 /** A path as the filesystem resolves it, for one that may not exist yet: the deepest part that does,
  *  resolved, plus the rest as written. A link to something missing is followed, because it says where a
@@ -336,14 +338,42 @@ export async function setShipAgentModel(
   }
   let outcome: 'written' | 'unchanged' | 'failed'
   let shown: string
+  // A project folder can lead into the machine's own config (the home folder itself, or agents linked to
+  // the global ones), and then every global agent reads as a project agent. Setting one "for this
+  // project" would rewrite it for every project, so it is refused as the create paths refuse it.
   if (route.kind === 'local') {
     if (scope === 'project' && !route.cwd) return unsupported(SHIP_NO_FOLDER_MESSAGE)
     const dir = scope === 'project' ? path.join(route.cwd!, '.claude') : localGlobalDir()
     shown = path.join(dir, 'agents', agent.fileName)
+    if (scope === 'project') {
+      try {
+        if (await leadsIntoGlobalConfig(dir, localGlobalDir(), AGENT_SUBS)) return unsupported(SHIP_SHARED_CONFIG_MESSAGE)
+      } catch (err) {
+        return { ok: false, reason: 'failed', message: `Could not tell whether ${shown} is this machine's own Claude config: ${errorText(err)}. Nothing was written.` }
+      }
+    }
     outcome = updateTextFile(shown, update)
   } else {
     const dir = scope === 'project' ? `${quoteRemotePath(route.remoteCwd)}/.claude` : `"${REMOTE_GLOBAL_DIR}"`
     shown = `${scope === 'project' ? route.remoteCwd.replace(/\/+$/, '') + '/.claude' : '~/.claude'}/agents/${agent.fileName}`
+    if (scope === 'project') {
+      const nonce = newShipScriptNonce()
+      const check =
+        `nt_ship_model_check() {\nroot=${dir}\nglob="${REMOTE_GLOBAL_DIR}"\n` +
+        remoteSharedConfigCheck(nonce, AGENT_SUBS) +
+        `printf '\\n${nonce} clear\\n'\n}\nnt_ship_model_check\n`
+      let stdout: string
+      try {
+        stdout = (await route.runScript(check)).stdout
+      } catch (err) {
+        return { ok: false, reason: 'failed', message: `Could not check ${shown} on the host: ${errorText(err)}. Nothing was written.` }
+      }
+      const refused = remoteConfigRefusal(nonce, stdout, route.remoteCwd)
+      if (refused) return refused
+      if (!stdout.includes(`${nonce} clear`)) {
+        return { ok: false, reason: 'failed', message: `Could not check ${shown} on the host. Nothing was written.` }
+      }
+    }
     const runCommand = route.runCommand!
     const run: SettingsRunner = (command, stdin) => runCommand(viaPosixSh(command), stdin)
     outcome = await updateRemoteTextFile({ pathExpr: `${dir}/agents/${posixQuote(agent.fileName)}`, label: shown }, run, update)

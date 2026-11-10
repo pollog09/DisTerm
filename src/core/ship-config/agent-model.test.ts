@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '../../shared/ipc'
+import { SHIP_SHARED_CONFIG_MESSAGE } from '../../shared/ship-config'
 import type { CorePlatform } from '../platform'
 import { testTmpDir } from '../test-tmp'
 import { setFrontmatterModel } from './agent-model'
@@ -94,6 +95,35 @@ describe('setShipAgentModel, on this machine', () => {
     expect(fs.readFileSync(path.join(global, 'agents', 'coder.md'), 'utf8')).toContain('model: sonnet')
     // The global one is hidden by the override, so the view never offers it, and the core agrees.
     await expect(setShipAgentModel('P', 'global', 'coder', 'opus', local(project))).resolves.toMatchObject({ ok: false, reason: 'missing' })
+  })
+
+  // A project folder can lead into the machine's own config: the home folder itself, or agents linked to
+  // the global ones. Every global agent then reads as a project agent, and "this project" would rewrite it
+  // for every project. The create paths refuse this; so does the model.
+  it('refuses a project agent that is really a global one, reached through a link', async () => {
+    const { global, project } = machine()
+    fs.writeFileSync(path.join(global, 'agents', 'coder.md'), '---\nname: coder\nmodel: sonnet\n---\n')
+    fs.rmSync(path.join(project, '.claude', 'agents'), { recursive: true })
+    fs.symlinkSync(path.join(global, 'agents'), path.join(project, '.claude', 'agents'))
+    await expect(setShipAgentModel('P', 'project', 'coder', 'haiku', local(project))).resolves.toEqual({
+      ok: false,
+      reason: 'unsupported',
+      message: SHIP_SHARED_CONFIG_MESSAGE
+    })
+    expect(fs.readFileSync(path.join(global, 'agents', 'coder.md'), 'utf8')).toContain('model: sonnet')
+  })
+
+  it('refuses a project agent when the project is the home folder that holds the config', async () => {
+    const home = testTmpDir('ship-model-home-')
+    const global = path.join(home, '.claude')
+    vi.stubEnv('CLAUDE_CONFIG_DIR', global)
+    fs.mkdirSync(path.join(global, 'agents'), { recursive: true })
+    fs.writeFileSync(path.join(global, 'agents', 'coder.md'), '---\nname: coder\nmodel: sonnet\n---\n')
+    await expect(setShipAgentModel('P', 'project', 'coder', 'haiku', local(home))).resolves.toMatchObject({
+      ok: false,
+      message: SHIP_SHARED_CONFIG_MESSAGE
+    })
+    expect(fs.readFileSync(path.join(global, 'agents', 'coder.md'), 'utf8')).toContain('model: sonnet')
   })
 
   it('the same model is no write at all', async () => {
@@ -196,6 +226,18 @@ describe('setShipAgentModel, on an SSH host', () => {
     const router: ShipConfigRouter = { route: () => ({ kind: 'remote', remoteCwd: cwd, host: 'box', ...host(home) }) }
     await expect(setShipAgentModel('P', 'project', 'tester', 'haiku', router)).resolves.toEqual({ ok: true, model: 'haiku' })
     expect(fs.readFileSync(path.join(cwd, '.claude', 'agents', 'tester.md'), 'utf8')).toBe('---\nname: tester\nmodel: haiku\n---\n')
+  })
+
+  it('refuses a project agent on a host whose project is the home folder that holds the config', async () => {
+    const home = testTmpDir('ship-model-host-')
+    fs.mkdirSync(path.join(home, '.claude', 'agents'), { recursive: true })
+    fs.writeFileSync(path.join(home, '.claude', 'agents', 'coder.md'), '---\nname: coder\nmodel: sonnet\n---\n')
+    const router: ShipConfigRouter = { route: () => ({ kind: 'remote', remoteCwd: home, host: 'box', ...host(home) }) }
+    await expect(setShipAgentModel('P', 'project', 'coder', 'haiku', router)).resolves.toMatchObject({
+      ok: false,
+      message: SHIP_SHARED_CONFIG_MESSAGE
+    })
+    expect(fs.readFileSync(path.join(home, '.claude', 'agents', 'coder.md'), 'utf8')).toContain('model: sonnet')
   })
 
   it('a route that cannot run commands says so instead of trying', async () => {
