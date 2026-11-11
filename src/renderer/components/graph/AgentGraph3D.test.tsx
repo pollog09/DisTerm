@@ -6,7 +6,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PerspectiveCamera, Raycaster, Vector3, type Mesh, type MeshLambertMaterial, type Object3D } from 'three'
+import { MeshBasicMaterial, PerspectiveCamera, Raycaster, SphereGeometry, Vector3, type Mesh, type MeshLambertMaterial, type Object3D } from 'three'
 import type { GraphEdge, GraphNode } from '../../lib/agentGraphModel'
 import { useAgentGraphDisplay } from '../../state/agentGraphDisplay'
 
@@ -656,6 +656,97 @@ describe('particles', () => {
     await act(async () => root.render(view([message(), { id: 'h', source: 'session:a', target: 'session:b', kind: 'harness', flow: 'reverse' }])))
     expect(speed({ id: 'm:a:b' })).toBeGreaterThan(0)
     expect(speed({ id: 'h' })).toBeLessThan(0)
+  })
+
+  describe('the particle object', () => {
+    const params = (m: Mesh): { radius: number; widthSegments: number } => (m.geometry as unknown as { parameters: { radius: number; widthSegments: number } }).parameters
+    type Build = (l: { id: string }) => Mesh
+    const build = async (): Promise<{ fake: Fake; make: Build }> => {
+      const fake = await mount()
+      return { fake, make: fake.props.linkDirectionalParticleThreeObject as Build }
+    }
+
+    it('is a smooth unlit sphere with a faint halo', async () => {
+      const { make } = await build()
+      const s = make({ id: 'm:a:b' })
+      expect(s.geometry).toBeInstanceOf(SphereGeometry)
+      expect(params(s).widthSegments).toBeGreaterThanOrEqual(12)
+      expect(s.material).toBeInstanceOf(MeshBasicMaterial)
+      expect(s.children).toHaveLength(1)
+      const halo = s.children[0] as Mesh
+      expect(halo.geometry).toBeInstanceOf(SphereGeometry)
+      expect(params(halo).radius).toBeGreaterThan(params(s).radius)
+      const hm = halo.material as MeshBasicMaterial
+      expect(hm.transparent).toBe(true)
+      expect(hm.depthWrite).toBe(false)
+    })
+
+    it("shares the photon's own geometry and material, and builds only the halo fresh", async () => {
+      const { make } = await build()
+      const a = make({ id: 'm:a:b' })
+      const b = make({ id: 'm:a:b' })
+      expect(a).not.toBe(b)
+      expect(a.geometry).toBe(b.geometry)
+      expect(a.material).toBe(b.material)
+      const [ha, hb] = [a.children[0] as Mesh, b.children[0] as Mesh]
+      expect(ha.geometry).not.toBe(hb.geometry)
+      expect(ha.material).not.toBe(hb.material)
+      expect(ha.geometry).not.toBe(a.geometry)
+      expect(ha.material).not.toBe(a.material)
+    })
+
+    it("a loop line's photon has its own, larger geometry", async () => {
+      const { fake } = await build()
+      await act(async () => root.render(view([message(), { id: 'r', source: 'session:a', target: 'session:b', kind: 'ship-reject', loop: true, traversals: 1 }])))
+      const make = fake.props.linkDirectionalParticleThreeObject as Build
+      const loop = make({ id: 'r' })
+      const plain = make({ id: 'm:a:b' })
+      expect(loop.geometry).not.toBe(plain.geometry)
+      expect(params(loop).radius).toBeGreaterThan(params(plain).radius)
+      expect(make({ id: 'r' }).geometry).toBe(loop.geometry)
+    })
+
+    it('the shared parts are given back on unmount, the halo is left to the library', async () => {
+      const { make } = await build()
+      const a = make({ id: 'm:a:b' })
+      const halo = a.children[0] as Mesh
+      type Target = { addEventListener(t: string, f: () => void): void }
+      const onGeometry = vi.fn()
+      const onMaterial = vi.fn()
+      const onHalo = vi.fn()
+      ;(a.geometry as unknown as Target).addEventListener('dispose', onGeometry)
+      ;(a.material as unknown as Target).addEventListener('dispose', onMaterial)
+      ;(halo.geometry as unknown as Target).addEventListener('dispose', onHalo)
+      expect(onGeometry).not.toHaveBeenCalled()
+      expect(onMaterial).not.toHaveBeenCalled()
+      expect(onHalo).not.toHaveBeenCalled()
+      await act(async () => root.unmount())
+      expect(onGeometry).toHaveBeenCalledTimes(1)
+      expect(onMaterial).toHaveBeenCalledTimes(1)
+      expect(onHalo).not.toHaveBeenCalled()
+    })
+
+    it('never takes the pointer', async () => {
+      const { fake, make } = await build()
+      const s = make({ id: 'm:a:b' })
+      s.position.set(0, 0, 0)
+      s.updateMatrixWorld(true)
+      const ray = new Raycaster(new Vector3(0, 0, 100), new Vector3(0, 0, -1))
+      ray.camera = fake.camera
+      expect(ray.intersectObject(s, true)).toEqual([])
+    })
+
+    it('a link the model dropped still gets a particle', async () => {
+      const { make } = await build()
+      expect(() => make({ id: 'nope' })).not.toThrow()
+      expect(make({ id: 'nope' }).geometry).toBeInstanceOf(SphereGeometry)
+    })
+
+    it('the old width and colour knobs are gone', async () => {
+      const { fake } = await build()
+      expect(fake.props.linkDirectionalParticleWidth).toBeUndefined()
+      expect(fake.props.linkDirectionalParticleColor).toBeUndefined()
+    })
   })
 })
 

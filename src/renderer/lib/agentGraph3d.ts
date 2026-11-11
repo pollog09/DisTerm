@@ -262,6 +262,27 @@ export function graph3dLinkLook(edge: GraphEdge): Graph3dLinkLook {
 /** Opacity a dashed line keeps in 3D, on top of its colour's own alpha. */
 export const DASHED_LINK_ALPHA = 0.55
 
+/** A flow particle's core radius, in world units: about three times a line's own radius (0.35). */
+export const PARTICLE_RADIUS = 1.1
+/** On a loop line, which is drawn heavier (width 1.6), the particle is bigger too. */
+export const LOOP_PARTICLE_RADIUS = 1.5
+/** The halo shell's radius, in core radii. */
+export const PARTICLE_HALO_SPAN = 2
+
+export interface Graph3dParticleLook {
+  /** The line's colour token (`graphEdgeColor`), lifted toward the sky's opposite where it is worn. */
+  color: string
+  /** World units. */
+  radius: number
+  /** World units: the faint shell round the core. */
+  haloRadius: number
+}
+
+export function graph3dParticleLook(edge: GraphEdge): Graph3dParticleLook {
+  const radius = edge.loop ? LOOP_PARTICLE_RADIUS : PARTICLE_RADIUS
+  return { color: graphEdgeColor(edge), radius, haloRadius: radius * PARTICLE_HALO_SPAN }
+}
+
 export interface Rgba {
   r: number
   g: number
