@@ -51,7 +51,9 @@ async function nap($: EngineInterface): Promise<boolean> {
     ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', `Start-Sleep -Seconds ${POLL_SECONDS}`]
     : ['sleep', String(POLL_SECONDS)]
   const ran = await $.process.run(argv, { timeoutMs: POLL_SECONDS * 1000 + 10000 }).catch(() => null)
-  return ran !== null
+  // A sleep that exits non-zero (missing, refused) did not wait: count it as a failed nap, so the
+  // loop gives up instead of spinning until the deadline.
+  return ran !== null && ran.exitCode === 0
 }
 
 async function waitForAnswer($: EngineInterface, run: Run, signal: AbortSignal): Promise<'answered' | 'timeout' | 'aborted'> {

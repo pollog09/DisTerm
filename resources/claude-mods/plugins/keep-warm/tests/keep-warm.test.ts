@@ -7,7 +7,7 @@ const T0 = 1_000_000
 const USAGE = { input_tokens: 12, output_tokens: 2, cache_read_input_tokens: 60000, cache_creation_input_tokens: 0 }
 const MAIN_USAGE = { ...USAGE, model: 'claude-opus-5-5' }
 
-type Fork = 'ok' | 'fail'
+type Fork = 'ok' | 'fail' | 'lapse'
 
 function world(on: On, opts: { entry?: unknown; fork?: Fork; switches?: string } = {}) {
   const runs: { argv: readonly string[]; stdin?: string }[] = []
@@ -32,7 +32,9 @@ function world(on: On, opts: { entry?: unknown; fork?: Fork; switches?: string }
     return {
       value: (opts.fork === 'fail'
         ? { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: USAGE }
-        : { isAnswered: true, text: 'OK', usage: USAGE }) as never,
+        : opts.fork === 'lapse'
+          ? { isAnswered: true, text: 'OK', usage: { ...USAGE, cache_read_input_tokens: 0, cache_creation_input_tokens: 60000 } }
+          : { isAnswered: true, text: 'OK', usage: USAGE }) as never,
     }
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
@@ -126,4 +128,13 @@ test('shouldPing: the window, the caps', () => {
   expect(shouldPing(s, { ...entry, until: 500 }, 1000).kind).toBe('done')
   expect(shouldPing({ ...s, optInSeenAt: 0 }, entry, 2 * 3600_000).kind).toBe('done')
   expect(shouldPing(s, null, 1000 + 256_000).kind).toBe('wait')
+})
+
+test('a ping that finds the cache lapsed ends the opt-in: it would only re-write the chat again', async ($, on) => {
+  const w = world(on, { fork: 'lapse' })
+  await chatReplied($)
+  await w.clock.advance(255_000)
+  expect(w.forks.length).toBe(1)
+  await w.clock.advance(600_000)
+  expect(w.forks.length).toBe(1)
 })

@@ -89,6 +89,20 @@ export function handoffsFrom(rows: readonly LedgerRow[], dir: string): Record<st
   return out
 }
 
+/** The string jail above is not enough on disk: a symlink planted in the folder could point at any
+ *  file. The file must itself be a regular file (lstat, so not a link), and its real path must lie
+ *  inside the folder's real path. */
+export async function isRealHandoffFile(file: string, dir: string): Promise<boolean> {
+  try {
+    if (!(await fs.promises.lstat(file)).isFile()) return false
+    const [realFile, realDir] = await Promise.all([fs.promises.realpath(file), fs.promises.realpath(dir)])
+    const rel = path.relative(realDir, realFile)
+    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel)
+  } catch {
+    return false
+  }
+}
+
 export interface TokenSaversService {
   snapshot(): TokenSaversSnapshot
   refresh(): Promise<void>
@@ -224,7 +238,7 @@ export function startTokenSaversService(deps: TokenSaversDeps = {}): TokenSavers
         const agg = aggregateLedger(text, Date.now())
         const handoffs: TokenSaversSnapshot['handoffs'] = {}
         for (const [id, h] of Object.entries(handoffsFrom(agg.rows, handoffsDir))) {
-          if (await fs.promises.stat(h.file).then((x) => x.isFile(), () => false)) handoffs[id] = h
+          if (await isRealHandoffFile(h.file, handoffsDir)) handoffs[id] = h
         }
         snap = { ...snap, ...agg, handoffs }
         changed = true

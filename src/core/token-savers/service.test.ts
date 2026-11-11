@@ -162,3 +162,20 @@ describe('keep-warm IPC', () => {
     expect((await call(IPC.tokenSaversSetKeepWarm, 'node-1', 0, 300_000)).keepWarm).toEqual({})
   })
 })
+
+import { isRealHandoffFile } from './service'
+
+describe('isRealHandoffFile', () => {
+  it('accepts a regular file inside the folder and refuses a planted symlink', async () => {
+    const root = testTmpDir('token-savers-jail-')
+    const dir = path.join(root, 'handoffs')
+    fs.mkdirSync(dir)
+    const secret = path.join(root, 'secret.txt')
+    fs.writeFileSync(secret, 'key')
+    fs.writeFileSync(path.join(dir, 'ok.md'), '# handoff')
+    fs.symlinkSync(secret, path.join(dir, 'evil.md'))
+    expect(await isRealHandoffFile(path.join(dir, 'ok.md'), dir)).toBe(true)
+    expect(await isRealHandoffFile(path.join(dir, 'evil.md'), dir)).toBe(false)
+    expect(await isRealHandoffFile(path.join(dir, 'missing.md'), dir)).toBe(false)
+  })
+})

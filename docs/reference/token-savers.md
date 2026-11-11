@@ -168,8 +168,11 @@ a handoff file on this machine is not readable from an SSH host.
    ledger line carries the file.
    - **The fork names no effort.** A level other than the session's own can make the first fork write the whole chat
      to a cache entry of its own (`ModelForkRequest`), which is the cost a handoff exists to avoid.
-4. **The service jails the path** to the handoffs folder (`handoffsFrom`) and checks the file exists. The ledger can be
-   written by anything the user runs, and the path becomes a new agent's first prompt.
+4. **The service jails the path** to the handoffs folder. The ledger can be written by anything the user runs, and the
+   path becomes a new agent's first prompt.
+   - `handoffsFrom` checks the string.
+   - `isRealHandoffFile` checks the disk: a regular file, not a link, whose real path lies inside the folder's real
+     path. A symlink planted in the folder cannot point the new node at another file.
 5. The renderer waits up to five minutes for a file newer than the press (`settleHandoffs`).
 6. Canvas then opens a Claude node beside the source: same frame, folder and account, seeded with the file
    (`promptFile`), titled "… (continued)".
@@ -191,7 +194,12 @@ a handoff file on this machine is not readable from an SSH host.
   (`tokenSavers.setKeepWarm`).
 - **When it pings.** The mod pings only while the main thread is idle, and only between `ttl − 45 s` and `ttl` after the
   last cache use. Earlier, the cache is fresh. Later it has lapsed, and a ping would pay to write the whole chat again.
-- **When it stops.** After 30 pings, at the end of the opt-in, or after three failures in a row.
+- **The clock starts at send time.** A request reads, and so refreshes, the cache when it is *sent*, so the mod stamps
+  the time at each main-thread `turn.step` and before each ping's fork. A slow reply would otherwise push the next ping
+  past the lapse. A host that raises no `turn.step` falls back to the turn's end.
+- **When it stops.** After 30 pings, at the end of the opt-in, or after three failures in a row. It also stops after
+  any ping whose usage shows it *wrote* the chat to the cache instead of reading it (`pingFoundLapse`). The cache had
+  lapsed after all, and pinging on would repeat that cost.
 - **The ping's effort.** Like the handoff, the ping names no effort level. Instead, its prompt asks for an instant
   answer.
 

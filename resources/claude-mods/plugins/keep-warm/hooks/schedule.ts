@@ -29,10 +29,12 @@ export interface WarmState {
   failures: number
   /** A ping is out. */
   isPinging: boolean
+  /** A ping found the cache already lapsed: this opt-in is over, whatever the clock said. */
+  isLapsed: boolean
 }
 
 export function initialState(): WarmState {
-  return { isBusy: false, lastAt: 0, optIn: null, optInSeenAt: 0, pings: 0, failures: 0, isPinging: false }
+  return { isBusy: false, lastAt: 0, optIn: null, optInSeenAt: 0, pings: 0, failures: 0, isPinging: false, isLapsed: false }
 }
 
 export type Decision =
@@ -55,7 +57,7 @@ export function readEntry(v: unknown): KeepWarmEntry | null {
 /** The state once a tick has read `entry`: a new opt-in starts its counters afresh. */
 export function adoptEntry(state: WarmState, entry: KeepWarmEntry | null, now: number): WarmState {
   if (!entry || entry.until === state.optIn) return state
-  return { ...state, optIn: entry.until, optInSeenAt: now, pings: 0, failures: 0 }
+  return { ...state, optIn: entry.until, optInSeenAt: now, pings: 0, failures: 0, isLapsed: false }
 }
 
 /**
@@ -69,6 +71,7 @@ export function shouldPing(state: WarmState, entry: KeepWarmEntry | null, now: n
   if (state.optIn === entry.until && now - state.optInSeenAt >= MAX_RUN_MS) return { kind: 'done', why: 'ran its longest' }
   if (state.pings >= MAX_PINGS) return { kind: 'done', why: 'ping cap reached' }
   if (state.failures >= MAX_FAILURES) return { kind: 'done', why: 'pings kept failing' }
+  if (state.isLapsed) return { kind: 'done', why: 'a ping found the cache lapsed' }
   if (state.isPinging) return { kind: 'wait', why: 'a ping is out' }
   if (state.isBusy) return { kind: 'wait', why: 'a turn is running' }
   if (state.lastAt <= 0) return { kind: 'wait', why: 'nothing cached yet' }
@@ -82,3 +85,13 @@ export function shouldPing(state: WarmState, entry: KeepWarmEntry | null, now: n
 export const PING_PROMPT =
   'Automated cache refresh from a plugin, not a message from the person: you have no tools and ' +
   'nothing needs doing. Reply with exactly "OK" right away, without thinking it over.'
+
+/**
+ * Whether a ping's usage shows the cache had already lapsed: the chat was written to the cache
+ * again instead of read from it. Then pinging on would only repeat that cost, so the opt-in ends.
+ */
+export function pingFoundLapse(usage: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number }): boolean {
+  const read = usage.cache_read_input_tokens ?? 0
+  const written = usage.cache_creation_input_tokens ?? 0
+  return written > read
+}

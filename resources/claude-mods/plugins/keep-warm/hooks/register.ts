@@ -11,13 +11,14 @@
 
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import { helperUsageCached, isModOn, recordSaving, saversPath } from './common'
-import { PING_PROMPT, TICK_MS, adoptEntry, initialState, readEntry, shouldPing, type WarmState } from './schedule'
+import { PING_PROMPT, TICK_MS, adoptEntry, initialState, pingFoundLapse, readEntry, shouldPing, type WarmState } from './schedule'
 
 const MOD = 'keep-warm'
 
 // One session per module load, so the state is the module's.
 let state: WarmState = initialState()
 let timer: Timer | null = null
+let turnStartedAt = 0
 
 async function tick($: EngineInterface): Promise<void> {
   if (state.isPinging) return
@@ -41,13 +42,15 @@ async function tick($: EngineInterface): Promise<void> {
 
   state = { ...state, isPinging: true }
   try {
+    // The cache entry's clock restarts when the request READS it, i.e. when it is sent, so the time
+    // is taken before the fork: a slow reply must not push the next ping past the lapse.
+    const sentAt = await $.clock.now()
     const reply = await $.model.fork({ prompt: PING_PROMPT })
-    const at = await $.clock.now()
     if (!reply.isAnswered) {
       state = { ...state, failures: state.failures + 1 }
       return
     }
-    state = { ...state, pings: state.pings + 1, failures: 0, lastAt: at }
+    state = { ...state, pings: state.pings + 1, failures: 0, lastAt: sentAt, isLapsed: pingFoundLapse(reply.usage) }
     const model = await $.session.model().catch(() => '')
     await recordSaving($, {
       mod: MOD,
@@ -76,15 +79,30 @@ export const register: Register = (on) => {
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
-    if (e.agentId === undefined) state = { ...state, isBusy: true }
+    if (e.agentId === undefined) {
+      turnStartedAt = await $.clock.now().catch(() => Date.now())
+      state = { ...state, isBusy: true }
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // Each main-thread request reads the cache as it is SENT: stamp the time there, not when the turn
+  // completes, which can be a minute later for a long answer.
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId === undefined) {
+      const now = await $.clock.now().catch(() => Date.now())
+      state = { ...state, lastAt: now }
+    }
+    return yield* next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
-      // a turn that sent no request (an interrupt before it, an API error) refreshed no cache
-      const now = e.usage ? await $.clock.now().catch(() => Date.now()) : null
-      state = { ...state, isBusy: false, ...(now !== null && { lastAt: now }) }
+      // A turn whose requests raised no `turn.step` (a host that does not stream steps) still used
+      // the cache if it reports usage: stamp it now, late but better than not at all.
+      const unstamped = !!e.usage && state.lastAt < turnStartedAt
+      const now = unstamped ? await $.clock.now().catch(() => Date.now()) : 0
+      state = { ...state, isBusy: false, ...(unstamped && { lastAt: now }) }
     }
     return next(e)
   }).catch(($, e, next) => next(e))

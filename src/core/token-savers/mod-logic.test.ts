@@ -91,3 +91,13 @@ describe('phase 2 mods', async () => {
     expect(doc.handoffFileName('node-1', 1234)).toMatch(/^node-1-1234\.md$/)
   })
 })
+
+describe('keep-warm lapse check', async () => {
+  const schedule = await load('keep-warm/hooks/schedule.ts')
+  it('a ping that wrote more than it read found the cache lapsed', () => {
+    expect(schedule.pingFoundLapse({ cache_read_input_tokens: 50_000, cache_creation_input_tokens: 10 })).toBe(false)
+    expect(schedule.pingFoundLapse({ cache_read_input_tokens: 0, cache_creation_input_tokens: 50_000 })).toBe(true)
+    const done = schedule.shouldPing({ ...schedule.initialState(), isLapsed: true, lastAt: 1 }, { until: 9e12, ttlMs: 300_000 }, 270_000)
+    expect(done.kind).toBe('done')
+  })
+})
