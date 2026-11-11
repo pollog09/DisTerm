@@ -1183,6 +1183,8 @@ export function buildTokenSaversApi(client: RpcClient): Pick<NodeTerminalApi, 't
       install: () => client.request(IPC.tokenSaversInstall) as Promise<TokenSaversSnapshot>,
       uninstall: () => client.request(IPC.tokenSaversUninstall) as Promise<TokenSaversSnapshot>,
       setSwitch: (id, on) => client.request(IPC.tokenSaversSetSwitch, id, on) as Promise<TokenSaversSnapshot>,
+      setKeepWarm: (nodeId, minutes, ttlMs) =>
+        client.request(IPC.tokenSaversSetKeepWarm, nodeId, minutes, ttlMs) as Promise<TokenSaversSnapshot>,
       onUpdate: (listener) => client.subscribe(IPC.tokenSaversUpdate, listener as Listener)
     }
   }

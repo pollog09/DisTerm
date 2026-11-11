@@ -3568,6 +3568,7 @@ export interface TokenSaversApi {
   install(): Promise<import('./token-savers').TokenSaversSnapshot>
   uninstall(): Promise<import('./token-savers').TokenSaversSnapshot>
   setSwitch(id: import('./token-savers').TokenSaverId, on: boolean): Promise<import('./token-savers').TokenSaversSnapshot>
+  setKeepWarm(nodeId: string, minutes: number, ttlMs: number): Promise<import('./token-savers').TokenSaversSnapshot>
   onUpdate(listener: (snap: import('./token-savers').TokenSaversSnapshot) => void): () => void
 }
 

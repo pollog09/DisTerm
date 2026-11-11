@@ -1,0 +1,8 @@
+{
+  "name": "keep-warm",
+  "version": "0.1.0",
+  "description": "Pings a chat's prompt cache before it expires, for nodes you turn it on for. Each ping costs a cache read.",
+  "author": {
+    "name": "DisTerm"
+  }
+}

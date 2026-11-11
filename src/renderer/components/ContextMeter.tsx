@@ -3,6 +3,7 @@ import { useContextUsage } from '../state/contextWindow'
 import { useSettings } from '../state/settings'
 import { capabilityAgentId } from '@shared/agents/config'
 import { isHidden } from '../lib/ui-visibility'
+import { TokenSaverActions } from './TokenSaverActions'
 import { cacheState, formatClock, useNow, useTokenSaversSnap, useTokenSavers } from '../state/tokenSavers'
 import { barFillPercent, contextFillColor, contextPillText, formatModelLabel, formatTimeAgo, formatTokensShort, percentText } from '../lib/usageFormat'
 
@@ -83,6 +84,9 @@ export function ContextMeter({ sessionId, nodeId, remote = false, agentId, fromL
                 ? `cold — the next message re-sends ~${formatTokensShort(usage.usedTokens)} tokens at full price`
                 : `warm for ${formatClock(cache.leftMs)}`}
             </div>
+          )}
+          {nodeId && (
+            <TokenSaverActions nodeId={nodeId} agentId={agentId} remote={remote} usage={usage} cache={cache} />
           )}
           {nodeSaved && nodeSaved.actions > 0 && (
             <div className="ctx-popover__sub">

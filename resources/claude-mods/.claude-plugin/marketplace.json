@@ -19,6 +19,30 @@
       "source": "./plugins/efficient-browser-use",
       "description": "Shrinks browser screenshots before Claude reads them.",
       "version": "0.1.0"
+    },
+    {
+      "name": "handoff",
+      "source": "./plugins/handoff",
+      "description": "Writes a summary of a long chat from its prompt cache, so a fresh agent node can carry on from it.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "effort-advisor",
+      "source": "./plugins/effort-advisor",
+      "description": "Haiku suggests the effort level each prompt needs; the context meter offers to switch.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "keep-warm",
+      "source": "./plugins/keep-warm",
+      "description": "Pings a chat's prompt cache before it expires, for nodes you turn it on for. Each ping costs a cache read.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "research-router",
+      "source": "./plugins/research-router",
+      "description": "Gives Claude a Research tool: a Haiku subagent reads the pages and returns a short brief with sources.",
+      "version": "0.1.0"
     }
   ]
 }

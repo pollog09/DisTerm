@@ -1,4 +1,4 @@
-// Helpers the three DisTerm token-saver mods share: where their files live, the on/off switches,
+// Helpers the DisTerm token-saver mods share: where their files live, the on/off switches,
 // and the savings ledger DisTerm draws from. shared/common.ts is the source; every plugin carries a
 // byte-identical copy at hooks/common.ts because a plugin is installed on its own (see README.md).
 // The ledger line's shape is the contract in DisTerm's src/shared/token-savers.ts.
@@ -7,7 +7,14 @@ import type { EngineInterface, ModelUsage } from 'claude-code'
 
 type Engine = EngineInterface
 
-export type SaverMod = 'input-router' | 'model-router' | 'efficient-browser-use'
+export type SaverMod =
+  | 'input-router'
+  | 'model-router'
+  | 'efficient-browser-use'
+  | 'handoff'
+  | 'effort-advisor'
+  | 'keep-warm'
+  | 'research-router'
 
 export interface SavingLine {
   ts: string
@@ -18,7 +25,10 @@ export interface SavingLine {
   action: string
   before: number
   after: number
-  helper: { model: string; in: number; out: number } | null
+  /** `cache_read` is set only by `helperUsageCached`; `in` then leaves those tokens out. */
+  helper: { model: string; in: number; out: number; cache_read?: number } | null
+  /** handoff: the absolute path of the file the line is about. */
+  file?: string
   measured: 'real' | 'estimated'
   usd_saved?: number
 }
@@ -53,6 +63,26 @@ export function helperUsage(model: string, usage: ModelUsage | undefined): Savin
   const input =
     (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0)
   return { model, in: input, out: usage.output_tokens || 0 }
+}
+
+/**
+ * Like `helperUsage`, but with the prompt tokens the cache served counted apart (`cache_read`),
+ * which DisTerm prices at a tenth of the input price. For forks and subagents, which read a lot.
+ */
+export function helperUsageCached(model: string, usage: ModelUsage | undefined): SavingLine['helper'] {
+  if (!usage) return null
+  return {
+    model,
+    in: (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
+    out: usage.output_tokens || 0,
+    cache_read: usage.cache_read_input_tokens || 0,
+  }
+}
+
+/** Every prompt token a call read: fresh, written to the cache and served from it. */
+export function promptTokens(usage: ModelUsage | undefined): number {
+  if (!usage) return 0
+  return (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0)
 }
 
 export async function homeDir($: Engine): Promise<string | null> {

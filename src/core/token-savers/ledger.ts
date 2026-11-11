@@ -36,7 +36,12 @@ export function parseLedgerLine(raw: string): LedgerLine | null {
   const h = o.helper as Record<string, unknown> | null | undefined
   const helper =
     h && typeof h === 'object' && str(h.model)
-      ? { model: h.model as string, in: num(h.in) ?? 0, out: num(h.out) ?? 0 }
+      ? {
+          model: h.model as string,
+          in: num(h.in) ?? 0,
+          out: num(h.out) ?? 0,
+          ...(num(h.cache_read) !== null && { cache_read: num(h.cache_read)! })
+        }
       : null
   const usd = num(o.usd_saved)
   return {
@@ -49,6 +54,7 @@ export function parseLedgerLine(raw: string): LedgerLine | null {
     before: Math.max(0, before),
     after: Math.max(0, after),
     helper,
+    ...(str(o.file) && { file: o.file as string }),
     measured: o.measured === 'real' ? 'real' : 'estimated',
     ...(usd !== null && { usd_saved: usd })
   }
@@ -66,7 +72,9 @@ export function helperUsd(l: LedgerLine): number {
   if (!l.helper) return 0
   const p = priceOf(l.helper.model)
   if (!p) return 0
-  return (l.helper.in * p.input + l.helper.out * p.output) / 1_000_000
+  // A prompt token served from the cache bills at a tenth of the input price.
+  const cacheRead = l.helper.cache_read ?? 0
+  return (l.helper.in * p.input + cacheRead * p.input * 0.1 + l.helper.out * p.output) / 1_000_000
 }
 
 /** The local calendar day of a timestamp, YYYY-MM-DD. */
@@ -96,7 +104,7 @@ function add(t: SaverTotals, r: LedgerRow): void {
 export function aggregateLedger(
   text: string,
   now: number
-): Omit<TokenSaversSnapshot, 'installed' | 'installError' | 'switches'> {
+): Omit<TokenSaversSnapshot, 'installed' | 'installError' | 'switches' | 'effort' | 'keepWarm' | 'handoffs'> {
   const byKey = new Map<string, LedgerRow>()
   let skipped = 0
   let n = 0

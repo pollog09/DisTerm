@@ -68,3 +68,36 @@ describe('efficient-browser-use images', () => {
     expect(imageSize(png)).toEqual({ width: 1920, height: 1080 })
   })
 })
+
+describe('phase 2 mods', async () => {
+  const schedule = await load('keep-warm/hooks/schedule.ts')
+  const brief = await load('research-router/hooks/brief.ts')
+  const doc = await load('handoff/hooks/document.ts')
+  it('keep-warm pings only between ttl - lead and ttl, while an opt-in runs', () => {
+    const now = 10_000_000
+    const entry = { until: now + 3_600_000, ttlMs: 300_000 }
+    const base = schedule.adoptEntry(schedule.initialState(), entry, now)
+    const idle = (ms: number) => schedule.shouldPing({ ...base, lastAt: now - ms }, entry, now).kind
+    expect(idle(10_000)).toBe('wait')
+    expect(idle(300_000 - 30_000)).toBe('ping')
+    expect(idle(300_000)).toBe('wait') // lapsed: a ping would re-write the whole chat
+    expect(schedule.shouldPing({ ...base, lastAt: now - 270_000, isBusy: true }, entry, now).kind).toBe('wait')
+    expect(schedule.shouldPing({ ...base, pings: schedule.MAX_PINGS }, entry, now).kind).toBe('done')
+    expect(schedule.shouldPing(base, { ...entry, until: now - 1 }, now).kind).toBe('done')
+  })
+  it('research refuses an empty question and names the handoff file by owner and time', () => {
+    expect(brief.cleanQuestion('   ')).toBeNull()
+    expect(brief.cleanQuestion('What changed in X?')).toBe('What changed in X?')
+    expect(doc.handoffFileName('node-1', 1234)).toMatch(/^node-1-1234\.md$/)
+  })
+})
+
+describe('keep-warm lapse check', async () => {
+  const schedule = await load('keep-warm/hooks/schedule.ts')
+  it('a ping that wrote more than it read found the cache lapsed', () => {
+    expect(schedule.pingFoundLapse({ cache_read_input_tokens: 50_000, cache_creation_input_tokens: 10 })).toBe(false)
+    expect(schedule.pingFoundLapse({ cache_read_input_tokens: 0, cache_creation_input_tokens: 50_000 })).toBe(true)
+    const done = schedule.shouldPing({ ...schedule.initialState(), isLapsed: true, lastAt: 1 }, { until: 9e12, ttlMs: 300_000 }, 270_000)
+    expect(done.kind).toBe('done')
+  })
+})
