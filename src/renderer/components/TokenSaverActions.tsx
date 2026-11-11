@@ -5,6 +5,7 @@ import type { ContextWindowUsage } from '@shared/types'
 import { chatSendRefusal } from '../lib/chatSendGate'
 import { formatTokensShort } from '../lib/usageFormat'
 import { useAgentStatus } from '../state/agentStatus'
+import { useSession } from '../session/session'
 import { useTokenSavers, useTokenSaversSnap, type CacheState } from '../state/tokenSavers'
 
 /** A handoff is offered from this context size; it is pressed home from the second. */
@@ -34,6 +35,8 @@ export function TokenSaverActions({
   const snap = useTokenSaversSnap()
   const pending = useTokenSavers((s) => !!s.pendingHandoff[nodeId])
   const [note, setNote] = useState('')
+  // The pane belongs to the node's own core session (the grep gate: never the global bridge).
+  const { api } = useSession()
   if (!snap?.installed || remote || !agentId || capabilityAgentId(agentId) !== 'claude') return null
   const on = (id: keyof typeof snap.switches): boolean => snap.switches[id]
   // Read at click time, through the same gate the ⌘M composer uses: a command typed into a dialog
@@ -43,7 +46,7 @@ export function TokenSaverActions({
       setNote('Claude is busy; try again when it is waiting for you.')
       return false
     }
-    const ok = await window.nodeTerminal.pty.sendText(nodeId, text).catch(() => false)
+    const ok = await api.pty.sendText(nodeId, text).catch(() => false)
     if (ok !== true) setNote('The terminal did not take the command.')
     return ok === true
   }
