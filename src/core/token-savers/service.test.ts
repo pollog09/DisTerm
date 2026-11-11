@@ -109,3 +109,56 @@ describe('pruneFullOutputs', () => {
     expect(await pruneFullOutputs(path.join(dir, 'missing'), now)).toBe(0)
   })
 })
+
+import { handoffsFrom, parseEffort, parseKeepWarm } from './service'
+import { KEEP_WARM_MAX_MS, type LedgerRow } from '../../shared/token-savers'
+
+describe('phase 2 snapshot inputs', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z')
+  it('keeps recent, valid effort suggestions only', () => {
+    const raw = JSON.stringify({
+      n1: { level: 'low', why: 'lookup', at: now - 1000 },
+      n2: { level: 'turbo', at: now },
+      n3: { level: 'high', at: now - 2 * 86_400_000 },
+      'bad id!': { level: 'low', at: now }
+    })
+    expect(parseEffort(raw, now)).toEqual({ n1: { level: 'low', why: 'lookup', at: now - 1000 } })
+    expect(parseEffort('{oops', now)).toEqual({})
+  })
+  it('drops expired keep-warm entries and clamps a too-long one', () => {
+    const raw = JSON.stringify({ a: { until: now - 1, ttlMs: 300_000 }, b: { until: now + 9e9, ttlMs: 3_600_000 }, c: { until: now + 1000, ttlMs: 7 } })
+    const k = parseKeepWarm(raw, now)
+    expect(Object.keys(k).sort()).toEqual(['b', 'c'])
+    expect(k.b).toEqual({ until: now + KEEP_WARM_MAX_MS, ttlMs: 3_600_000 })
+    expect(k.c.ttlMs).toBe(300_000)
+  })
+  it('takes the newest handoff per node, jailed to the handoffs folder', () => {
+    const dir = '/home/u/.nodeterm/token-savers/handoffs'
+    const row = (o: Partial<LedgerRow>): LedgerRow =>
+      ({ mod: 'handoff', nodeId: 'n1', ts: '2026-11-11T11:00:00Z', file: `${dir}/n1-1.md`, ...o }) as LedgerRow
+    const out = handoffsFrom(
+      [
+        row({ file: `${dir}/n1-2.md`, ts: '2026-11-11T11:30:00Z' }),
+        row({}),
+        row({ nodeId: 'n2', file: '/etc/passwd' }),
+        row({ nodeId: 'n3', file: `${dir}/../../evil.md` }),
+        row({ nodeId: 'n4', file: `${dir}/x.sh` }),
+        row({ nodeId: 'n5', mod: 'input-router' })
+      ],
+      dir
+    )
+    expect(out).toEqual({ n1: { file: `${dir}/n1-2.md`, at: Date.parse('2026-11-11T11:30:00Z') } })
+  })
+})
+
+describe('keep-warm IPC', () => {
+  it('writes an opt-in, refuses bad input, and turns off with 0 minutes', async () => {
+    const { svc, call } = boot({ veto: false, claude: 'enabled' })
+    await svc.ready()
+    const on = await call(IPC.tokenSaversSetKeepWarm, 'node-1', 60, 3_600_000)
+    expect(on.keepWarm['node-1'].ttlMs).toBe(3_600_000)
+    await expect(call(IPC.tokenSaversSetKeepWarm, '../x', 60, 300_000)).rejects.toThrow(/Bad node/)
+    await expect(call(IPC.tokenSaversSetKeepWarm, 'node-1', 999, 300_000)).rejects.toThrow(/Bad duration/)
+    expect((await call(IPC.tokenSaversSetKeepWarm, 'node-1', 0, 300_000)).keepWarm).toEqual({})
+  })
+})

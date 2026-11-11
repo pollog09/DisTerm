@@ -9,7 +9,15 @@ export const TOKEN_SAVERS_MARKETPLACE = 'disterm-token-savers'
 /** Lowest Claude Code version whose plugin loader runs function-hook modules. */
 export const TOKEN_SAVERS_MIN_CLAUDE = '2.1.287'
 
-export const TOKEN_SAVER_IDS = ['input-router', 'model-router', 'efficient-browser-use'] as const
+export const TOKEN_SAVER_IDS = [
+  'input-router',
+  'model-router',
+  'efficient-browser-use',
+  'handoff',
+  'effort-advisor',
+  'keep-warm',
+  'research-router'
+] as const
 export type TokenSaverId = (typeof TOKEN_SAVER_IDS)[number]
 
 export const TOKEN_SAVER_INFO: Record<TokenSaverId, { title: string; what: string }> = {
@@ -25,6 +33,22 @@ export const TOKEN_SAVER_INFO: Record<TokenSaverId, { title: string; what: strin
     title: 'Efficient Browser Use',
     what: 'Shrinks browser screenshots before Claude reads them.',
   },
+  handoff: {
+    title: 'Handoff',
+    what: 'Writes a summary of a long chat from its prompt cache, so a fresh agent node can carry on from it.',
+  },
+  'effort-advisor': {
+    title: 'Effort Advisor',
+    what: 'Haiku suggests the effort level each prompt needs; the context meter offers to switch.',
+  },
+  'keep-warm': {
+    title: 'Keep Warm',
+    what: 'Pings a chat’s prompt cache before it expires, for nodes you turn it on for. Each ping costs a cache read.',
+  },
+  'research-router': {
+    title: 'Research Router',
+    what: 'Gives Claude a Research tool: a Haiku subagent reads the pages and returns a short brief with sources.',
+  },
 }
 
 /** Paths, relative to the home directory. `~/.nodeterm` is the fork's on-disk namespace (CLAUDE.md). */
@@ -32,6 +56,34 @@ export const TOKEN_SAVERS_DIR = '.nodeterm/token-savers'
 export const TOKEN_SAVERS_SWITCHES = `${TOKEN_SAVERS_DIR}/switches.json`
 export const TOKEN_SAVERS_LEDGER = `${TOKEN_SAVERS_DIR}/savings.jsonl`
 export const TOKEN_SAVERS_MARKETPLACE_DIR = `${TOKEN_SAVERS_DIR}/marketplace`
+/** handoff writes `<nodeId or session>-<epoch ms>.md` here. */
+export const TOKEN_SAVERS_HANDOFFS_DIR = `${TOKEN_SAVERS_DIR}/handoffs`
+/** effort-advisor's latest suggestion per node: `Record<nodeId, EffortSuggestion>`. Written by the mod. */
+export const TOKEN_SAVERS_EFFORT = `${TOKEN_SAVERS_DIR}/effort.json`
+/** keep-warm's opt-ins: `Record<nodeId, KeepWarmEntry>`. Written by DisTerm, read by the mod. */
+export const TOKEN_SAVERS_KEEP_WARM = `${TOKEN_SAVERS_DIR}/keep-warm.json`
+
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type EffortLevel = (typeof EFFORT_LEVELS)[number]
+
+export interface EffortSuggestion {
+  level: EffortLevel
+  /** One short reason from the judge. */
+  why: string
+  /** When the prompt was judged, ms since epoch. */
+  at: number
+}
+
+export interface KeepWarmEntry {
+  /** Stop pinging after this time, ms since epoch. */
+  until: number
+  /** The chat's cache TTL as DisTerm read it from the transcript: 300000 or 3600000. */
+  ttlMs: number
+}
+
+/** Longest keep-warm DisTerm offers, and the most pings one opt-in may send. */
+export const KEEP_WARM_MAX_MS = 2 * 60 * 60 * 1000
+export const KEEP_WARM_MAX_PINGS = 30
 
 /**
  * One ledger line, appended by a mod for each action. `before`/`after` are tokens the main chat would
@@ -47,7 +99,10 @@ export interface LedgerLine {
   action: string
   before: number
   after: number
-  helper: { model: string; in: number; out: number } | null
+  /** `cache_read`: prompt tokens served from the cache, priced at a tenth of the input price. */
+  helper: { model: string; in: number; out: number; cache_read?: number } | null
+  /** handoff: the absolute path of the handoff file the line is about. */
+  file?: string
   measured: 'real' | 'estimated'
   usd_saved?: number
 }
@@ -116,6 +171,12 @@ export interface TokenSaversSnapshot {
   rows: LedgerRow[]
   /** Lines that were not valid ledger lines. */
   skipped: number
+  /** effort-advisor's latest suggestion per node. */
+  effort: Record<string, EffortSuggestion>
+  /** keep-warm opt-ins still running, per node. */
+  keepWarm: Record<string, KeepWarmEntry>
+  /** The newest handoff per node: its file (checked to be inside the handoffs folder) and time. */
+  handoffs: Record<string, { file: string; at: number }>
 }
 
 export function emptyTotals(): SaverTotals {

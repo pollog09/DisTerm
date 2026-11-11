@@ -474,6 +474,8 @@ export const IPC = {
   tokenSaversUninstall: 'token-savers:uninstall',
   tokenSaversSetSwitch: 'token-savers:set-switch',
   tokenSaversUpdate: 'token-savers:update',
+  /** Turn keep-warm on for a node for N minutes (0 = off), with the chat's cache TTL. */
+  tokenSaversSetKeepWarm: 'token-savers:set-keep-warm',
   contextEnsure: 'context:ensure',
   // Team presence (docs/team-presence.md). `presence:hello` is a REQUEST: its response tells the
   // client its own clientId, so it never draws its own cursor. The rest are casts (client→server)

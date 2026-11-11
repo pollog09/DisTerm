@@ -1,0 +1,8 @@
+{
+  "name": "effort-advisor",
+  "version": "0.1.0",
+  "description": "Haiku suggests the effort level each prompt needs; the context meter offers to switch.",
+  "author": {
+    "name": "DisTerm"
+  }
+}

@@ -18,6 +18,10 @@ The mods in this phase:
 | `input-router` | Big `Read`/`cat` results and big connector (MCP) results go to Haiku first. Claude gets short notes and the path to the full text. |
 | `model-router` | Haiku judges each `general-purpose` subagent task and picks a tier (light, standard, heavy). It moves a task down only at confidence ≥ 0.6 and up at ≥ 0.3. It never changes the main chat's model. |
 | `efficient-browser-use` | Shrinks browser-tool screenshots before Claude reads them. |
+| `handoff` | `/handoff`: writes a summary of the whole chat from its prompt cache; DisTerm opens a fresh node seeded with it. |
+| `effort-advisor` | Haiku suggests the effort level each prompt needs; the context meter offers to switch. |
+| `keep-warm` | Pings a chat's prompt cache shortly before it expires, for nodes the user turned it on for. |
+| `research-router` | A `Research` tool: a Haiku subagent reads the pages and returns a short brief with sources. |
 
 **Where they came from.** These are our own code. A third-party pack ("token-saving mods" by Ben AI) was the behavioural
 reference: what each mod should do, its thresholds, the idea of a ledger. No code, prompt or text was copied from it. Only
@@ -148,3 +152,65 @@ price on the next message. DisTerm shows the clock natively, with nothing to ins
   cannot disagree.
 - **Keep-warm** (pinging the cache before it expires) is not built. It needs `$.model.fork` inside Claude, so it would be
   a mod, and it costs a request per ping.
+
+### Handoff, effort advice, keep-warm and research
+
+The four mods of the second phase. Each needs Claude's own engine: a fork over the chat's cache, the effort setting, or
+a subagent. DisTerm's part is in `TokenSaverActions` (inside the context meter's popover) and in `Canvas.tsx`. Each
+action shows only when its mod is installed and on, and only for a local Claude node: the mods run in that session, and
+a handoff file on this machine is not readable from an SSH host.
+
+**Handoff.**
+
+1. **Hand off to a fresh node** appears in the meter from 100k tokens of context, and is pressed harder from 250k.
+2. Pressing it types `/handoff` into the pane, through the ⌘M composer's send gate, read at click time.
+3. The mod runs `$.model.fork` over the chat and writes the result to `~/.nodeterm/token-savers/handoffs/`. Its
+   ledger line carries the file.
+   - **The fork names no effort.** A level other than the session's own can make the first fork write the whole chat
+     to a cache entry of its own (`ModelForkRequest`), which is the cost a handoff exists to avoid.
+4. **The service jails the path** to the handoffs folder (`handoffsFrom`) and checks the file exists. The ledger can be
+   written by anything the user runs, and the path becomes a new agent's first prompt.
+5. The renderer waits up to five minutes for a file newer than the press (`settleHandoffs`).
+6. Canvas then opens a Claude node beside the source: same frame, folder and account, seeded with the file
+   (`promptFile`), titled "… (continued)".
+
+**Effort advice.**
+
+- The mod judges each prompt *after* passing it on, so a prompt is never delayed. It writes the latest suggestion per
+  node to `effort.json`.
+- The meter shows the suggestion when it differs from the effort the transcript records. **Switch** types `/effort
+  <level>`.
+- **A warm cache costs a switch.** A mid-chat effort change re-writes the cached chat, so while the cache is warm the
+  meter says how many tokens a switch would re-write. When it is cold, switching is free.
+
+**Keep-warm.**
+
+- **What it costs.** Off by default, and opt-in per node for one hour, from the meter (at most two hours,
+  `KEEP_WARM_MAX_MS`). The meter shows what one ping costs: a cache read of the context, a tenth of the input price.
+- **The opt-in file.** DisTerm writes the opt-in, with the chat's TTL read from the transcript, to `keep-warm.json`
+  (`tokenSavers.setKeepWarm`).
+- **When it pings.** The mod pings only while the main thread is idle, and only between `ttl − 45 s` and `ttl` after the
+  last cache use. Earlier, the cache is fresh. Later it has lapsed, and a ping would pay to write the whole chat again.
+- **When it stops.** After 30 pings, at the end of the opt-in, or after three failures in a row.
+- **The ping's effort.** Like the handoff, the ping names no effort level. Instead, its prompt asks for an instant
+  answer.
+
+**Research.**
+
+- **The tool.** The mod registers a `Research` tool. Claude calls it with a question.
+- **The subagent.** It spawns a `general-purpose` subagent on Haiku. That is an explicit model, so model-router leaves it
+  alone. The subagent reads real pages and returns a brief, which becomes the tool's result.
+- **Why it saves.** The pages never enter the main chat.
+- **Waiting.** It waits at most five minutes. A tool hook's own waiting counts against its 10-second budget, so it polls
+  a 2-second host `sleep` (`$.process.run`), which does not count.
+- **Nesting.** A research run cannot start another one.
+
+**Not yet seen in a live session:**
+
+- a real fork's `cache_read`;
+- whether a ping extends the main thread's cache entry;
+- the name the engine gives the registered tool;
+- a real subagent's `turn.complete` usage.
+
+The ledger lines record each of these, so the first real run shows them.
+

@@ -65,6 +65,8 @@ describe('helperUsd', () => {
     expect(helperUsd({ ...l, helper: { model: 'haiku', in: 1e6, out: 0 } })).toBeCloseTo(0.1)
     expect(helperUsd({ ...l, helper: { model: 'claude-opus-5-5', in: 1e6, out: 0 } })).toBeCloseTo(4)
     expect(helperUsd({ ...l, helper: { model: 'mystery', in: 1e6, out: 0 } })).toBe(0)
+    expect(helperUsd({ ...l, helper: { model: 'claude-opus-5-5', in: 0, out: 0, cache_read: 1e6 } })).toBeCloseTo(0.4)
+    expect(parseLedgerLine(line({ file: '/h/x.md', helper: { model: 'm', in: 1, out: 2, cache_read: 3 } }))).toMatchObject({ file: '/h/x.md', helper: { cache_read: 3 } })
   })
 })
 

@@ -1,0 +1,8 @@
+{
+  "name": "handoff",
+  "version": "0.1.0",
+  "description": "Writes a summary of a long chat from its prompt cache, so a fresh agent node can carry on from it.",
+  "author": {
+    "name": "DisTerm"
+  }
+}

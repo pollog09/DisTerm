@@ -14,7 +14,21 @@ interface TokenSaversState {
   install(): Promise<void>
   uninstall(): Promise<void>
   setSwitch(id: TokenSaverId, on: boolean): Promise<void>
+  setKeepWarm(nodeId: string, minutes: number, ttlMs: number): Promise<void>
+  /** Nodes that asked for a handoff, with when: the next handoff file for one opens a new node. */
+  pendingHandoff: Record<string, number>
+  /** `/handoff` was typed into the node's pane: wait for its file. */
+  markHandoffPending(nodeId: string): void
 }
+
+/** The event Canvas answers by opening a new agent node seeded with the handoff file. */
+export const HANDOFF_READY_EVENT = 'nodeterm:token-savers-handoff'
+export interface HandoffReadyDetail {
+  nodeId: string
+  file: string
+}
+/** How long a requested handoff is waited for before the request is dropped. */
+const HANDOFF_WAIT_MS = 5 * 60_000
 
 let started = false
 
@@ -37,7 +51,10 @@ export const useTokenSavers = create<TokenSaversState>((set) => {
     setPanelOpen: (panelOpen) => set({ panelOpen }),
     install: () => run(() => window.nodeTerminal.tokenSavers.install()),
     uninstall: () => run(() => window.nodeTerminal.tokenSavers.uninstall()),
-    setSwitch: (id, on) => run(() => window.nodeTerminal.tokenSavers.setSwitch(id, on))
+    setSwitch: (id, on) => run(() => window.nodeTerminal.tokenSavers.setSwitch(id, on)),
+    setKeepWarm: (nodeId, minutes, ttlMs) => run(() => window.nodeTerminal.tokenSavers.setKeepWarm(nodeId, minutes, ttlMs)),
+    pendingHandoff: {},
+    markHandoffPending: (nodeId) => set((st) => ({ pendingHandoff: { ...st.pendingHandoff, [nodeId]: Date.now() } }))
   }
 })
 
@@ -50,11 +67,31 @@ export function ensureTokenSavers(): void {
     useTokenSavers.setState({ unavailable: true })
     return
   }
-  api.onUpdate((snap) => useTokenSavers.setState({ snap }))
+  api.onUpdate((snap) => {
+    useTokenSavers.setState({ snap })
+    settleHandoffs(snap)
+  })
   api.get().then(
     (snap) => useTokenSavers.setState({ snap }),
     () => useTokenSavers.setState({ unavailable: true })
   )
+}
+
+/** A requested handoff whose file has arrived opens a new node, once. Pure apart from the event. */
+export function settleHandoffs(snap: TokenSaversSnapshot, now = Date.now()): void {
+  const pending = useTokenSavers.getState().pendingHandoff
+  const left: Record<string, number> = {}
+  let moved = false
+  for (const [nodeId, askedAt] of Object.entries(pending)) {
+    const h = snap.handoffs[nodeId]
+    // A little slack: the mod stamps the file with its own clock.
+    if (h && h.at >= askedAt - 5_000) {
+      window.dispatchEvent(new CustomEvent<HandoffReadyDetail>(HANDOFF_READY_EVENT, { detail: { nodeId, file: h.file } }))
+      moved = true
+    } else if (now - askedAt < HANDOFF_WAIT_MS) left[nodeId] = askedAt
+    else moved = true
+  }
+  if (moved) useTokenSavers.setState({ pendingHandoff: left })
 }
 
 export function useTokenSaversSnap(): TokenSaversSnapshot | null {

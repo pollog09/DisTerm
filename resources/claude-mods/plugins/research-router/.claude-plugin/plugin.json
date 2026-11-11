@@ -1,0 +1,8 @@
+{
+  "name": "research-router",
+  "version": "0.1.0",
+  "description": "Gives Claude a Research tool: a Haiku subagent reads the pages and returns a short brief with sources.",
+  "author": {
+    "name": "DisTerm"
+  }
+}

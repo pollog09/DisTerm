@@ -6,11 +6,19 @@ import os from 'os'
 import path from 'path'
 import { IPC } from '../../shared/ipc'
 import {
+  EFFORT_LEVELS,
+  KEEP_WARM_MAX_MS,
   TOKEN_SAVERS_DIR,
+  TOKEN_SAVERS_EFFORT,
+  TOKEN_SAVERS_HANDOFFS_DIR,
+  TOKEN_SAVERS_KEEP_WARM,
   TOKEN_SAVERS_LEDGER,
   TOKEN_SAVERS_SWITCHES,
   TOKEN_SAVER_IDS,
   emptyTotals,
+  type EffortSuggestion,
+  type KeepWarmEntry,
+  type LedgerRow,
   type TokenSaverId,
   type TokenSaversSnapshot
 } from '../../shared/token-savers'
@@ -18,7 +26,8 @@ import { platform } from '../platform'
 import { claudeSystemConfigDir } from '../agents/hooks/claude'
 import { installTokenSavers, installedIn, syncMarketplace, uninstallTokenSavers } from './install'
 import { aggregateLedger, localDay } from './ledger'
-import { readSwitches, switchesView, writeSwitch } from './switches'
+import { parseSwitches, readSwitches, switchesView, writeSwitch } from './switches'
+import { writeFileAtomic } from '../fs-atomic'
 
 const POLL_MS = 2000
 /** Read at most the newest 8 MB of the ledger; older lines fall out of "all time" (stated in the panel). */
@@ -37,6 +46,47 @@ export async function readLedgerTail(file: string, cap = LEDGER_READ_CAP): Promi
   } finally {
     await fh.close()
   }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+const NODE_ID = /^[A-Za-z0-9_.:-]{1,128}$/
+const EFFORT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/** effort.json (written by the mod) → valid, recent suggestions only. Pure. */
+export function parseEffort(raw: string | null, now: number): Record<string, EffortSuggestion> {
+  const out: Record<string, EffortSuggestion> = {}
+  for (const [id, v] of Object.entries(parseSwitches(raw))) {
+    if (!NODE_ID.test(id) || !isObj(v)) continue
+    const level = v.level
+    const at = typeof v.at === 'number' ? v.at : NaN
+    if (!(EFFORT_LEVELS as readonly unknown[]).includes(level) || !Number.isFinite(at) || now - at > EFFORT_MAX_AGE_MS) continue
+    out[id] = { level: level as EffortSuggestion['level'], why: typeof v.why === 'string' ? v.why.slice(0, 200) : '', at }
+  }
+  return out
+}
+
+/** keep-warm.json → the opt-ins still running. An `until` past the longest offer is clamped. Pure. */
+export function parseKeepWarm(raw: string | null, now: number): Record<string, KeepWarmEntry> {
+  const out: Record<string, KeepWarmEntry> = {}
+  for (const [id, v] of Object.entries(parseSwitches(raw))) {
+    if (!NODE_ID.test(id) || !isObj(v) || typeof v.until !== 'number' || v.until <= now) continue
+    out[id] = { until: Math.min(v.until, now + KEEP_WARM_MAX_MS), ttlMs: v.ttlMs === 3_600_000 ? 3_600_000 : 300_000 }
+  }
+  return out
+}
+
+/** The newest handoff per node whose file lies inside `dir`. The ledger is writable by anything the
+ *  user runs, and DisTerm hands this path to a new agent as its first prompt, so it is jailed. Pure
+ *  apart from the caller's existence check. */
+export function handoffsFrom(rows: readonly LedgerRow[], dir: string): Record<string, { file: string; at: number }> {
+  const out: Record<string, { file: string; at: number }> = {}
+  for (const r of rows) {
+    if (r.mod !== 'handoff' || !r.nodeId || !r.file || out[r.nodeId]) continue
+    const rel = path.relative(dir, path.resolve(r.file))
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.md')) continue
+    out[r.nodeId] = { file: path.join(dir, rel), at: Date.parse(r.ts) }
+  }
+  return out
 }
 
 export interface TokenSaversService {
@@ -101,6 +151,10 @@ export function startTokenSaversService(deps: TokenSaversDeps = {}): TokenSavers
   const ledgerFile = path.join(home, TOKEN_SAVERS_LEDGER)
   const switchesFile = path.join(home, TOKEN_SAVERS_SWITCHES)
   const fullDir = path.join(home, TOKEN_SAVERS_DIR, 'full')
+  const effortFile = path.join(home, TOKEN_SAVERS_EFFORT)
+  const keepWarmFile = path.join(home, TOKEN_SAVERS_KEEP_WARM)
+  const handoffsDir = path.join(home, TOKEN_SAVERS_HANDOFFS_DIR)
+  const readText = (f: string): Promise<string | null> => fs.promises.readFile(f, 'utf8').catch(() => null)
 
   let snap: TokenSaversSnapshot = {
     installed: false,
@@ -112,7 +166,10 @@ export function startTokenSaversService(deps: TokenSaversDeps = {}): TokenSavers
     byNode: {},
     byMod: {},
     rows: [],
-    skipped: 0
+    skipped: 0,
+    effort: {},
+    keepWarm: {},
+    handoffs: {}
   }
   let ledgerKey = ''
   let busy = false
@@ -164,7 +221,19 @@ export function startTokenSaversService(deps: TokenSaversDeps = {}): TokenSavers
       if (key !== ledgerKey || force) {
         ledgerKey = key
         const text = st ? (await readLedgerTail(ledgerFile).catch(() => ({ text: '' }))).text : ''
-        snap = { ...snap, ...aggregateLedger(text, Date.now()) }
+        const agg = aggregateLedger(text, Date.now())
+        const handoffs: TokenSaversSnapshot['handoffs'] = {}
+        for (const [id, h] of Object.entries(handoffsFrom(agg.rows, handoffsDir))) {
+          if (await fs.promises.stat(h.file).then((x) => x.isFile(), () => false)) handoffs[id] = h
+        }
+        snap = { ...snap, ...agg, handoffs }
+        changed = true
+      }
+      const now = Date.now()
+      const effort = parseEffort(await readText(effortFile), now)
+      const keepWarm = parseKeepWarm(await readText(keepWarmFile), now)
+      if (JSON.stringify(effort) !== JSON.stringify(snap.effort) || JSON.stringify(keepWarm) !== JSON.stringify(snap.keepWarm)) {
+        snap = { ...snap, effort, keepWarm }
         changed = true
       }
       if (changed) publish()
@@ -211,6 +280,21 @@ export function startTokenSaversService(deps: TokenSaversDeps = {}): TokenSavers
     switchWrites++
     const written = await writeSwitch(switchesFile, id as TokenSaverId, on)
     snap = { ...snap, switches: switchesView(written) }
+    publish()
+    return snap
+  })
+
+  p.handle(IPC.tokenSaversSetKeepWarm, async (nodeId: unknown, minutes: unknown, ttlMs: unknown) => {
+    if (typeof nodeId !== 'string' || !NODE_ID.test(nodeId)) throw new Error('Bad node')
+    if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes < 0 || minutes * 60_000 > KEEP_WARM_MAX_MS)
+      throw new Error('Bad duration')
+    const now = Date.now()
+    const next: Record<string, unknown> = { ...parseKeepWarm(await readText(keepWarmFile), now) }
+    if (minutes === 0) delete next[nodeId]
+    else next[nodeId] = { until: now + minutes * 60_000, ttlMs: ttlMs === 3_600_000 ? 3_600_000 : 300_000 }
+    await fs.promises.mkdir(path.dirname(keepWarmFile), { recursive: true })
+    await writeFileAtomic(keepWarmFile, `${JSON.stringify(next, null, 2)}\n`)
+    snap = { ...snap, keepWarm: parseKeepWarm(JSON.stringify(next), now) }
     publish()
     return snap
   })

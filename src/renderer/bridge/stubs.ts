@@ -373,6 +373,7 @@ export function buildStubApi(): Omit<
       install: U('tokenSavers.install'),
       uninstall: U('tokenSavers.uninstall'),
       setSwitch: U('tokenSavers.setSwitch'),
+      setKeepWarm: U('tokenSavers.setKeepWarm'),
       onUpdate: noopUnsub
     },
     wallpaper: {

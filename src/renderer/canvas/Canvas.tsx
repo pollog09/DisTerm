@@ -809,7 +809,7 @@ import {
 } from '@shared/node-colors'
 import { parseLenses, verifyLensPrompt, verifySynthesisPrompt } from '../lib/verifyPanel'
 import { useSettings } from '../state/settings'
-import { useTokenSavers } from '../state/tokenSavers'
+import { HANDOFF_READY_EVENT, useTokenSavers, type HandoffReadyDetail } from '../state/tokenSavers'
 import {
   activePermissionMode,
   cursorCliCapsNow,
@@ -7097,6 +7097,29 @@ export function Canvas() {
     }
     window.addEventListener('nodeterm:open-agent', onOpenAgent)
     return () => window.removeEventListener('nodeterm:open-agent', onOpenAgent)
+  }, [addAgentNode, nodesRef])
+
+  // Token savers' handoff (docs/reference/token-savers.md § Handoff): the mod wrote a summary of a
+  // long chat; carry on in a FRESH Claude node beside it, seeded with that file, on the same account,
+  // frame and folder. The core already jailed the path to the handoffs folder; it must still be a
+  // valid prompt file. A source that has left the canvas opens nothing.
+  useEffect(() => {
+    const onHandoff = (e: Event): void => {
+      const d = (e as CustomEvent<HandoffReadyDetail>).detail
+      const all = nodesRef.current
+      const source = all.find((n) => n.id === d?.nodeId)
+      if (!source || !d.file || promptFilePathError(d.file)) return
+      const rect = nodeFitRect(source as FocusableNode, all as FocusableNode[])
+      const center = rect ? { x: rect.x + rect.width * 1.5 + 40, y: rect.y + rect.height / 2 } : undefined
+      const data = source.data as { title?: string; cwd?: string; accountId?: string }
+      addAgentNode('claude', center, source.parentId, data.accountId ?? null, undefined, {
+        promptFile: d.file,
+        title: `${data.title ?? 'Claude'} (continued)`,
+        ...(data.cwd ? { cwd: data.cwd } : {})
+      })
+    }
+    window.addEventListener(HANDOFF_READY_EVENT, onHandoff)
+    return () => window.removeEventListener(HANDOFF_READY_EVENT, onHandoff)
   }, [addAgentNode, nodesRef])
 
   // "Spawn a team…" (issue #78): the dialog collects the task; this opens ONE conductor node

@@ -678,6 +678,7 @@ const api: NodeTerminalApi = {
     install: () => ipcRenderer.invoke(IPC.tokenSaversInstall),
     uninstall: () => ipcRenderer.invoke(IPC.tokenSaversUninstall),
     setSwitch: (id, on) => ipcRenderer.invoke(IPC.tokenSaversSetSwitch, id, on),
+    setKeepWarm: (nodeId, minutes, ttlMs) => ipcRenderer.invoke(IPC.tokenSaversSetKeepWarm, nodeId, minutes, ttlMs),
     onUpdate: (listener) => {
       const handler = (_e: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
       ipcRenderer.on(IPC.tokenSaversUpdate, handler)
