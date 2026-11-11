@@ -247,7 +247,17 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   a 2D box's title opens it. Particles are the 2D dots' stream: one per new `pulseOf` value on a line,
   seeded at mount so nothing replays, at most `MAX_FLOW_DOTS` in flight per line. A line in transit by
   the 2D rule (`edgeInTransit`) also sends one every `STREAM_EVERY_MS` (900 ms), under the same cap, as
-  the 2D chevrons keep moving along it. None is emitted under
+  the 2D chevrons keep moving along it. Each particle is a smooth unlit sphere (16 segments; the
+  library's default of 4 is a faceted diamond that reads as the line flickering) in the line's colour
+  lifted toward the sky's opposite, with a faint back-faced halo shell. It is built through
+  `linkDirectionalParticleThreeObject`. three-forcegraph frees a landed photon's children
+  (`emptyObject`) but never the photon's own geometry and material, so building those fresh each time
+  leaked two GPU objects every 900 ms on a streaming line. So the photon is a Mesh on a geometry shared
+  per radius and a material shared per colour, and these are disposed on unmount. Only its halo, a
+  child, is fresh, because that is what the library frees. Removing a line frees every part of its
+  photons in flight, the shared parts too. three uploads a disposed geometry or material again on its
+  next use, so the cache keeps them. Direction comes only
+  from the sign of `linkDirectionalParticleSpeed`. None is emitted under
   Reduce Motion or while nobody can see the view, and an event missed then is not replayed later. The
   map of what was played (`seen`) is never pruned when a line goes. A line that leaves and comes back (a
   session's Harness line, through ghost and back) returns with its old `lastEventTs`, so pruning would

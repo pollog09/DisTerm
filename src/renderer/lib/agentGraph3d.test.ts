@@ -13,6 +13,10 @@ import {
   graph3dLinkLook,
   graph3dLoopShouldRun,
   graph3dNodeLook,
+  graph3dParticleLook,
+  PARTICLE_RADIUS,
+  LOOP_PARTICLE_RADIUS,
+  PARTICLE_HALO_SPAN,
   graph3dNodeMotion,
   graph3dCaptions,
   graph3dCurrentStep,
@@ -184,6 +188,28 @@ describe('graph3dLinkLook', () => {
     ['a skill call', edge('u', 'a', 'k', { kind: 'uses-skill' }), { color: 'var(--sys-teal)', width: 0.7, dashed: false, arrowLength: 4.5, reverse: false }]
   ])('%s', (_name, e, look) => {
     expect(graph3dLinkLook(e)).toEqual(look)
+  })
+})
+
+describe('graph3dParticleLook', () => {
+  const edges = [
+    edge('m', 'a', 'b', { latest: 'delivered' }),
+    edge('h', 'h', 'a', { kind: 'harness', flow: 'reverse' }),
+    edge('u', 'a', 'k', { kind: 'uses-skill' }),
+    edge('r', 'a', 'b', { kind: 'ship-reject', loop: true, traversals: 1 })
+  ]
+
+  it('a delivered message', () => {
+    expect(graph3dParticleLook(edges[0])).toEqual({ color: 'var(--state-success)', radius: PARTICLE_RADIUS, haloRadius: PARTICLE_RADIUS * PARTICLE_HALO_SPAN })
+  })
+
+  it('a loop line has a bigger particle', () => {
+    expect(graph3dParticleLook(edges[3])).toMatchObject({ color: 'var(--state-attention)', radius: LOOP_PARTICLE_RADIUS, haloRadius: LOOP_PARTICLE_RADIUS * PARTICLE_HALO_SPAN })
+  })
+
+  it.each(edges.map((e) => [e.id, e] as const))('%s: the particle is its line\'s colour and larger than the line', (_id, e) => {
+    expect(graph3dParticleLook(e).color).toBe(graph3dLinkLook(e).color)
+    expect(graph3dParticleLook(e).radius).toBeGreaterThan(graph3dLinkLook(e).width / 2)
   })
 })
 

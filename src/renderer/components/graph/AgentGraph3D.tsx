@@ -45,10 +45,13 @@ import {
   graph3dLinkLook,
   graph3dLoopShouldRun,
   graph3dNodeLook,
+  graph3dParticleLook,
   graph3dNodeMotion,
   graph3dPixelScale,
   graph3dPlanetPose,
   graph3dShownLabels,
+  PARTICLE_HALO_SPAN,
+  PARTICLE_RADIUS,
   STREAM_EVERY_MS,
   type Graph3dLabelBox,
   type Graph3dNodeMotion,
@@ -109,6 +112,12 @@ const LEAVE_GRACE_MS = 800
 const GATE_CHECK_MS = 250
 /** Of a line's length per frame: about a second and a half on a 60 Hz display. */
 const PARTICLE_SPEED = 0.011
+/** A particle is a smooth sphere: the library's default of 4 segments is a faceted diamond that reads as a flicker. */
+const PARTICLE_SEGMENTS = 16
+const PARTICLE_RINGS = 12
+/** How far a particle's colour is lifted off its line's, so it stands out against the tube it rides. */
+const PARTICLE_LIFT_DARK = 0.55
+const PARTICLE_LIFT_LIGHT = -0.35
 const LABEL_MAX = 40
 /** A name's height on screen, in CSS pixels, whatever its depth or the zoom. */
 const LABEL_PX = 22
@@ -756,7 +765,49 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       const edge = edgesById.current.get(l.id)
       return rgbHex(edge ? colors.get(graph3dLinkLook(edge).color, FALLBACK_LINE) : FALLBACK_LINE)
     }
-    const particleColor = (l: Graph3dLink): string => arrowColor(l)
+    // A photon's own geometry and material are shared, per radius and per colour, and given back on unmount.
+    const particleGeometries = new Map<number, SphereGeometry>()
+    const particleMaterials = new Map<string, MeshBasicMaterial>()
+    // three-forcegraph frees a landed photon's children, never the photon's own geometry and material
+    // (`emptyObject`), so the photon is a Mesh on a shared geometry and material and only its halo,
+    // a child, is built fresh. Removing a line frees every part of its photons in flight, the shared
+    // ones too. three uploads a disposed geometry or material again on its next use, so the cache keeps
+    // them.
+    const particleObject = (l: Graph3dLink): Object3D => {
+      const edge = edgesById.current.get(l.id)
+      const look = edge
+        ? graph3dParticleLook(edge)
+        : { color: '', radius: PARTICLE_RADIUS, haloRadius: PARTICLE_RADIUS * PARTICLE_HALO_SPAN }
+      const dark = darkSky()
+      const base = compositeOver(edge ? colors.get(look.color, FALLBACK_LINE) : FALLBACK_LINE, panel())
+      const core = rgbHex(tone(base, dark ? PARTICLE_LIFT_DARK : PARTICLE_LIFT_LIGHT))
+      let geometry = particleGeometries.get(look.radius)
+      if (!geometry) {
+        geometry = new SphereGeometry(look.radius, PARTICLE_SEGMENTS, PARTICLE_RINGS)
+        particleGeometries.set(look.radius, geometry)
+      }
+      let material = particleMaterials.get(core)
+      if (!material) {
+        material = new MeshBasicMaterial({ color: core })
+        particleMaterials.set(core, material)
+      }
+      const sphere = new Mesh(geometry, material)
+      const halo = new Mesh(
+        new SphereGeometry(look.haloRadius, PARTICLE_SEGMENTS, PARTICLE_RINGS),
+        new MeshBasicMaterial({
+          color: core,
+          transparent: true,
+          opacity: dark ? 0.3 : 0.2,
+          depthWrite: false,
+          side: BackSide
+        })
+      )
+      halo.material.blending = dark ? AdditiveBlending : NormalBlending
+      sphere.raycast = noPick
+      halo.raycast = noPick
+      sphere.add(halo)
+      return sphere
+    }
 
     const restyle = (): void => {
       sunId = graph3dCurrentStep([...nodesById.current.values()])
@@ -793,8 +844,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       })
       .linkDirectionalArrowRelPos(1)
       .linkDirectionalArrowColor(arrowColor)
-      .linkDirectionalParticleWidth(2.4)
-      .linkDirectionalParticleColor(particleColor)
+      .linkDirectionalParticleThreeObject((l) => particleObject(l))
       .linkDirectionalParticleSpeed((l) => (edgesById.current.get(l.id)?.flow === 'reverse' ? -PARTICLE_SPEED : PARTICLE_SPEED))
       .onNodeClick((n) => {
         const node = nodesById.current.get(n.id)
@@ -973,6 +1023,10 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
         for (const sat of visual.satellites) sat.mesh.material.dispose()
       }
       satelliteGeometry.dispose()
+      for (const geometry of particleGeometries.values()) geometry.dispose()
+      for (const material of particleMaterials.values()) material.dispose()
+      particleGeometries.clear()
+      particleMaterials.clear()
       stars.geometry.dispose()
       stars.material.dispose()
       visuals.current.clear()
