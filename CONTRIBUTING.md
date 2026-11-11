@@ -1555,6 +1555,14 @@ silently enabled every agent on a fresh install's second boot (#1149). Only a no
 `~/.nodeterm/agent-hooks/` counts, and only on an install's first boot (the fresh-install marker). Do not merge text into `AGENTS.md` / `GEMINI.md` — agents get skills (progressive disclosure)
 instead; the old blocks crowded codex's 32 KiB instruction budget.
 
+**The token savers are the one Claude plugin install, and they go through Claude's CLI.**
+`src/core/token-savers/install.ts` runs `claude plugin marketplace add` / `claude plugin install`
+(never a hand edit of `settings.json`), only after the user presses Install AND has enabled the
+Claude integration; declining that integration removes them. The mods in `resources/claude-mods/`
+are our own code: a third-party pack was the behavioural reference, and nothing was copied from
+it. Keep it that way. After editing a mod, run `npm run mods:bundle`, because
+`bundled.test.ts` fails on a stale bundle. See `docs/reference/token-savers.md`.
+
 **opencode has two managed plugins and they must stay two** (issue #1136): the 1.x file
 `plugins/nodeterm-status.js` exports ONLY the named function — opencode <= 1.2.10 calls every export
 as a function and dies on a default object, for every command on the machine — and 2.x gets the

@@ -105,6 +105,7 @@ import { createGrantsAccessor } from '../core/push-grants'
 import { createAckSweeper } from '../core/ack-sweep'
 import { createSessionReaper } from '../core/session-budget'
 import { startSessionMemoryService, sshScopePredicate } from '../core/session-memory-service'
+import { startTokenSaversService } from '../core/token-savers/service'
 import { createMemoryPressureMonitor } from '../core/memory-pressure'
 import { createPtyPressureMonitor } from '../core/pty-pressure'
 import { claudeCliCaps, type ClaudeCliCaps } from '../core/claude-cli'
@@ -975,6 +976,14 @@ export async function startServer(
   // closure evaluated per QUERY, and no query can arrive before `startServer` reaches `listen()`,
   // so reordering the two would change nothing. The requirement is that the load happens and is
   // complete before the server serves — not that it precedes this line.
+  // Token savers (docs/reference/token-savers.md): the ledger poller, install/remove of the
+  // Claude Code mods and their switches. All in core, so the Server Edition has the same feature.
+  startTokenSaversService({
+    consent: () => ({
+      veto: config.installHooks === false,
+      claude: settingsStore.get().agentIntegrations?.agents?.claude
+    })
+  })
   startSessionMemoryService({
     tmuxBin: () => ptyManager.getTmuxBin(),
     // Zellij-backed sessions are not in the tmux sweep; the panel says how many it did not measure.

@@ -202,6 +202,7 @@ import {
   DictationOverlay,
   PhonePairPopover,
   LogPanel,
+  TokenSavingsPanel,
   KanbanView
 } from '../components/lazyPanels'
 import { WelcomeScreen } from '../components/WelcomeScreen'
@@ -808,6 +809,7 @@ import {
 } from '@shared/node-colors'
 import { parseLenses, verifyLensPrompt, verifySynthesisPrompt } from '../lib/verifyPanel'
 import { useSettings } from '../state/settings'
+import { useTokenSavers } from '../state/tokenSavers'
 import {
   activePermissionMode,
   cursorCliCapsNow,
@@ -1654,6 +1656,17 @@ export function Canvas() {
   // Debug log panel (issue #78). Settings' "Open" button fires the event (the dialog can't
   // reach Canvas state directly), and the settings dialog closes so the panel is visible.
   const [logPanelOpen, setLogPanelOpen] = useState(false)
+  // Token savings panel (docs/reference/token-savers.md): opened from the palette or a context meter.
+  const tokenSavingsOpen = useTokenSavers((st) => st.panelOpen)
+  const setTokenSavingsOpen = useTokenSavers((st) => st.setPanelOpen)
+  useEffect(() => {
+    const onOpen = (): void => {
+      setSettingsOpen(false)
+      setTokenSavingsOpen(true)
+    }
+    window.addEventListener('nodeterm:open-token-savings', onOpen)
+    return () => window.removeEventListener('nodeterm:open-token-savings', onOpen)
+  }, [setTokenSavingsOpen])
   useEffect(() => {
     const onOpen = (): void => {
       setSettingsOpen(false)
@@ -19581,6 +19594,14 @@ export function Canvas() {
           ]
         : []),
       {
+        id: 'token-savings',
+        label: 'Show token savings',
+        hint: 'tokens cost cache savers mods haiku',
+        section: 'View',
+        icon: <IconGear />,
+        run: () => setTokenSavingsOpen(true)
+      },
+      {
         id: 'spawn-team',
         label: 'Spawn a team…',
         // Searchable synonyms — this is the entry people will look for by intent, not by name.
@@ -20743,6 +20764,12 @@ export function Canvas() {
         />
       )}
       {logPanelOpen && <LogPanel onClose={() => setLogPanelOpen(false)} />}
+      {tokenSavingsOpen && (
+        <TokenSavingsPanel
+          onClose={() => setTokenSavingsOpen(false)}
+          nodeTitle={(id) => nodesRef.current.find((n) => n.id === id)?.data?.title}
+        />
+      )}
       {onboardingOpen && (
         <OnboardingFlow
           onClose={() => {

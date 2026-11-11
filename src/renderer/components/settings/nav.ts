@@ -12,6 +12,7 @@ export type SettingsSectionId =
   | 'shortcuts'
   | 'agents'
   | 'usage'
+  | 'token-savers'
   | 'accounts'
   | 'custom-agents'
   | 'ship-process'
@@ -73,6 +74,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { id: 'ship-process', title: 'Ship process' },
       { id: 'model-gateway', title: 'Model gateway' },
       { id: 'usage', title: 'Usage' },
+      { id: 'token-savers', title: 'Token savers' },
       { id: 'commit', title: 'Commit messages' }
     ]
   },

@@ -1,0 +1,46 @@
+{
+  "name": "model-router",
+  "version": "0.1.0",
+  "description": "Haiku judges each subagent task and moves easy ones to a cheaper model. Never changes the main chat.",
+  "author": {
+    "name": "DisTerm"
+  },
+  "userConfig": {
+    "lightModel": {
+      "type": "string",
+      "title": "Light model",
+      "description": "Runs subagent tasks that leave little to judgment and are cheap to get wrong.",
+      "default": "claude-haiku-5-5"
+    },
+    "standardModel": {
+      "type": "string",
+      "title": "Standard model",
+      "description": "Runs tasks with a clear goal that still need real reasoning.",
+      "default": "claude-sonnet-5-5"
+    },
+    "heavyModel": {
+      "type": "string",
+      "title": "Heavy model",
+      "description": "Runs tasks whose goal or cause is unclear, or where a hidden mistake would do harm.",
+      "default": "claude-opus-5-5"
+    },
+    "lowerBar": {
+      "type": "number",
+      "title": "Bar to go cheaper",
+      "description": "How sure the judge must be (0 to 1) before a task runs on a cheaper model than its parent.",
+      "default": 0.6
+    },
+    "raiseBar": {
+      "type": "number",
+      "title": "Bar to go stronger",
+      "description": "How sure the judge must be (0 to 1) before a task runs on a stronger model than its parent.",
+      "default": 0.3
+    },
+    "timeoutMs": {
+      "type": "number",
+      "title": "Judge time limit (ms)",
+      "description": "After this long without a verdict, the subagent starts unchanged.",
+      "default": 8000
+    }
+  }
+}

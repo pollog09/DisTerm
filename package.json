@@ -20,6 +20,7 @@
     "build:codex-relay": "node scripts/build-codex-relay.mjs",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
+    "mods:bundle": "node scripts/bundle-claude-mods.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:unit": "vitest run test/remote",

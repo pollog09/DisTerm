@@ -30,16 +30,23 @@ const toLines = (text: string | string[]): string[] =>
  */
 export function parseLatestUsage(
   text: string | string[]
-): { used: number; model: string | null; effort?: string } | null {
+): { used: number; model: string | null; effort?: string; at?: number; ttlMs?: number } | null {
   const lines = toLines(text)
   let found = false
   let usedTokens = 0
   let model: string | null = null
   let effort: string | undefined
+  let at: number | undefined
+  let ttlMs: number | undefined
   for (let i = lines.length - 1; i >= 0; i--) {
     const s = lines[i].trim()
     if (!s || !s.includes('"usage"') || !s.includes('"assistant"')) continue
-    let o: { type?: string; effort?: unknown; message?: { model?: string; usage?: Record<string, number> } }
+    let o: {
+      type?: string
+      effort?: unknown
+      timestamp?: unknown
+      message?: { model?: string; usage?: Record<string, number> & { cache_creation?: Record<string, number> } }
+    }
     try {
       o = JSON.parse(s)
     } catch {
@@ -59,6 +66,13 @@ export function parseLatestUsage(
       // carried forward like the model: a record without it means that request had no effort (a
       // model that does not take one), and an older value would be a stale claim.
       if (typeof o.effort === 'string' && o.effort) effort = o.effort
+      // The cache clock (docs/reference/token-savers.md): when this reply ended, and how long the
+      // prompt cache it wrote lives. Claude Code records the split of each cache write by TTL; any
+      // 1-hour write means the prefix lives an hour, otherwise the 5-minute default applies.
+      const ts = typeof o.timestamp === 'string' ? Date.parse(o.timestamp) : NaN
+      if (Number.isFinite(ts)) at = ts
+      const cc = u.cache_creation
+      if (cc && typeof cc === 'object') ttlMs = (cc.ephemeral_1h_input_tokens ?? 0) > 0 ? 3_600_000 : 300_000
     }
     // Same rule as the old forward scan's "carry the prior model forward": the effective model
     // is the nearest usage line AT OR BEFORE the latest one that names it.
@@ -66,7 +80,13 @@ export function parseLatestUsage(
     if (model !== null) break
   }
   if (!found) return null
-  return effort === undefined ? { used: usedTokens, model } : { used: usedTokens, model, effort }
+  return {
+    used: usedTokens,
+    model,
+    ...(effort !== undefined && { effort }),
+    ...(at !== undefined && { at }),
+    ...(ttlMs !== undefined && { ttlMs })
+  }
 }
 
 /**
@@ -289,7 +309,7 @@ export interface ContextTailOptions {
    */
   parse?: (
     text: string | string[]
-  ) => { used: number; window?: number | null; model: string | null; effort?: string } | null
+  ) => { used: number; window?: number | null; model: string | null; effort?: string; at?: number; ttlMs?: number } | null
   /**
    * Re-read the tracked file from byte 0 on every tick instead of tailing an offset.
    *
@@ -319,6 +339,10 @@ interface Tracked {
   model: string | null
   /** Reasoning effort of the latest request (claude only — see parseLatestUsage); null = none. */
   effort: string | null
+  /** When the latest reply ended and its cache TTL (claude only); 0 = unknown. */
+  replyAt: number
+  ttlMs: number
+  lastReplyAt: number
   // Last pushed snapshot — a push fires only when one of these changes.
   lastUsed: number
   lastModel: string | null
@@ -374,6 +398,7 @@ export function createContextTail(
       usedPercent,
       model: t.model,
       ...(t.effort !== null && { effort: t.effort }),
+      ...(t.replyAt > 0 && { lastReplyAt: t.replyAt, cacheTtlMs: t.ttlMs || 300_000 }),
       windowSource: customParse ? 'transcript' : t.sessionWindow === null ? 'estimate' : 'session-env',
       updatedAt: Date.now()
     }
@@ -398,6 +423,8 @@ export function createContextTail(
             t.used = latest.used
             t.model = latest.model ?? t.model
             t.effort = latest.effort ?? null
+            if (latest.at !== undefined) t.replyAt = latest.at
+            if (latest.ttlMs !== undefined) t.ttlMs = latest.ttlMs
             t.parsedWindow = latest.window ?? t.parsedWindow
           }
         }
@@ -448,6 +475,8 @@ export function createContextTail(
             t.used = latest.used
             t.model = latest.model ?? t.model
             t.effort = latest.effort ?? null
+            if (latest.at !== undefined) t.replyAt = latest.at
+            if (latest.ttlMs !== undefined) t.ttlMs = latest.ttlMs
             t.parsedWindow = latest.window ?? t.parsedWindow
           }
           if (opts?.onTaskNotification) {
@@ -470,13 +499,15 @@ export function createContextTail(
         t.used > 0 &&
         win !== null &&
         win > 0 &&
-        (t.used !== t.lastUsed || t.model !== t.lastModel || t.effort !== t.lastEffort || win !== t.lastWindow)
+        (t.used !== t.lastUsed || t.model !== t.lastModel || t.effort !== t.lastEffort || win !== t.lastWindow ||
+          t.replyAt !== t.lastReplyAt)
       ) {
         t.window = win
         push(sessionId, t)
         t.lastUsed = t.used
         t.lastModel = t.model
         t.lastEffort = t.effort
+        t.lastReplyAt = t.replyAt
         t.lastWindow = win
       }
     } finally {
@@ -512,6 +543,9 @@ export function createContextTail(
         window: 0,
         model: null,
         effort: null,
+        replyAt: 0,
+        ttlMs: 0,
+        lastReplyAt: 0,
         lastUsed: 0,
         lastModel: null,
         lastEffort: null,

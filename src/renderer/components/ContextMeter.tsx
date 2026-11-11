@@ -3,6 +3,7 @@ import { useContextUsage } from '../state/contextWindow'
 import { useSettings } from '../state/settings'
 import { capabilityAgentId } from '@shared/agents/config'
 import { isHidden } from '../lib/ui-visibility'
+import { cacheState, formatClock, useNow, useTokenSaversSnap, useTokenSavers } from '../state/tokenSavers'
 import { barFillPercent, contextFillColor, contextPillText, formatModelLabel, formatTimeAgo, formatTokensShort, percentText } from '../lib/usageFormat'
 
 /**
@@ -28,6 +29,14 @@ export function ContextMeter({ sessionId, nodeId, remote = false, agentId, fromL
   const hiddenByUser = useSettings((s) => isHidden('context-meter', s.settings.hiddenHeaderButtons))
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // Token savers (docs/reference/token-savers.md): the prompt-cache clock from the transcript, and
+  // what the mods saved in THIS node, from the ledger rows tagged with its NODETERM_NODE_ID.
+  const savers = useTokenSaversSnap()
+  const nodeSaved = nodeId ? savers?.byNode[nodeId] : undefined
+  const ttl = usage?.cacheTtlMs ?? 300_000
+  const replyAt = usage?.lastReplyAt ?? 0
+  const now = useNow(replyAt > 0 && Date.now() < replyAt + ttl + 1000)
+  const cache = replyAt > 0 ? cacheState(replyAt, ttl, now) : null
 
   useEffect(() => {
     if (!open) return
@@ -67,6 +76,29 @@ export function ContextMeter({ sessionId, nodeId, remote = false, agentId, fromL
           {fromLaunchId && (
             <div className="ctx-popover__sub">From the session this node was started with.</div>
           )}
+          {cache && (
+            <div className="ctx-popover__sub">
+              Prompt cache ({ttl >= 3_600_000 ? '1 h' : '5 min'}):{' '}
+              {cache.kind === 'cold'
+                ? `cold — the next message re-sends ~${formatTokensShort(usage.usedTokens)} tokens at full price`
+                : `warm for ${formatClock(cache.leftMs)}`}
+            </div>
+          )}
+          {nodeSaved && nodeSaved.actions > 0 && (
+            <div className="ctx-popover__sub">
+              Token savers kept ~{formatTokensShort(nodeSaved.saved)} tokens out of this chat ·{' '}
+              <button
+                className="ctx-popover__link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  useTokenSavers.getState().setPanelOpen(true)
+                  setOpen(false)
+                }}
+              >
+                Details
+              </button>
+            </div>
+          )}
         </div>
       )}
       <button
@@ -82,6 +114,19 @@ export function ContextMeter({ sessionId, nodeId, remote = false, agentId, fromL
           <span className="ctx-pill__fill" style={{ width: `${barFillPercent(usage.usedPercent, percentMode)}%`, background: color }} />
         </span>
         <span className="ctx-pill__num">{estimated ? '~' : ''}{pillText}</span>
+        {cache && (
+          <span
+            className={`ctx-pill__cache ctx-pill__cache--${cache.kind}`}
+            title={cache.kind === 'cold' ? 'Prompt cache is cold' : `Prompt cache warm for ${formatClock(cache.leftMs)}`}
+          >
+            {cache.kind === 'cold' ? 'cold' : formatClock(cache.leftMs)}
+          </span>
+        )}
+        {nodeSaved && nodeSaved.saved > 0 && (
+          <span className="ctx-pill__saved" title="Tokens the token savers kept out of this chat">
+            −{formatTokensShort(nodeSaved.saved)}
+          </span>
+        )}
       </button>
     </div>
   )

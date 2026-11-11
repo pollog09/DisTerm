@@ -47,7 +47,10 @@ describe('agent-integration consent wiring (#744)', () => {
       'installClaudeHooksInto(': ['core/agent-integrations.ts', 'core/agents/hooks/claude.ts'],
       'ensureClaudeFullscreenTuiInto(': ['core/agent-integrations.ts', 'core/agents/hooks/claude.ts'],
       'installCanvasSkillInto(': [],
-      'mergeInstructionFile(': ['core/agents/hooks/settings-file.ts', 'core/integration-files.ts']
+      'mergeInstructionFile(': ['core/agents/hooks/settings-file.ts', 'core/integration-files.ts'],
+      // The token savers write into Claude's config through its CLI, behind the service's consent gate.
+      'installTokenSavers(': ['core/token-savers/install.ts', 'core/token-savers/service.ts'],
+      'uninstallTokenSavers(': ['core/token-savers/install.ts', 'core/token-savers/service.ts']
     }
     const offenders: string[] = []
     for (const rel of walk(SRC)) {

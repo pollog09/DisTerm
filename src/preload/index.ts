@@ -673,6 +673,17 @@ const api: NodeTerminalApi = {
     status: (projectId, nodeId) => ipcRenderer.invoke(IPC.triggersStatus, { projectId, nodeId }),
     runNow: (projectId, nodeId) => ipcRenderer.invoke(IPC.triggersRunNow, { projectId, nodeId })
   },
+  tokenSavers: {
+    get: () => ipcRenderer.invoke(IPC.tokenSaversGet),
+    install: () => ipcRenderer.invoke(IPC.tokenSaversInstall),
+    uninstall: () => ipcRenderer.invoke(IPC.tokenSaversUninstall),
+    setSwitch: (id, on) => ipcRenderer.invoke(IPC.tokenSaversSetSwitch, id, on),
+    onUpdate: (listener) => {
+      const handler = (_e: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+      ipcRenderer.on(IPC.tokenSaversUpdate, handler)
+      return () => ipcRenderer.removeListener(IPC.tokenSaversUpdate, handler)
+    }
+  },
   context: {
     onUpdate: (listener) => {
       const handler = (_e: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)

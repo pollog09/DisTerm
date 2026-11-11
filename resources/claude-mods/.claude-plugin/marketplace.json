@@ -1,0 +1,24 @@
+{
+  "name": "disterm-token-savers",
+  "owner": { "name": "DisTerm" },
+  "plugins": [
+    {
+      "name": "input-router",
+      "source": "./plugins/input-router",
+      "description": "Big file reads and connector results go to Haiku first; Claude gets short notes and the path to the full text.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "model-router",
+      "source": "./plugins/model-router",
+      "description": "Haiku judges each subagent task and moves easy ones to a cheaper model. Never changes the main chat.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "efficient-browser-use",
+      "source": "./plugins/efficient-browser-use",
+      "description": "Shrinks browser screenshots before Claude reads them.",
+      "version": "0.1.0"
+    }
+  ]
+}

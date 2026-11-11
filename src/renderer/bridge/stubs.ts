@@ -366,6 +366,15 @@ export function buildStubApi(): Omit<
       read: () => Promise.resolve({ ok: false, rows: [], mem: null }),
       host: () => Promise.resolve(null)
     },
+    tokenSavers: {
+      // Superseded by the real WS-backed namespace in ws-bridge. A RELAY tab keeps this: the mods
+      // and the ledger belong to the host's Claude, and a guest neither installs into it nor reads it.
+      get: U('tokenSavers.get'),
+      install: U('tokenSavers.install'),
+      uninstall: U('tokenSavers.uninstall'),
+      setSwitch: U('tokenSavers.setSwitch'),
+      onUpdate: noopUnsub
+    },
     wallpaper: {
       // Superseded by the real WS-backed namespace in ws-bridge (registerWallpaperIpc runs in the
       // server shell). A RELAY tab keeps this: the wallpaper is this window's own appearance, and
