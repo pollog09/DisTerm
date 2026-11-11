@@ -19,6 +19,7 @@ import { SpeechSection } from './sections/SpeechSection'
 import { ShortcutsSection } from './sections/ShortcutsSection'
 import { AgentsSection } from './sections/AgentsSection'
 import { UsageSection } from './sections/UsageSection'
+import { TokenSaversSection } from './sections/TokenSaversSection'
 import { AccountsSection } from './sections/AccountsSection'
 import { CustomAgentsSection } from './sections/CustomAgentsSection'
 import { NotificationsSection } from './sections/NotificationsSection'
@@ -136,6 +137,9 @@ export function SettingsPage({
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="Usage" visible={active === 'usage'}>
               <UsageSection isActive={active === 'usage'} />
+            </SettingsSectionBoundary>
+            <SettingsSectionBoundary title="Token savers" visible={active === 'token-savers'}>
+              <TokenSaversSection isActive={active === 'token-savers'} />
             </SettingsSectionBoundary>
             <SettingsSectionBoundary title="Accounts" visible={active === 'accounts'}>
               <AccountsSection isActive={active === 'accounts'} />

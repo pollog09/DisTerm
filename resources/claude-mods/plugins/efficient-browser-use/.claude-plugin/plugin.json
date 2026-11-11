@@ -1,0 +1,6 @@
+{
+  "name": "efficient-browser-use",
+  "version": "0.1.0",
+  "description": "Shrinks browser screenshots before Claude reads them.",
+  "author": { "name": "DisTerm" }
+}

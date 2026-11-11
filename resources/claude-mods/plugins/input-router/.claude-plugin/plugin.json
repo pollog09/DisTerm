@@ -1,0 +1,6 @@
+{
+  "name": "input-router",
+  "version": "0.1.0",
+  "description": "Big file reads and connector results go to Haiku first; Claude gets short notes and the path to the full text.",
+  "author": { "name": "DisTerm" }
+}

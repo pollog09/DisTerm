@@ -3554,7 +3554,21 @@ export interface ContextWindowUsage {
    * an older host or CLI, or a model that takes no effort. Shown by the ⌘M composer's toolbar.
    */
   effort?: string
+  /** When the latest reply ended (ms since epoch) — the prompt-cache clock's start. Claude only;
+   *  absent when the transcript records no timestamp. See docs/reference/token-savers.md. */
+  lastReplyAt?: number
+  /** How long that reply's prompt-cache write lives: 300000 (5 min) or 3600000 (1 h). */
+  cacheTtlMs?: number
   updatedAt: number
+}
+
+/** Token savers: Claude Code mods DisTerm installs and the ledger of what they saved. */
+export interface TokenSaversApi {
+  get(): Promise<import('./token-savers').TokenSaversSnapshot>
+  install(): Promise<import('./token-savers').TokenSaversSnapshot>
+  uninstall(): Promise<import('./token-savers').TokenSaversSnapshot>
+  setSwitch(id: import('./token-savers').TokenSaverId, on: boolean): Promise<import('./token-savers').TokenSaversSnapshot>
+  onUpdate(listener: (snap: import('./token-savers').TokenSaversSnapshot) => void): () => void
 }
 
 export interface ContextApi {
@@ -4721,6 +4735,7 @@ export interface NodeTerminalApi {
   disInvoice: import('./dis-invoice').DisInvoiceApi
   usage: UsageApi
   sessionMemory: SessionMemoryApi
+  tokenSavers: TokenSaversApi
   devPorts: import('./dev-ports').DevPortsApi
   /** "Open recent" — the newest agent conversations in this machine's CLI histories. */
   recentConversations: import('./recent-conversations').RecentConversationsApi

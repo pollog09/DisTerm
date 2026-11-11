@@ -63,6 +63,13 @@ const PATHS: Record<StaticSettingsSectionId, React.JSX.Element> = {
       <path d="M8 12.5 10.8 8" />
     </>
   ),
+  'token-savers': (
+    <>
+      <ellipse cx="8" cy="4.5" rx="4.5" ry="1.8" />
+      <path d="M3.5 4.5v3.5c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V4.5" />
+      <path d="M3.5 8v3.5c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V8" />
+    </>
+  ),
   accounts: (
     <>
       <circle cx="8" cy="5.5" r="2.6" />

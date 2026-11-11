@@ -971,6 +971,12 @@ function versionAtLeast(versionOutput: string | null | undefined, min: readonly 
  * lives in core/claude-cli.ts). FAILS OPEN to `false` on anything unreadable — an unknown version
  * means we omit the flag and launch the bare command (today's behavior), never a failed launch.
  */
+/** Claude Code >= 2.1.287 loads function-hook plugin modules, which the token savers are
+ *  (`shared/token-savers.ts` TOKEN_SAVERS_MIN_CLAUDE). Older CLIs would install them and never run them. */
+export function supportsTokenSavers(versionOutput: string | null | undefined): boolean {
+  return versionAtLeast(versionOutput, [2, 1, 287])
+}
+
 export function supportsAutoPermissionMode(versionOutput: string | null | undefined): boolean {
   return versionAtLeast(versionOutput, MIN_AUTO_VERSION)
 }

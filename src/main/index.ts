@@ -274,6 +274,7 @@ import { createSessionReaper } from '../core/session-budget'
 import { initKeepAwake } from './keep-awake'
 import type { KeepAwakeTracker } from '../core/keep-awake'
 import { startSessionMemoryService, sshScopePredicate } from '../core/session-memory-service'
+import { startTokenSaversService } from '../core/token-savers/service'
 import { startDevPortsService } from '../core/dev-ports-service'
 import { createMemoryPressureMonitor } from '../core/memory-pressure'
 import { createPtyPressureMonitor } from '../core/pty-pressure'
@@ -3675,6 +3676,11 @@ app.whenReady().then(async () => {
   // and remote usage use (core owns the command + the parsing, main owns the master).
   // `sshProjectManager` is assigned far below, so both closures resolve it lazily; they only ever
   // run after a project has connected.
+  // Token savers (docs/reference/token-savers.md): the ledger poller, install/remove of the
+  // Claude Code mods and their switches. All in core, so the Server Edition has the same feature.
+  startTokenSaversService({
+    consent: () => ({ veto: false, claude: settingsStore.get().agentIntegrations?.agents?.claude })
+  })
   startSessionMemoryService({
     tmuxBin: () => ptyManager.getTmuxBin(),
     // Zellij-backed sessions are not in the tmux sweep; the panel says how many it did not measure.

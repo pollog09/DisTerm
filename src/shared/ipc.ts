@@ -467,6 +467,13 @@ export const IPC = {
   triggersStatus: 'triggers:status',
   triggersRunNow: 'triggers:run-now',
   contextUpdate: 'context:update',
+  /** Token savers (docs/reference/token-savers.md): the snapshot, install/remove in Claude Code,
+   *  one mod's on/off switch, and the core → UI push of a new snapshot. */
+  tokenSaversGet: 'token-savers:get',
+  tokenSaversInstall: 'token-savers:install',
+  tokenSaversUninstall: 'token-savers:uninstall',
+  tokenSaversSetSwitch: 'token-savers:set-switch',
+  tokenSaversUpdate: 'token-savers:update',
   contextEnsure: 'context:ensure',
   // Team presence (docs/team-presence.md). `presence:hello` is a REQUEST: its response tells the
   // client its own clientId, so it never draws its own cursor. The rest are casts (client→server)

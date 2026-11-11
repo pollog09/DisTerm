@@ -116,7 +116,7 @@ Code comments and docs that cite `CLAUDE.md` plus a section or bullet name mean 
 | Foundations | `architecture`, `platform-support`, `state-and-projects`, `fork-details` |
 | Terminals | `terminal-sessions`, `terminal-restore`, `terminal-rendering` |
 | Canvas and UI | `canvas`, `node-kinds`, `worktrees`, `kanban`, `appearance`, `keybindings`, `surfaces` |
-| Agents | `agents`, `agent-state`, `agent-hooks`, `agent-session-views`, `agent-subagents`, `agent-accounts-usage`, `adding-an-agent` |
+| Agents | `agents`, `agent-state`, `agent-hooks`, `agent-session-views`, `agent-subagents`, `agent-accounts-usage`, `token-savers`, `adding-an-agent` |
 | Orchestration | `canvas-control`, `canvas-control-waits`, `context-link`, `agent-graph`, `open-recent` |
 | Machine and remote | `session-memory`, `dev-ports`, `ssh-windows-wsl`, `remote-access`, `hosted-team`, `live-links`, `open-links` |
 | Shipping and quality | `packaging`, `speech`, `performance`, `testing-and-writes` |

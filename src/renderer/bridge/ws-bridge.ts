@@ -1,3 +1,4 @@
+import type { TokenSaversSnapshot } from '../../shared/token-savers'
 import type { AgentGraphSnapshot } from '../../shared/agent-graph'
 import { holdShipConfigLease, type ShipAgentModelResult, type ShipConfigResult, type ShipGraphCreateResult, type ShipTemplateCreateResult } from '../../shared/ship-config'
 import type { ChatCatalog } from '@shared/chat-catalog'
@@ -1174,6 +1175,19 @@ export function buildWatchLinkApi(client: RpcClient): Pick<NodeTerminalApi, 'wat
   }
 }
 
+/** Token savers run in the server shell's core too: the browser manages the SERVER's Claude. */
+export function buildTokenSaversApi(client: RpcClient): Pick<NodeTerminalApi, 'tokenSavers'> {
+  return {
+    tokenSavers: {
+      get: () => client.request(IPC.tokenSaversGet) as Promise<TokenSaversSnapshot>,
+      install: () => client.request(IPC.tokenSaversInstall) as Promise<TokenSaversSnapshot>,
+      uninstall: () => client.request(IPC.tokenSaversUninstall) as Promise<TokenSaversSnapshot>,
+      setSwitch: (id, on) => client.request(IPC.tokenSaversSetSwitch, id, on) as Promise<TokenSaversSnapshot>,
+      onUpdate: (listener) => client.subscribe(IPC.tokenSaversUpdate, listener as Listener)
+    }
+  }
+}
+
 export function buildSessionMemoryApi(client: RpcClient): Pick<NodeTerminalApi, 'sessionMemory'> {
   return {
     sessionMemory: {
@@ -1536,6 +1550,7 @@ export async function installWsBridge(): Promise<boolean> {
     ...buildSpeechApi(client),
     ...buildUsageApi(client),
     ...buildSessionMemoryApi(client),
+    ...buildTokenSaversApi(client),
     ...buildWatchLinkApi(client),
     ...buildRecentConversationsApi(client),
     ...buildWallpaperApi(client),
