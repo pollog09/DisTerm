@@ -101,8 +101,12 @@ describe('station hand-over holds across a restart', () => {
     const a = new StationHandoverTracker(() => {}, () => 1, f)
     a.markHandedOver('st1', 1)
     await f.flush()
-    const b = new StationHandoverTracker(() => {}, () => 2, new DurableFactFile(HANDOVER_FACT, { userDataDir: dir }))
+    const fb = new DurableFactFile(HANDOVER_FACT, { userDataDir: dir })
+    const b = new StationHandoverTracker(() => {}, () => 2, fb)
     b.loadFromDisk()
     expect(b.isHandedOver('st1')).toBe(true)
+    // loadFromDisk persists, which schedules a save DURABLE_STATE_DEBOUNCE_MS (50 ms) out: longer
+    // than the file-end sweep's LATE_WRITE_GRACE_MS, so an unflushed save recreated the temp dir.
+    await fb.flush()
   })
 })
