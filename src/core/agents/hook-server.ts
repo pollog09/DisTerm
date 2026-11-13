@@ -64,6 +64,9 @@ import {
 import { DurableFactFile } from '../durable-state'
 import { agentGraphLog } from '../agent-graph/event-log'
 import { claudeToolAccess } from '../../shared/agents/tool-access'
+import { claudeFileEdit } from '../../shared/agents/file-edit'
+import { systemMapTouches } from '../system-map/touches'
+import { SYSTEM_MAP_CONTROL_REFUSAL } from '../system-map/control'
 import { createPaneOriginGate, parseClaudeHookOrigin, type PaneOriginGate } from './claude-pane-origin'
 
 // v2 advertises NODETERM_NODE_TOKEN_DIR so clients read their per-node capability from a file
@@ -314,7 +317,10 @@ export const requiresVerified: ReadonlySet<string> = new Set([
   // CALLER's node, so a caller nobody can verify could name any node and read another project's
   // lane — bound sessions and dispatch state included. NEW verbs: fail-closed strands nobody.
   'issues',
-  'prs'
+  'prs',
+  // The repo's system map (core/system-map/control.ts), read from the CALLER's project: a caller
+  // nobody can verify could name another project's node.
+  'map'
 ])
 
 /**
@@ -373,6 +379,7 @@ export function verifiedRefusalFor(verb: string): string {
   if (verb === 'run') return RUN_CONTROL_REFUSAL
   if (verb === 'report-outcome') return REPORT_OUTCOME_CONTROL_REFUSAL
   if (verb === 'issues' || verb === 'prs') return GITHUB_READ_CONTROL_REFUSAL
+  if (verb === 'map') return SYSTEM_MAP_CONTROL_REFUSAL
   return MESSAGING_CONTROL_REFUSAL
 }
 
@@ -1171,16 +1178,21 @@ export class HookServer {
             res.end()
             return
           }
-          // Which skill or MCP server this claude reached for goes to the agent graph's log and to
-          // nothing else: not the mirror and not a NormalizedAgentEvent, so state, Eco, messaging
-          // and the renderer never hear of it. AFTER the pane-origin gate, so a claude that merely
-          // inherited this node's id counts for nobody. Claude only: other agents' tool events are
-          // not measured, and a custom agent built on claude posts under `claude` already. A throw
-          // here must never fail the hook POST.
+          // Which skill or MCP server this claude reached for, and which part of a viewed system map
+          // its file edits fall in, go to the agent graph's log and to nothing else: not the mirror
+          // and not a NormalizedAgentEvent, so state, Eco, messaging and the renderer never hear of
+          // it. Names and part ids only leave: an edited file's path is matched in
+          // core/system-map/touches.ts and goes nowhere, and that matching is budgeted, so a hostile
+          // map's globs cannot hold this POST. AFTER the pane-origin gate, so a claude
+          // that merely inherited this node's id counts for nobody. Claude only: other agents' tool
+          // events are not measured, and a custom agent built on claude posts under `claude`
+          // already. A throw here must never fail the hook POST.
           if (agentId === 'claude' && isSafeNodeId(nodeId)) {
             try {
               const access = claudeToolAccess(payload)
               if (access) agentGraphLog.recordAccess(nodeId, access)
+              const edit = claudeFileEdit(payload)
+              if (edit) systemMapTouches.recordEdit(nodeId, edit)
             } catch {
               /* a display stream must not cost the hook its delivery */
             }

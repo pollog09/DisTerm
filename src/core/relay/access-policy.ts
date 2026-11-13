@@ -518,6 +518,10 @@ export const EDITOR_ONLY: ReadonlySet<string> = new Set<string>([
   IPC.shipAgentSetModel,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
+  // The system map is read through the host's filesystem and git; a viewer's graph is observation only.
+  IPC.systemMapRead,
+  IPC.systemMapSubscribe,
+  IPC.systemMapUnsubscribe,
   // Server→client events (see the doc comment): what a non-editor receives is VIEW_EVENTS.
   IPC.agentGraphEvent,
   IPC.workspaceMigrated,

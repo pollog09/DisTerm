@@ -1,6 +1,7 @@
 import type { TokenSaversSnapshot } from '../../shared/token-savers'
 import type { AgentGraphSnapshot } from '../../shared/agent-graph'
 import { holdShipConfigLease, type ShipAgentModelResult, type ShipConfigResult, type ShipGraphCreateResult, type ShipTemplateCreateResult } from '../../shared/ship-config'
+import type { SystemMapResult } from '../../shared/system-map'
 import type { ChatCatalog } from '@shared/chat-catalog'
 import type { TerminalProfile } from '@shared/terminal-profiles'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
@@ -899,6 +900,18 @@ export function buildAgentApi(
         const release = holdShipConfigLease({
           subscribe: (leaseId) => client.cast(IPC.shipConfigSubscribe, projectId, leaseId),
           unsubscribe: (leaseId) => client.cast(IPC.shipConfigUnsubscribe, projectId, leaseId)
+        })
+        return () => {
+          unsub()
+          release()
+        }
+      },
+      readSystemMap: (projectId) => client.request(IPC.systemMapRead, projectId) as Promise<SystemMapResult>,
+      onSystemMapChanged: (projectId, cb) => {
+        const unsub = client.subscribe(IPC.systemMapChanged(projectId), cb as Listener)
+        const release = holdShipConfigLease({
+          subscribe: (leaseId) => client.cast(IPC.systemMapSubscribe, projectId, leaseId),
+          unsubscribe: (leaseId) => client.cast(IPC.systemMapUnsubscribe, projectId, leaseId)
         })
         return () => {
           unsub()

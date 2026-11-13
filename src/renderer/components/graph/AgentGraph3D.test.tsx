@@ -880,3 +880,66 @@ describe('live subagents', () => {
     expect(running(fake)).toBe(false)
   })
 })
+
+describe('the optional props the system map uses', () => {
+  const pinnedView = (over: Partial<import('./AgentGraph3D').AgentGraph3DProps> = {}) => (
+    <AgentGraph3D nodes={NODES} edges={[message()]} pulseOf={pulseOf} showMachine={false} shown onNodeClick={onNodeClick} onUnsupported={onUnsupported} {...over} />
+  )
+  const mountWith = async (over: Partial<import('./AgentGraph3D').AgentGraph3DProps>): Promise<Fake> => {
+    host = document.createElement('div')
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 900, height: 600, right: 900, bottom: 600, x: 0, y: 0, toJSON: () => ({}) })
+    document.body.appendChild(host)
+    root = createRoot(host)
+    await act(async () => root.render(pinnedView(over)))
+    return lib.instances[lib.instances.length - 1]
+  }
+  type FedNode = { id: string; fx?: number; fy?: number; fz?: number }
+  const fed = (fake: Fake): FedNode[] => (fake.props.graphData as { nodes: FedNode[] }).nodes
+
+  it('pinned sets fx/fy/fz on the node objects, and a node no longer pinned is let go', async () => {
+    const fake = await mountWith({ pinned: new Map([['session:a', { x: 1, y: 2, z: 3 }], ['session:b', { x: -4, y: 5, z: -6 }]]) })
+    expect(fed(fake).map((n) => [n.id, n.fx, n.fy, n.fz])).toEqual([
+      ['session:a', 1, 2, 3],
+      ['session:b', -4, 5, -6]
+    ])
+    await act(async () => root.render(pinnedView({ pinned: new Map([['session:a', { x: 7, y: 8, z: 9 }]]) })))
+    const nodes = fed(fake)
+    expect([nodes[0].fx, nodes[0].fy, nodes[0].fz]).toEqual([7, 8, 9])
+    expect(nodes[1]).not.toHaveProperty('fx')
+    expect(nodes[1]).not.toHaveProperty('fy')
+    expect(nodes[1]).not.toHaveProperty('fz')
+  })
+
+  it('without pinned no node is fixed', async () => {
+    const fake = await mount()
+    for (const n of fed(fake)) expect(n.fx ?? n.fy ?? n.fz).toBeUndefined()
+  })
+
+  it('describeNode and describeEdge drive the hover text', async () => {
+    const fake = await mountWith({ describeNode: (n) => [`Part ${n.title}`, 'Service part'], describeEdge: (e) => [`Line ${e.id}`] })
+    await act(async () => (fake.props.onNodeHover as (n: { id: string } | null) => void)({ id: 'session:a' }))
+    const tip = () => [...(host.querySelector('[role="tooltip"]')?.children ?? [])].map((c) => c.textContent)
+    expect(tip()).toEqual(['Part Orchestrator', 'Service part'])
+    await act(async () => (fake.props.onNodeHover as (n: null) => void)(null))
+    await act(async () => (fake.props.onLinkHover as (l: { id: string } | null) => void)({ id: 'm:a:b' }))
+    expect(tip()).toEqual(['Line m:a:b'])
+  })
+
+  it('clickHint null hides the Click row of the key card; a string replaces it; absent keeps Open terminal', async () => {
+    useAgentGraphDisplay.setState({ flyHelp: true })
+    const rows = () => [...host.querySelectorAll('.agent-graph-3d__keys-row dd')].map((d) => d.textContent)
+    await mountWith({ clickHint: null })
+    expect(rows()).toEqual(['Fly around', 'Up and down', 'Turn the view', 'Zoom'])
+    await act(async () => root.render(pinnedView({ clickHint: 'Show the part' })))
+    expect(rows().at(-1)).toBe('Show the part')
+    await act(async () => root.render(pinnedView({})))
+    expect(rows().at(-1)).toBe('Open terminal')
+  })
+
+  it('ariaLabel names the view; the default is the agent graph\'s', async () => {
+    await mountWith({ ariaLabel: 'System map in 3D. Fly with W A S D, Space and Shift; drag to turn.' })
+    expect(host.querySelector('[data-testid="agent-graph-3d"]')!.getAttribute('aria-label')).toBe('System map in 3D. Fly with W A S D, Space and Shift; drag to turn.')
+    await act(async () => root.render(pinnedView({})))
+    expect(host.querySelector('[data-testid="agent-graph-3d"]')!.getAttribute('aria-label')).toBe('Agent graph in 3D. Fly with W A S D, Space and Shift; drag to turn.')
+  })
+})

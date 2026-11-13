@@ -17,7 +17,7 @@ import { GLOW_COLOR, sessionGlow, type GraphGlow } from './agentGraphNodeText'
 
 /** A type, not an interface: the layout's node type has an index signature, which only a type
  *  literal satisfies. */
-export type Graph3dNode = { id: string; kind: GraphNodeKind }
+export type Graph3dNode = { id: string; kind: GraphNodeKind; fx?: number; fy?: number; fz?: number }
 
 /** `source` and `target` are ids here; the layout replaces them with the node objects. */
 export type Graph3dLink = { id: string; source: string | Graph3dNode; target: string | Graph3dNode; kind: GraphEdgeKind }

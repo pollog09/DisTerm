@@ -477,6 +477,28 @@ function browserVerbDocLines(): string[] {
   ]
 }
 
+/**
+ * The `map` verb (core/system-map/control.ts) and the rule that keeps the repo's system map current,
+ * shared by both agent-facing bodies. The format lines are RENDERED from the module that validates
+ * the file, so the text cannot drift from the validator.
+ */
+function systemMapDocLines(): string[] {
+  return [
+    'The repo\'s system map (read-only from here; you write the file, DisTerm never does):',
+    '- `map [--path <file>]` (or `map <file>`) — prints docs/system-map.json as text: parts (id, kind, label,',
+    '  file globs), links and flows. With a path (relative to the repo root, or absolute inside it), names the',
+    '  part that owns that file. Start here to find your way around a repo that has one.',
+    '- Refused with the reason: `map-missing` (no file: offer to write one), `map-invalid` (its problems are',
+    '  listed: fix them), `map-path-outside`, `map-too-complex` (simplify the globs), `map-unavailable`,',
+    '  `map-no-project`.',
+    '- Keep it current: when you add, remove or rewire a part (a caller, service, store, worker or outside',
+    '  service, or a link between them), update docs/system-map.json in the same change. Write only what you',
+    '  have verified in the code.',
+    '- The format:',
+    ...SYSTEM_MAP_FORMAT_LINES
+  ]
+}
+
 export type ControlVerb =
   | 'list'
   | 'open-terminal'
@@ -517,6 +539,7 @@ export type ControlVerb =
   | 'report-outcome'
   | 'issues'
   | 'prs'
+  | 'map'
 
 export interface ControlCommand {
   verb: ControlVerb
@@ -583,7 +606,10 @@ const VERBS: ControlVerb[] = [
   // linked cards. Answered by the shell's control handler from the GitHub service's cache — no
   // GitHub request, no canvas. Verified-only; `--project` own-or-granted.
   'issues',
-  'prs'
+  'prs',
+  // The repo's system map, read-only (core/system-map/control.ts). Answered by the shell's control
+  // handler; verified-only.
+  'map'
 ]
 
 /**
@@ -626,6 +652,7 @@ import {
   REPORT_CAP_PER_RUN,
   REPORT_LABEL
 } from './github/report-issue-core'
+import { SYSTEM_MAP_FORMAT_LINES, systemMapArgsRefusal } from '../shared/system-map'
 
 /** The `--dry-run` paragraph both agent-facing bodies share, rendered from `DRY_RUN_VERBS`. */
 function dryRunDocLines(): string[] {
@@ -756,6 +783,10 @@ export function parseControlRequest(
   if (afterSuccessRefusal) return { error: afterSuccessRefusal }
   const githubReadRefusal = githubReadArgsRefusal(v, args)
   if (githubReadRefusal) return { error: githubReadRefusal }
+  if (v === 'map') {
+    const r = systemMapArgsRefusal(args)
+    if (r) return { error: r }
+  }
   if (v === 'report-outcome' && !args.outcome) {
     return { error: 'report-outcome requires --outcome succeeded|failed' }
   }
@@ -1101,6 +1132,7 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     '  never moves the node on the canvas or changes its group. Use it to reflect progress: move a card',
     '  to your "In Progress"/"Done" column as work advances.',
     ...githubReadDocLines(),
+    ...systemMapDocLines(),
     ...settingsVerbDocLines(),
     ...reportIssueDocLines(),
     ...browserVerbDocLines(),
@@ -1223,7 +1255,7 @@ if [ "$nt_verb" = "help" ] || [ "$nt_verb" = "--help" ] || [ "$nt_verb" = "-h" ]
   exit 0
 fi
 
-# Translate \`--flag value\` pairs — plus the one bare positional the show-image/show-video and
+# Translate \`--flag value\` pairs — plus the one bare positional the show-image/show-video/map and
 # write/close/rename/color/branch/send/reply/sticky/run forms accept — into curl --data-urlencode arguments. The positional
 # list doubles as the accumulator: originals are consumed from the front, translated pairs
 # appended at the back, so "$@" holds exactly the curl args once the loop drains.
@@ -1280,7 +1312,7 @@ while [ "$nt_i" -lt "$nt_count" ]; do
       if [ "$nt_seen_pos" -eq 0 ]; then
         nt_seen_pos=1
         case "$nt_verb" in
-          show-image|show-video) set -- "$@" --data-urlencode "arg.path=$nt_a" ;;
+          show-image|show-video|map) set -- "$@" --data-urlencode "arg.path=$nt_a" ;;
           write|close|rename|color|branch|send|reply|sticky|run) set -- "$@" --data-urlencode "arg.node=$nt_a" ;;
         esac
       fi
@@ -1743,6 +1775,7 @@ ${boardCommentGuidanceLines().map((l) => `  ${l}`).join('\n')}
   session. Use it to reflect progress: as a station finishes,
   move its card into your "In Progress" / "Done" column so the board tells the real story.
 ${githubReadDocLines().join('\n')}
+${systemMapDocLines().join('\n')}
 ${settingsVerbDocLines().join('\n')}
 ${reportIssueDocLines().join('\n')}
 ${browserVerbDocLines().join('\n')}

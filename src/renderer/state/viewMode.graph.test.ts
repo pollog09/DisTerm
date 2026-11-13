@@ -1,5 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// In-memory storage, so the picture choice can be shown to survive a fresh store.
+const memory = vi.hoisted(() => new Map<string, string>())
+vi.mock('../lib/localStore', () => ({
+  readLocal: (key: string, whenUnreadable: string | null = null) => (memory.has(key) ? memory.get(key)! : whenUnreadable),
+  writeLocal: (key: string, value: string) => void memory.set(key, value)
+}))
+import { useAgentGraphDisplay } from './agentGraphDisplay'
 import {
+  GRAPH_PICTURE_KEY,
+  graphPictureFor,
+  parseGraphPictureMap,
   isBoardView,
   isGraphView,
   isKanbanOpen,
@@ -94,5 +105,63 @@ describe('what covers the canvas', () => {
     showCanvas('p')
     expect(isKanbanOpen('p')).toBe(false)
     expect(isKanbanOpen('')).toBe(false)
+  })
+})
+
+describe('the graph picture per project', () => {
+  beforeEach(() => {
+    memory.clear()
+    useViewMode.setState({ graphPictureByProject: {}, requestedCardNodeId: null, requestedIssue: null })
+  })
+  const picture = (id: string) => graphPictureFor(useViewMode.getState(), id)
+
+  it('parse keeps only agents / system-map, and drops bad JSON whole', () => {
+    expect(parseGraphPictureMap(JSON.stringify({ a: 'agents', b: 'system-map', c: 'graph', d: 3, e: null }))).toEqual({ a: 'agents', b: 'system-map' })
+    expect(parseGraphPictureMap('{nope')).toEqual({})
+    expect(parseGraphPictureMap(null)).toEqual({})
+    expect(parseGraphPictureMap('[]')).toEqual({})
+    expect(parseGraphPictureMap('"system-map"')).toEqual({})
+    expect(parseGraphPictureMap('null')).toEqual({})
+  })
+
+  it('a project with no entry shows the agent graph', () => {
+    expect(picture('p')).toBe('agents')
+  })
+
+  it('persists per project and survives a reload of the store', async () => {
+    useViewMode.getState().setGraphPicture('p', 'system-map')
+    expect(picture('p')).toBe('system-map')
+    expect(picture('q')).toBe('agents')
+    expect(JSON.parse(memory.get(GRAPH_PICTURE_KEY)!)).toEqual({ p: 'system-map' })
+    vi.resetModules()
+    const fresh = await import('./viewMode')
+    expect(fresh.graphPictureFor(fresh.useViewMode.getState(), 'p')).toBe('system-map')
+    expect(fresh.graphPictureFor(fresh.useViewMode.getState(), 'q')).toBe('agents')
+  })
+
+  it('the same value returns the same state', () => {
+    useViewMode.getState().setGraphPicture('p', 'system-map')
+    const before = useViewMode.getState()
+    useViewMode.getState().setGraphPicture('p', 'system-map')
+    expect(useViewMode.getState()).toBe(before)
+  })
+
+  it('never clears a pending card or issue request', () => {
+    useViewMode.getState().requestCard('n1')
+    useViewMode.getState().requestIssue({ owner: 'o', repo: 'r', number: 1 } as never)
+    useViewMode.getState().setGraphPicture('p', 'system-map')
+    useViewMode.getState().setGraphPicture('p', 'agents')
+    expect(useViewMode.getState().requestedCardNodeId).toBe('n1')
+    expect(useViewMode.getState().requestedIssue).toEqual({ owner: 'o', repo: 'r', number: 1 })
+  })
+
+  it('is independent of the 2D/3D dimension', () => {
+    useAgentGraphDisplay.getState().setDimension('3d')
+    useViewMode.getState().setGraphPicture('p', 'system-map')
+    expect(useAgentGraphDisplay.getState().dimension).toBe('3d')
+    useAgentGraphDisplay.getState().setDimension('2d')
+    expect(picture('p')).toBe('system-map')
+    useViewMode.getState().setGraphPicture('p', 'agents')
+    expect(useAgentGraphDisplay.getState().dimension).toBe('2d')
   })
 })

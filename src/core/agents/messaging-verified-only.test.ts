@@ -199,8 +199,10 @@ describe('where the verbs sit in the routing tables', () => {
     // `--after-success`: only a verified caller is provably the station the report is about.
     // `issues` / `prs` resolve the project to read from the CALLER's node, so a forgeable caller
     // could read any project's GitHub lane (bound sessions, dispatch state); new verbs.
+    // `map` (core/system-map/control.ts) reads the CALLER's project's system map the same way; new verb.
     expect([...requiresVerified].sort()).toEqual([
       'issues',
+      'map',
       'notify',
       'open-project',
       'prs',
@@ -217,6 +219,24 @@ describe('where the verbs sit in the routing tables', () => {
   it('the issues / prs refusal is its own flat sentence, not the messaging one', () => {
     expect(verifiedRefusalFor('issues')).toBe('GitHub lane read refused.')
     expect(verifiedRefusalFor('prs')).toBe('GitHub lane read refused.')
+  })
+
+  it('the map refusal is its own flat sentence, not the messaging one', () => {
+    expect(requiresVerified.has('map')).toBe(true)
+    expect(verifiedRefusalFor('map')).toBe('System map read refused.')
+    expect(verifiedRefusalFor('map')).not.toBe(MESSAGING_CONTROL_REFUSAL)
+  })
+
+  it('map is refused at the route for a legacy caller and reaches the handler only verified', async () => {
+    hookServer.setIdentityStrictOverride(() => false)
+    const legacy = await post('map', 'n-src')
+    expect(legacy.status).toBe(403)
+    expect(((await legacy.json()) as { error: string }).error).toBe('System map read refused.')
+    expect(handled).toEqual([])
+    const own = await post('map', 'n-src', nodeAuthToken(SECRET, 'n-src'))
+    expect(own.status).not.toBe(403)
+    expect(handled).toEqual(['map'])
+    hookServer.setIdentityStrictOverride(() => undefined)
   })
 
   it('the report-outcome refusal is its own flat sentence, not the messaging one', () => {

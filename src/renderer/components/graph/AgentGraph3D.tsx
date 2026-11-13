@@ -64,7 +64,8 @@ import {
   type Graph3dLink,
   type Graph3dNode,
   type Graph3dPlanet,
-  type Rgba
+  type Rgba,
+  type Vec3
 } from '../../lib/agentGraph3d'
 import { useReducedMotion, useWindowWatched } from '../../lib/reducedMotion'
 import { useAgentGraphDisplay } from '../../state/agentGraphDisplay'
@@ -91,6 +92,15 @@ export interface AgentGraph3DProps {
   onNodeClick: (node: GraphNode) => void
   /** WebGL could not start, or its context was lost: the caller shows the 2D view with this notice. */
   onUnsupported: (notice: string) => void
+  /** Fixed positions by node id (fx/fy/fz): the system map lays itself out, the force layout does not. */
+  pinned?: ReadonlyMap<string, Vec3>
+  /** Hover text for a node or a line; defaults to the agent graph's wording. */
+  describeNode?: (node: GraphNode) => string[]
+  describeEdge?: (edge: GraphEdge) => string[]
+  /** The fly card's Click row; null hides it. Default 'Open terminal'. */
+  clickHint?: string | null
+  /** Default 'Agent graph in 3D. Fly with W A S D, Space and Shift; drag to turn.' */
+  ariaLabel?: string
 }
 
 type Graph = ForceGraph3DInstance<Graph3dNode, Graph3dLink>
@@ -357,7 +367,22 @@ function disposeSprite(sprite: Sprite): void {
 
 type Hover = { kind: 'node' | 'link'; id: string } | null
 
-export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown, onNodeClick, onUnsupported }: AgentGraph3DProps) {
+const DEFAULT_ARIA_LABEL = 'Agent graph in 3D. Fly with W A S D, Space and Shift; drag to turn.'
+
+export default function AgentGraph3D({
+  nodes,
+  edges,
+  pulseOf,
+  showMachine,
+  shown,
+  onNodeClick,
+  onUnsupported,
+  pinned,
+  describeNode,
+  describeEdge,
+  clickHint,
+  ariaLabel = DEFAULT_ARIA_LABEL
+}: AgentGraph3DProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Graph | null>(null)
@@ -381,7 +406,30 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
   reducedRef.current = reduced
 
   const dataRef = useRef<Graph3dData | null>(null)
-  const data = useMemo(() => (dataRef.current = toGraph3dData({ nodes: nodes as GraphNode[], edges: edges as GraphEdge[] }, dataRef.current)), [nodes, edges])
+  const data = useMemo(() => {
+    const next = (dataRef.current = toGraph3dData({ nodes: nodes as GraphNode[], edges: edges as GraphEdge[] }, dataRef.current))
+    // A pinned node is held where its caller placed it: the force layout reads fx/fy/fz as fixed.
+    if (pinned) {
+      for (const n of next.nodes) {
+        const at = pinned.get(n.id)
+        if (at) {
+          n.fx = at.x
+          n.fy = at.y
+          n.fz = at.z
+        } else {
+          delete n.fx
+          delete n.fy
+          delete n.fz
+        }
+      }
+    }
+    return next
+  }, [nodes, edges, pinned])
+  const flyHelpRows = useMemo(() => {
+    if (clickHint === undefined) return FLY_HELP
+    if (clickHint === null) return FLY_HELP.filter(([keys]) => keys[0] !== 'Click')
+    return FLY_HELP.map((row): readonly [readonly string[], string] => (row[0][0] === 'Click' ? [row[0], clickHint] : row))
+  }, [clickHint])
 
   const visuals = useRef(new Map<string, NodeVisual>())
   const palette = useRef<ReturnType<typeof colorResolver> | null>(null)
@@ -1103,12 +1151,14 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
     if (!hover) return []
     if (hover.kind === 'node') {
       const node = nodesById.current.get(hover.id)
-      return node ? graphNodeTextLines(node, showMachine) : []
+      if (!node) return []
+      return describeNode ? describeNode(node) : graphNodeTextLines(node, showMachine)
     }
     const edge = edgesById.current.get(hover.id)
     if (!edge) return []
+    if (describeEdge) return describeEdge(edge)
     return [graphEdgeLabel(edge), graphEdgeTitle(edge) ?? ''].filter(Boolean)
-  }, [hover, showMachine, nodes, edges]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hover, showMachine, nodes, edges, describeNode, describeEdge]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -1117,7 +1167,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
       data-testid="agent-graph-3d"
       tabIndex={0}
       role="application"
-      aria-label="Agent graph in 3D. Fly with W A S D, Space and Shift; drag to turn."
+      aria-label={ariaLabel}
     >
       <div className="agent-graph-3d__scene" ref={sceneRef} />
       <div className="agent-graph-3d__controls">
@@ -1144,7 +1194,7 @@ export default function AgentGraph3D({ nodes, edges, pulseOf, showMachine, shown
             </button>
           </header>
           <dl>
-            {FLY_HELP.map(([keys, what]) => (
+            {flyHelpRows.map(([keys, what]) => (
               <div key={what} className="agent-graph-3d__keys-row">
                 <dt>{keys.map((k) => <kbd key={k} className="kbd">{k}</kbd>)}</dt>
                 <dd>{what}</dd>

@@ -52,7 +52,7 @@ interface AccessPayload {
   agent_type?: unknown
 }
 
-function whoMade(p: AccessPayload): Pick<ToolAccess, 'subId' | 'subType'> {
+export function whoMade(p: AccessPayload): Pick<ToolAccess, 'subId' | 'subType'> {
   if (!isClaudeAgentId(p.agent_id)) return {}
   const type = typeof p.agent_type === 'string' ? oneLine(p.agent_type).trim().slice(0, SUBTYPE_MAX) : ''
   return { subId: p.agent_id, ...(type ? { subType: type } : {}) }

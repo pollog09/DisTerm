@@ -71,6 +71,7 @@ import {
   controlVerbSetsForTests
 } from '../shared/control-off-screen'
 import { OUTCOME_NOTE_MAX, REPORT_OUTCOME_VERB, SUCCESS_WAIT_MAX } from '../shared/station-outcome'
+import { SYSTEM_MAP_FORMAT_LINES } from '../shared/system-map'
 
 describe('parseControlRequest', () => {
   it('accepts known verbs', () => {
@@ -1864,5 +1865,39 @@ describe('canvas geometry from the CLI (issue #1288)', () => {
     const answered = text.split('\n').find((l) => l.includes('Answered whether or not that project is on screen'))!
     expect(answered).toMatch(/\bresize\b/)
     expect(answered).toMatch(/\bplace\b/)
+  })
+})
+
+describe('the system map verb (map) in both agent-facing bodies', () => {
+  const bodies: [string, string][] = [
+    ['skill', buildCanvasSkillBody('/x/shim.sh')],
+    ['instructions', buildCanvasControlInstructions('/x/shim.sh')]
+  ]
+
+  it('is registered', () => {
+    expect(VERBS_FOR_TEST).toContain('map')
+  })
+
+  it('documents the verb, the refusals, the keep-it-current rule and the whole format', () => {
+    for (const [name, body] of bodies) {
+      expect(body, name).toContain("The repo's system map (read-only from here; you write the file, DisTerm never does):")
+      expect(body, name).toContain('`map [--path <file>]` (or `map <file>`)')
+      expect(body, name).toContain('`map-missing`')
+      expect(body, name).toContain('`map-no-project`')
+      expect(body, name).toContain('`map-too-complex` (simplify the globs)')
+      expect(body, name).toContain('- Keep it current: when you add, remove or rewire a part')
+      for (const line of SYSTEM_MAP_FORMAT_LINES) expect(body, name).toContain(line)
+    }
+  })
+
+  it('the map-missing refusal points at a heading the skill really has', () => {
+    expect(buildCanvasSkillBody('/x/shim.sh')).toContain("The repo's system map")
+  })
+
+  it('parses only --path', () => {
+    expect(parseControlRequest('map', { x: '1' })).toEqual({ error: 'map: unknown flag --x' })
+    expect(parseControlRequest('map', { path: '' })).toEqual({ error: 'map: --path needs a value' })
+    expect(parseControlRequest('map', { path: 'a' })).toEqual({ verb: 'map', args: { path: 'a' } })
+    expect(parseControlRequest('map', {})).toEqual({ verb: 'map', args: {} })
   })
 })

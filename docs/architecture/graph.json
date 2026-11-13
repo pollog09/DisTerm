@@ -5,13 +5,13 @@
     "@shared/": "src/shared/"
   },
   "stats": {
-    "files": 1470,
-    "loc": 330826,
-    "excludedTestFiles": 1757,
-    "imports": 7049,
-    "internalImports": 5913,
-    "externalImports": 1122,
-    "assetImports": 14,
+    "files": 1517,
+    "loc": 340156,
+    "excludedTestFiles": 1794,
+    "imports": 7332,
+    "internalImports": 6154,
+    "externalImports": 1163,
+    "assetImports": 15,
     "importsOfTestFiles": 0,
     "importsOutsideSrc": 0,
     "unresolvedImports": 0,
@@ -21,36 +21,36 @@
   "contexts": [
     {
       "id": "core",
-      "files": 386,
-      "loc": 105473,
-      "subsystems": 14,
-      "internalImports": 836
+      "files": 403,
+      "loc": 108001,
+      "subsystems": 17,
+      "internalImports": 886
     },
     {
       "id": "main",
       "files": 124,
-      "loc": 30144,
+      "loc": 30172,
       "subsystems": 4,
       "internalImports": 201
     },
     {
       "id": "preload",
       "files": 3,
-      "loc": 1197,
+      "loc": 1238,
       "subsystems": 1,
       "internalImports": 0
     },
     {
       "id": "renderer",
-      "files": 723,
-      "loc": 148466,
+      "files": 747,
+      "loc": 153967,
       "subsystems": 15,
-      "internalImports": 2300
+      "internalImports": 2386
     },
     {
       "id": "server",
       "files": 25,
-      "loc": 7575,
+      "loc": 7623,
       "subsystems": 2,
       "internalImports": 43
     },
@@ -63,10 +63,10 @@
     },
     {
       "id": "shared",
-      "files": 186,
-      "loc": 33463,
+      "files": 192,
+      "loc": 34647,
       "subsystems": 4,
-      "internalImports": 301
+      "internalImports": 324
     }
   ],
   "contextEdges": [
@@ -82,17 +82,17 @@
     {
       "from": "core",
       "to": "shared",
-      "imports": 572,
-      "value": 396,
-      "typeOnly": 176,
+      "imports": 606,
+      "value": 424,
+      "typeOnly": 182,
       "dynamic": 0,
       "kind": "mixed"
     },
     {
       "from": "main",
       "to": "core",
-      "imports": 327,
-      "value": 298,
+      "imports": 332,
+      "value": 303,
       "typeOnly": 29,
       "dynamic": 0,
       "kind": "mixed"
@@ -118,18 +118,18 @@
     {
       "from": "renderer",
       "to": "shared",
-      "imports": 894,
-      "value": 509,
-      "typeOnly": 385,
+      "imports": 930,
+      "value": 530,
+      "typeOnly": 400,
       "dynamic": 2,
       "kind": "mixed"
     },
     {
       "from": "server",
       "to": "core",
-      "imports": 167,
-      "value": 148,
-      "typeOnly": 19,
+      "imports": 174,
+      "value": 153,
+      "typeOnly": 21,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -166,22 +166,29 @@
       "id": "core/(root)",
       "context": "core",
       "files": 205,
-      "loc": 59301,
-      "internalImports": 375
+      "loc": 59614,
+      "internalImports": 377
     },
     {
       "id": "core/agent-graph",
       "context": "core",
       "files": 2,
-      "loc": 262,
+      "loc": 296,
       "internalImports": 1
     },
     {
       "id": "core/agents",
       "context": "core",
       "files": 53,
-      "loc": 14388,
+      "loc": 14399,
       "internalImports": 85
+    },
+    {
+      "id": "core/dis-invoice",
+      "context": "core",
+      "files": 6,
+      "loc": 655,
+      "internalImports": 5
     },
     {
       "id": "core/github",
@@ -194,7 +201,7 @@
       "id": "core/handoff",
       "context": "core",
       "files": 1,
-      "loc": 147,
+      "loc": 154,
       "internalImports": 0
     },
     {
@@ -208,7 +215,7 @@
       "id": "core/relay",
       "context": "core",
       "files": 29,
-      "loc": 6571,
+      "loc": 6608,
       "internalImports": 55
     },
     {
@@ -222,15 +229,15 @@
       "id": "core/remote-ssh",
       "context": "core",
       "files": 30,
-      "loc": 7173,
+      "loc": 7179,
       "internalImports": 24
     },
     {
       "id": "core/ship-config",
       "context": "core",
-      "files": 4,
-      "loc": 1318,
-      "internalImports": 3
+      "files": 5,
+      "loc": 1499,
+      "internalImports": 4
     },
     {
       "id": "core/simulator",
@@ -247,11 +254,25 @@
       "internalImports": 6
     },
     {
+      "id": "core/system-map",
+      "context": "core",
+      "files": 4,
+      "loc": 533,
+      "internalImports": 3
+    },
+    {
+      "id": "core/token-savers",
+      "context": "core",
+      "files": 5,
+      "loc": 671,
+      "internalImports": 4
+    },
+    {
       "id": "core/usage",
       "context": "core",
-      "files": 12,
-      "loc": 2538,
-      "internalImports": 17
+      "files": 13,
+      "loc": 2618,
+      "internalImports": 19
     },
     {
       "id": "core/watch-link",
@@ -264,7 +285,7 @@
       "id": "main/(root)",
       "context": "main",
       "files": 73,
-      "loc": 18380,
+      "loc": 18408,
       "internalImports": 96
     },
     {
@@ -292,36 +313,36 @@
       "id": "preload/(root)",
       "context": "preload",
       "files": 3,
-      "loc": 1197,
+      "loc": 1238,
       "internalImports": 0
     },
     {
       "id": "renderer/(root)",
       "context": "renderer",
-      "files": 5,
-      "loc": 353,
+      "files": 7,
+      "loc": 580,
       "internalImports": 2
     },
     {
       "id": "renderer/bridge",
       "context": "renderer",
       "files": 10,
-      "loc": 3222,
+      "loc": 3293,
       "internalImports": 14
     },
     {
       "id": "renderer/canvas",
       "context": "renderer",
       "files": 26,
-      "loc": 24796,
+      "loc": 25157,
       "internalImports": 26
     },
     {
       "id": "renderer/components",
       "context": "renderer",
-      "files": 194,
-      "loc": 41445,
-      "internalImports": 410
+      "files": 203,
+      "loc": 44298,
+      "internalImports": 428
     },
     {
       "id": "renderer/editor",
@@ -347,15 +368,15 @@
     {
       "id": "renderer/lib",
       "context": "renderer",
-      "files": 265,
-      "loc": 30423,
-      "internalImports": 113
+      "files": 275,
+      "loc": 31955,
+      "internalImports": 125
     },
     {
       "id": "renderer/nodes",
       "context": "renderer",
       "files": 51,
-      "loc": 17241,
+      "loc": 17272,
       "internalImports": 56
     },
     {
@@ -375,15 +396,15 @@
     {
       "id": "renderer/state",
       "context": "renderer",
-      "files": 68,
-      "loc": 12096,
-      "internalImports": 33
+      "files": 71,
+      "loc": 12508,
+      "internalImports": 35
     },
     {
       "id": "renderer/terminal",
       "context": "renderer",
       "files": 61,
-      "loc": 10252,
+      "loc": 10266,
       "internalImports": 19
     },
     {
@@ -404,7 +425,7 @@
       "id": "server/(root)",
       "context": "server",
       "files": 24,
-      "loc": 7429,
+      "loc": 7477,
       "internalImports": 40
     },
     {
@@ -424,16 +445,16 @@
     {
       "id": "shared/(root)",
       "context": "shared",
-      "files": 153,
-      "loc": 27528,
-      "internalImports": 232
+      "files": 157,
+      "loc": 28631,
+      "internalImports": 253
     },
     {
       "id": "shared/agents",
       "context": "shared",
-      "files": 22,
-      "loc": 4929,
-      "internalImports": 18
+      "files": 24,
+      "loc": 5010,
+      "internalImports": 20
     },
     {
       "id": "shared/remote",
@@ -508,8 +529,8 @@
     {
       "from": "core/(root)",
       "to": "core/remote-ssh",
-      "imports": 16,
-      "value": 16,
+      "imports": 17,
+      "value": 17,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -544,8 +565,8 @@
     {
       "from": "core/(root)",
       "to": "shared/(root)",
-      "imports": 288,
-      "value": 199,
+      "imports": 292,
+      "value": 203,
       "typeOnly": 89,
       "dynamic": 0,
       "kind": "mixed"
@@ -553,8 +574,8 @@
     {
       "from": "core/(root)",
       "to": "shared/agents",
-      "imports": 58,
-      "value": 47,
+      "imports": 59,
+      "value": 48,
       "typeOnly": 11,
       "dynamic": 0,
       "kind": "mixed"
@@ -606,6 +627,15 @@
     },
     {
       "from": "core/agents",
+      "to": "core/system-map",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/agents",
       "to": "session-host/(root)",
       "imports": 1,
       "value": 1,
@@ -625,9 +655,36 @@
     {
       "from": "core/agents",
       "to": "shared/agents",
-      "imports": 30,
-      "value": 19,
+      "imports": 31,
+      "value": 20,
       "typeOnly": 11,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/dis-invoice",
+      "to": "core/(root)",
+      "imports": 8,
+      "value": 4,
+      "typeOnly": 4,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/dis-invoice",
+      "to": "core/remote-ssh",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/dis-invoice",
+      "to": "shared/(root)",
+      "imports": 8,
+      "value": 4,
+      "typeOnly": 4,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -652,8 +709,8 @@
     {
       "from": "core/handoff",
       "to": "core/(root)",
-      "imports": 2,
-      "value": 2,
+      "imports": 3,
+      "value": 3,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -777,12 +834,21 @@
     },
     {
       "from": "core/ship-config",
-      "to": "shared/(root)",
-      "imports": 11,
-      "value": 11,
+      "to": "core/agents",
+      "imports": 2,
+      "value": 2,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
+    },
+    {
+      "from": "core/ship-config",
+      "to": "shared/(root)",
+      "imports": 12,
+      "value": 11,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
     },
     {
       "from": "core/simulator",
@@ -821,10 +887,91 @@
       "kind": "mixed"
     },
     {
+      "from": "core/system-map",
+      "to": "core/(root)",
+      "imports": 3,
+      "value": 2,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/system-map",
+      "to": "core/agent-graph",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/system-map",
+      "to": "core/ship-config",
+      "imports": 3,
+      "value": 2,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "core/system-map",
+      "to": "shared/(root)",
+      "imports": 10,
+      "value": 10,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/system-map",
+      "to": "shared/agents",
+      "imports": 1,
+      "value": 0,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "type-only"
+    },
+    {
+      "from": "core/token-savers",
+      "to": "core/(root)",
+      "imports": 7,
+      "value": 7,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/token-savers",
+      "to": "core/agents",
+      "imports": 2,
+      "value": 2,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/token-savers",
+      "to": "shared/(root)",
+      "imports": 5,
+      "value": 5,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "core/token-savers",
+      "to": "shared/agents",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
       "from": "core/usage",
       "to": "core/(root)",
-      "imports": 8,
-      "value": 8,
+      "imports": 9,
+      "value": 9,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -841,8 +988,8 @@
     {
       "from": "core/usage",
       "to": "core/remote-ssh",
-      "imports": 1,
-      "value": 1,
+      "imports": 2,
+      "value": 2,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -850,8 +997,8 @@
     {
       "from": "core/usage",
       "to": "shared/(root)",
-      "imports": 15,
-      "value": 3,
+      "imports": 17,
+      "value": 5,
       "typeOnly": 12,
       "dynamic": 0,
       "kind": "mixed"
@@ -930,6 +1077,15 @@
     },
     {
       "from": "main/(root)",
+      "to": "core/dis-invoice",
+      "imports": 1,
+      "value": 1,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
       "to": "core/github",
       "imports": 7,
       "value": 5,
@@ -987,6 +1143,24 @@
       "to": "core/speech",
       "imports": 3,
       "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/system-map",
+      "imports": 3,
+      "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "main/(root)",
+      "to": "core/token-savers",
+      "imports": 1,
+      "value": 1,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -1363,9 +1537,9 @@
     {
       "from": "renderer/bridge",
       "to": "shared/(root)",
-      "imports": 37,
+      "imports": 39,
       "value": 18,
-      "typeOnly": 19,
+      "typeOnly": 21,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -1390,9 +1564,9 @@
     {
       "from": "renderer/canvas",
       "to": "renderer/components",
-      "imports": 60,
+      "imports": 61,
       "value": 54,
-      "typeOnly": 6,
+      "typeOnly": 7,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -1408,8 +1582,8 @@
     {
       "from": "renderer/canvas",
       "to": "renderer/lib",
-      "imports": 152,
-      "value": 149,
+      "imports": 155,
+      "value": 152,
       "typeOnly": 3,
       "dynamic": 0,
       "kind": "mixed"
@@ -1444,8 +1618,8 @@
     {
       "from": "renderer/canvas",
       "to": "renderer/state",
-      "imports": 65,
-      "value": 64,
+      "imports": 66,
+      "value": 65,
       "typeOnly": 1,
       "dynamic": 0,
       "kind": "mixed"
@@ -1462,8 +1636,8 @@
     {
       "from": "renderer/canvas",
       "to": "shared/(root)",
-      "imports": 65,
-      "value": 43,
+      "imports": 70,
+      "value": 48,
       "typeOnly": 22,
       "dynamic": 0,
       "kind": "mixed"
@@ -1507,9 +1681,9 @@
     {
       "from": "renderer/components",
       "to": "renderer/lib",
-      "imports": 231,
-      "value": 220,
-      "typeOnly": 11,
+      "imports": 252,
+      "value": 238,
+      "typeOnly": 14,
       "dynamic": 2,
       "kind": "mixed"
     },
@@ -1525,8 +1699,8 @@
     {
       "from": "renderer/components",
       "to": "renderer/session",
-      "imports": 39,
-      "value": 37,
+      "imports": 41,
+      "value": 39,
       "typeOnly": 2,
       "dynamic": 0,
       "kind": "mixed"
@@ -1534,9 +1708,9 @@
     {
       "from": "renderer/components",
       "to": "renderer/state",
-      "imports": 221,
-      "value": 218,
-      "typeOnly": 3,
+      "imports": 234,
+      "value": 230,
+      "typeOnly": 4,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -1552,8 +1726,8 @@
     {
       "from": "renderer/components",
       "to": "renderer/ui",
-      "imports": 112,
-      "value": 112,
+      "imports": 116,
+      "value": 116,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -1561,9 +1735,9 @@
     {
       "from": "renderer/components",
       "to": "shared/(root)",
-      "imports": 240,
-      "value": 133,
-      "typeOnly": 107,
+      "imports": 251,
+      "value": 138,
+      "typeOnly": 113,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -1651,8 +1825,8 @@
     {
       "from": "renderer/lib",
       "to": "renderer/state",
-      "imports": 62,
-      "value": 43,
+      "imports": 68,
+      "value": 49,
       "typeOnly": 19,
       "dynamic": 0,
       "kind": "mixed"
@@ -1669,17 +1843,17 @@
     {
       "from": "renderer/lib",
       "to": "shared/(root)",
-      "imports": 235,
-      "value": 119,
-      "typeOnly": 116,
+      "imports": 246,
+      "value": 125,
+      "typeOnly": 121,
       "dynamic": 0,
       "kind": "mixed"
     },
     {
       "from": "renderer/lib",
       "to": "shared/agents",
-      "imports": 46,
-      "value": 32,
+      "imports": 49,
+      "value": 35,
       "typeOnly": 14,
       "dynamic": 0,
       "kind": "mixed"
@@ -1759,8 +1933,8 @@
     {
       "from": "renderer/nodes",
       "to": "renderer/state",
-      "imports": 76,
-      "value": 65,
+      "imports": 77,
+      "value": 66,
       "typeOnly": 11,
       "dynamic": 0,
       "kind": "mixed"
@@ -1867,8 +2041,8 @@
     {
       "from": "renderer/state",
       "to": "renderer/lib",
-      "imports": 31,
-      "value": 25,
+      "imports": 33,
+      "value": 27,
       "typeOnly": 6,
       "dynamic": 0,
       "kind": "mixed"
@@ -1894,18 +2068,18 @@
     {
       "from": "renderer/state",
       "to": "shared/(root)",
-      "imports": 87,
-      "value": 45,
-      "typeOnly": 42,
+      "imports": 90,
+      "value": 47,
+      "typeOnly": 43,
       "dynamic": 0,
       "kind": "mixed"
     },
     {
       "from": "renderer/state",
       "to": "shared/agents",
-      "imports": 22,
+      "imports": 23,
       "value": 14,
-      "typeOnly": 8,
+      "typeOnly": 9,
       "dynamic": 0,
       "kind": "mixed"
     },
@@ -2019,6 +2193,15 @@
     },
     {
       "from": "server/(root)",
+      "to": "core/dis-invoice",
+      "imports": 2,
+      "value": 1,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
       "to": "core/github",
       "imports": 5,
       "value": 3,
@@ -2058,6 +2241,24 @@
       "to": "core/speech",
       "imports": 3,
       "value": 3,
+      "typeOnly": 0,
+      "dynamic": 0,
+      "kind": "value"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/system-map",
+      "imports": 4,
+      "value": 3,
+      "typeOnly": 1,
+      "dynamic": 0,
+      "kind": "mixed"
+    },
+    {
+      "from": "server/(root)",
+      "to": "core/token-savers",
+      "imports": 1,
+      "value": 1,
       "typeOnly": 0,
       "dynamic": 0,
       "kind": "value"
@@ -2211,89 +2412,89 @@
     {
       "file": "src/shared/types.ts",
       "subsystem": "shared/(root)",
-      "importers": 348,
-      "outsideSubsystem": 314,
+      "importers": 353,
+      "outsideSubsystem": 318,
       "value": 27,
-      "typeOnly": 333
+      "typeOnly": 338
     },
     {
       "file": "src/shared/agents/config.ts",
       "subsystem": "shared/agents",
-      "importers": 109,
-      "outsideSubsystem": 101,
-      "value": 91,
-      "typeOnly": 24
+      "importers": 113,
+      "outsideSubsystem": 105,
+      "value": 94,
+      "typeOnly": 25
     },
     {
       "file": "src/shared/ipc.ts",
       "subsystem": "shared/(root)",
-      "importers": 86,
-      "outsideSubsystem": 84,
-      "value": 86,
+      "importers": 89,
+      "outsideSubsystem": 87,
+      "value": 89,
       "typeOnly": 0
     },
     {
       "file": "src/core/platform.ts",
       "subsystem": "core/(root)",
-      "importers": 74,
-      "outsideSubsystem": 24,
-      "value": 52,
-      "typeOnly": 22
+      "importers": 77,
+      "outsideSubsystem": 27,
+      "value": 53,
+      "typeOnly": 24
+    },
+    {
+      "file": "src/renderer/state/projects.ts",
+      "subsystem": "renderer/state",
+      "importers": 72,
+      "outsideSubsystem": 69,
+      "value": 71,
+      "typeOnly": 1
     },
     {
       "file": "src/renderer/session/session.ts",
       "subsystem": "renderer/session",
-      "importers": 70,
-      "outsideSubsystem": 65,
-      "value": 57,
+      "importers": 71,
+      "outsideSubsystem": 66,
+      "value": 58,
       "typeOnly": 14
     },
     {
       "file": "src/renderer/state/settings.ts",
       "subsystem": "renderer/state",
-      "importers": 70,
+      "importers": 71,
       "outsideSubsystem": 63,
-      "value": 70,
+      "value": 71,
       "typeOnly": 0
-    },
-    {
-      "file": "src/renderer/state/projects.ts",
-      "subsystem": "renderer/state",
-      "importers": 69,
-      "outsideSubsystem": 66,
-      "value": 68,
-      "typeOnly": 1
     },
     {
       "file": "src/renderer/components/icons.tsx",
       "subsystem": "renderer/components",
-      "importers": 68,
+      "importers": 70,
       "outsideSubsystem": 25,
-      "value": 68,
+      "value": 70,
       "typeOnly": 0
     },
     {
       "file": "src/shared/ssh.ts",
       "subsystem": "shared/(root)",
-      "importers": 68,
-      "outsideSubsystem": 64,
-      "value": 51,
+      "importers": 70,
+      "outsideSubsystem": 66,
+      "value": 53,
       "typeOnly": 38
     },
     {
       "file": "src/core/fs-atomic.ts",
       "subsystem": "core/(root)",
-      "importers": 48,
-      "outsideSubsystem": 28,
-      "value": 48,
+      "importers": 52,
+      "outsideSubsystem": 32,
+      "value": 52,
       "typeOnly": 0
     },
     {
       "file": "src/renderer/state/workspace.ts",
       "subsystem": "renderer/state",
-      "importers": 48,
-      "outsideSubsystem": 45,
-      "value": 27,
+      "importers": 50,
+      "outsideSubsystem": 47,
+      "value": 29,
       "typeOnly": 21
     },
     {
@@ -2307,33 +2508,41 @@
     {
       "file": "src/renderer/state/agentStatus.ts",
       "subsystem": "renderer/state",
-      "importers": 31,
-      "outsideSubsystem": 28,
-      "value": 21,
+      "importers": 32,
+      "outsideSubsystem": 29,
+      "value": 22,
       "typeOnly": 10
     },
     {
       "file": "src/renderer/components/settings/SearchableRow.tsx",
       "subsystem": "renderer/components",
-      "importers": 29,
+      "importers": 31,
       "outsideSubsystem": 0,
-      "value": 29,
+      "value": 31,
       "typeOnly": 0
     },
     {
       "file": "src/renderer/components/settings/SettingsSection.tsx",
       "subsystem": "renderer/components",
-      "importers": 29,
+      "importers": 31,
       "outsideSubsystem": 0,
-      "value": 29,
+      "value": 31,
       "typeOnly": 0
     },
     {
       "file": "src/renderer/ui/Button.tsx",
       "subsystem": "renderer/ui",
-      "importers": 29,
-      "outsideSubsystem": 28,
-      "value": 29,
+      "importers": 31,
+      "outsideSubsystem": 30,
+      "value": 31,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/renderer/components/settings/FieldRow.tsx",
+      "subsystem": "renderer/components",
+      "importers": 28,
+      "outsideSubsystem": 0,
+      "value": 28,
       "typeOnly": 0
     },
     {
@@ -2349,6 +2558,14 @@
       "subsystem": "shared/(root)",
       "importers": 27,
       "outsideSubsystem": 19,
+      "value": 27,
+      "typeOnly": 0
+    },
+    {
+      "file": "src/core/exec-path.ts",
+      "subsystem": "core/(root)",
+      "importers": 26,
+      "outsideSubsystem": 11,
       "value": 27,
       "typeOnly": 0
     },
@@ -2369,14 +2586,6 @@
       "typeOnly": 0
     },
     {
-      "file": "src/renderer/components/settings/FieldRow.tsx",
-      "subsystem": "renderer/components",
-      "importers": 26,
-      "outsideSubsystem": 0,
-      "value": 26,
-      "typeOnly": 0
-    },
-    {
       "file": "src/shared/github-issue-ref.ts",
       "subsystem": "shared/(root)",
       "importers": 26,
@@ -2393,14 +2602,6 @@
       "typeOnly": 29
     },
     {
-      "file": "src/core/exec-path.ts",
-      "subsystem": "core/(root)",
-      "importers": 25,
-      "outsideSubsystem": 10,
-      "value": 26,
-      "typeOnly": 0
-    },
-    {
       "file": "src/shared/presence.ts",
       "subsystem": "shared/(root)",
       "importers": 25,
@@ -2409,7 +2610,7 @@
       "typeOnly": 14
     }
   ],
-  "filesWithImporters": 1439,
+  "filesWithImporters": 1482,
   "crossings": [],
   "unresolved": [],
   "lexProblems": []

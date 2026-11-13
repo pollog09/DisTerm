@@ -113,3 +113,30 @@ describe('a typed access at the viewer boundary', () => {
     expect(narrowed.events.map((e) => e.id)).toEqual(['c'])
   })
 })
+
+describe('the system map at the relay boundary', () => {
+  const touch = (nodeId: string) => ({ kind: 'map-touch', id: `map-touch:P:${nodeId}::api`, ts: 1, projectId: 'P', nodeId, partId: 'api', count: 2 })
+
+  it('a map-touch row for a shared node passes; for an unshared node it is dropped, live and in a snapshot', () => {
+    expect(filterOutboundEvent(ev(touch('mine')), ctx('viewer'))).toBe(true)
+    expect(filterOutboundEvent(ev(touch('theirs')), ctx('viewer'))).toBe(false)
+    const narrowed = narrowResponseForRole(IPC.agentGraphSnapshot, { events: [touch('mine'), touch('theirs')] }, ctx('viewer')) as { events: Array<{ id: string }> }
+    expect(narrowed.events.map((e) => e.id)).toEqual(['map-touch:P:mine::api'])
+  })
+
+  it('read and subscribe stay with editors, and the change event never reaches a viewer', () => {
+    for (const m of [IPC.systemMapRead, IPC.systemMapSubscribe, IPC.systemMapUnsubscribe]) {
+      expect(decideAccess('req', m, ['P'], ctx('viewer')).allow, m).toBe(false)
+      expect(decideAccess('req', m, ['P'], ctx('commenter')).allow, m).toBe(false)
+      expect(decideAccess('req', m, ['P'], ctx('editor')).allow, m).toBe(true)
+    }
+    const changed = JSON.stringify({ t: 'ev', channel: IPC.systemMapChanged('P'), args: ['P'] })
+    expect(filterOutboundEvent(changed, ctx('viewer'))).toBe(false)
+  })
+
+  it('a scoped guest is refused all three channels, even for its own project', () => {
+    for (const m of [IPC.systemMapRead, IPC.systemMapSubscribe, IPC.systemMapUnsubscribe]) {
+      expect(decideScopedAccess('P', deps, m, ['P']).allow, m).toBe(false)
+    }
+  })
+})

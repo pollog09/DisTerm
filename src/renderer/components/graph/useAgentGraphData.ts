@@ -8,6 +8,7 @@ import {
   type AgentGraphSnapshot
 } from '@shared/agent-graph'
 import type { ShipConfigResult, ShipTemplateCreateResult } from '@shared/ship-config'
+import type { SystemMapResult } from '@shared/system-map'
 import type { AgentGraphApi, BoardLogApi } from '@shared/types'
 import { errorText } from '@shared/error-text'
 import { edgeInTransit, nextTransitChangeAt, type GraphEdge } from '../../lib/agentGraphModel'
@@ -96,6 +97,40 @@ export function useShipConfig(
     if (!api) return
     reload()
     const off = api.agentGraph.onShipConfigChanged(projectId, reload)
+    return () => {
+      seq.current++
+      off()
+    }
+  }, [api, projectId, reload])
+
+  return { result: held?.projectId === projectId ? held.result : null, reload }
+}
+
+/** The project's system map, re-read when the core says it changed. Holding the change subscription is
+ *  also what keeps the core matching edits to this map (its lease), so it lives exactly as long as the
+ *  system map picture is up. */
+export function useSystemMap(
+  api: { agentGraph: Pick<AgentGraphApi, 'readSystemMap' | 'onSystemMapChanged'> } | undefined,
+  projectId: string
+): { result: SystemMapResult | null; reload: () => void } {
+  const [held, setHeld] = useState<{ projectId: string; result: SystemMapResult } | null>(null)
+  const seq = useRef(0)
+
+  const reload = useCallback(() => {
+    if (!api) return
+    const mine = ++seq.current
+    api.agentGraph
+      .readSystemMap(projectId)
+      .catch((err: unknown): SystemMapResult => ({ ok: false, reason: errorText(err) }))
+      .then((r) => {
+        if (mine === seq.current) setHeld({ projectId, result: r })
+      })
+  }, [api, projectId])
+
+  useEffect(() => {
+    if (!api) return
+    reload()
+    const off = api.agentGraph.onSystemMapChanged(projectId, reload)
     return () => {
       seq.current++
       off()

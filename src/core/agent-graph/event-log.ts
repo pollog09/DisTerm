@@ -4,7 +4,8 @@ import {
   AGENT_GRAPH_LOG_CAPACITY,
   mergeAgentGraphEvents,
   type AgentGraphAccessEvent,
-  type AgentGraphEvent
+  type AgentGraphEvent,
+  type AgentGraphMapTouchEvent
 } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import type { ToolAccess } from '../../shared/agents/tool-access'
@@ -16,6 +17,8 @@ export const ACTIVITY_COALESCE_MS = 30_000
 const MAX_OPEN = 512
 /** Distinct (session, subagent, skill or server) rows kept. The oldest goes first, and is counted as dropped. */
 export const MAX_ACCESS_KEYS = 1024
+/** Distinct (project, session, subagent, part) system-map touch rows kept, bounded the same way. */
+export const MAX_TOUCH_KEYS = 1024
 
 /**
  * What this process observed about how sessions talk to each other: deliveries (every outcome,
@@ -38,6 +41,8 @@ export class AgentGraphLog {
   /** One row per access key, least recently called first, which is what bounds it. Apart from the
    *  ring: a swarm of subagents must not push deliveries and subagent starts out of it. */
   private readonly accessRows = new Map<string, AgentGraphAccessEvent>()
+  /** One row per system-map touch key, apart from both of the above for the same reason. */
+  private readonly touchRows = new Map<string, AgentGraphMapTouchEvent>()
 
   constructor(readonly capacity = AGENT_GRAPH_LOG_CAPACITY) {}
 
@@ -130,13 +135,42 @@ export class AgentGraphLog {
     this.notify(row)
   }
 
+  /**
+   * A session, or one of its subagents, edited a file inside a project whose system map someone is
+   * viewing (core/system-map/touches.ts). Only the part id the file matched arrives here, never the path;
+   * no `partId` = an edit inside the project that no part owns. Same replace-and-bound discipline as
+   * `recordAccess`: one row per key with a running count, pushed every call.
+   */
+  recordMapTouch(projectId: string, nodeId: string, touch: { partId?: string; subId?: string; subType?: string }, now = Date.now()): void {
+    const id = `map-touch:${projectId}:${nodeId}:${touch.subId ?? ''}:${touch.partId ?? ''}`
+    const count = (this.touchRows.get(id)?.count ?? 0) + 1
+    this.touchRows.delete(id)
+    const row: AgentGraphMapTouchEvent = {
+      kind: 'map-touch',
+      id,
+      ts: now,
+      projectId,
+      nodeId,
+      ...(touch.subId ? { subId: touch.subId } : {}),
+      ...(touch.subType ? { subType: touch.subType } : {}),
+      ...(touch.partId ? { partId: touch.partId } : {}),
+      count
+    }
+    this.touchRows.set(id, row)
+    while (this.touchRows.size > MAX_TOUCH_KEYS) {
+      this.touchRows.delete(this.touchRows.keys().next().value!)
+      this.droppedCount++
+    }
+    this.notify(row)
+  }
+
   private forget(subId: string): void {
     this.open.delete(subId)
     this.activityAt.delete(subId)
   }
 
   snapshot(): { events: AgentGraphEvent[]; dropped: number; capacity: number } {
-    return { events: mergeAgentGraphEvents(this.events, [...this.accessRows.values()]), dropped: this.droppedCount, capacity: this.capacity }
+    return { events: mergeAgentGraphEvents(this.events, [...this.accessRows.values(), ...this.touchRows.values()]), dropped: this.droppedCount, capacity: this.capacity }
   }
 
   onEvent(listener: (event: AgentGraphEvent) => void): () => void {
@@ -151,6 +185,7 @@ export class AgentGraphLog {
     this.open.clear()
     this.activityAt.clear()
     this.accessRows.clear()
+    this.touchRows.clear()
     this.droppedCount = 0
   }
 }

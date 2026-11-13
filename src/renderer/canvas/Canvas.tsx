@@ -5,6 +5,7 @@ import { useDevPortScanner } from './useDevPortScanner'
 import { withCodexNoDaemon } from '@shared/agents/codex-daemon'
 import { codexApprovalCaps } from '../state/codexCli'
 import { TEXT_NOT_SUBMITTED } from '@shared/text-delivery'
+import { SYSTEM_MAP_NODE_TITLE, SYSTEM_MAP_PROMPT } from '@shared/system-map'
 import { VisibleMiniMap } from './VisibleMiniMap'
 import { GlassFrostSync } from './GlassFrostSync'
 import { MinimapDock } from './MinimapDock'
@@ -13365,6 +13366,11 @@ export function Canvas() {
     },
     [focusNodeById]
   )
+  // The system map's empty state: a Claude session on the canvas with the prompt that writes the map.
+  const mapThisRepo = useCallback(
+    (): string | null => addAgentNode('claude', undefined, undefined, undefined, SYSTEM_MAP_PROMPT, { title: SYSTEM_MAP_NODE_TITLE })?.node.id ?? null,
+    [addAgentNode]
+  )
 
   // Stable identity for the memoized KanbanView — an inline arrow here would re-render the
   // whole board on every Canvas render.
@@ -20307,6 +20313,7 @@ export function Canvas() {
           controlEdges={controlEdges}
           onShowOnCanvas={openNodeFromGraph}
           onModalNodeChange={setKanbanModalNode}
+          onMapThisRepo={mapThisRepo}
         />
       )}
       <UpdateCard />

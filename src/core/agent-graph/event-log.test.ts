@@ -3,7 +3,7 @@ import { recordDelivery, resetAgentMessageTraceForTests } from '../agents/agent-
 import { AGENT_GRAPH_LABEL_MAX, deliveryClass, mergeAgentGraphEvents, type AgentGraphEvent } from '../../shared/agent-graph'
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import { normalizeClaude } from '../../shared/agents/normalize'
-import { ACTIVITY_COALESCE_MS, MAX_ACCESS_KEYS, AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
+import { ACTIVITY_COALESCE_MS, MAX_ACCESS_KEYS, MAX_TOUCH_KEYS, AgentGraphLog, agentEventToGraphEvent, agentGraphLog } from './event-log'
 
 const delivery = (id: string, ts = 1): AgentGraphEvent => ({ kind: 'delivery', id, ts, from: 'a', to: 'b', outcome: 'delivered' })
 const agentEvent = (over: Partial<NormalizedAgentEvent>): NormalizedAgentEvent =>
@@ -252,5 +252,77 @@ describe('AgentGraphLog.recordAccess, typed and called', () => {
     log.push({ kind: 'turn-start', id: 'keep', ts: 0, nodeId: 'n' })
     for (let i = 0; i < 10; i++) log.recordAccess('n', { target: 'skill', name: `s${i}` }, i + 1)
     expect(log.snapshot().events.filter((e) => e.kind !== 'access').map((e) => e.id)).toEqual(['keep'])
+  })
+})
+
+describe('AgentGraphLog.recordMapTouch', () => {
+  it('one row per key with a running count, the newest time winning', () => {
+    const log = new AgentGraphLog()
+    log.recordMapTouch('P', 'n1', { partId: 'api' }, 10)
+    log.recordMapTouch('P', 'n1', { partId: 'api' }, 20)
+    log.recordMapTouch('P', 'n1', { partId: 'api' }, 30)
+    expect(log.snapshot().events).toEqual([
+      { kind: 'map-touch', id: 'map-touch:P:n1::api', ts: 30, projectId: 'P', nodeId: 'n1', partId: 'api', count: 3 }
+    ])
+  })
+
+  it('keeps unmatched, matched, a subagent, another node and another project apart', () => {
+    const log = new AgentGraphLog()
+    log.recordMapTouch('P', 'n1', { partId: 'api' }, 1)
+    log.recordMapTouch('P', 'n1', {}, 2)
+    log.recordMapTouch('P', 'n1', { partId: 'api', subId: 'abc', subType: 'general-purpose' }, 3)
+    log.recordMapTouch('P', 'n2', { partId: 'api' }, 4)
+    log.recordMapTouch('Q', 'n1', { partId: 'api' }, 5)
+    log.recordMapTouch('P', 'n1', {}, 6)
+    expect(log.snapshot().events.map((e) => [e.id, (e as { count: number }).count])).toEqual([
+      ['map-touch:P:n1::api', 1],
+      ['map-touch:P:n1:abc:api', 1],
+      ['map-touch:P:n2::api', 1],
+      ['map-touch:Q:n1::api', 1],
+      ['map-touch:P:n1::', 2]
+    ])
+    const unmatched = log.snapshot().events.find((e) => e.id === 'map-touch:P:n1::')!
+    expect(unmatched).not.toHaveProperty('partId')
+    expect(log.snapshot().events.find((e) => e.id === 'map-touch:P:n1:abc:api')).toMatchObject({ subId: 'abc', subType: 'general-purpose' })
+  })
+
+  it('past MAX_TOUCH_KEYS the oldest key goes and is counted as dropped', () => {
+    const log = new AgentGraphLog()
+    for (let i = 0; i < MAX_TOUCH_KEYS + 1; i++) log.recordMapTouch('P', 'n', { partId: `p${i}` }, i)
+    const s = log.snapshot()
+    expect(s.events).toHaveLength(MAX_TOUCH_KEYS)
+    expect(s.events[0].id).toBe('map-touch:P:n::p1')
+    expect(s.dropped).toBe(1)
+    log.recordMapTouch('P', 'n', { partId: 'p0' }, 5000)
+    expect((log.snapshot().events.at(-1) as { count: number }).count).toBe(1)
+    expect(log.snapshot().dropped).toBe(2)
+  })
+
+  it('touch rows and access rows are bounded apart: a swarm of touches never pushes out an access row', () => {
+    const log = new AgentGraphLog()
+    log.recordAccess('n', { target: 'skill', name: 'a' }, 0)
+    for (let i = 0; i < MAX_TOUCH_KEYS + 5; i++) log.recordMapTouch('P', 'n', { partId: `p${i}` }, i + 1)
+    expect(log.snapshot().events.filter((e) => e.kind === 'access').map((e) => e.id)).toEqual(['access:n::skill:a'])
+  })
+
+  it('the snapshot carries the rows; clear() empties them', () => {
+    const log = new AgentGraphLog()
+    log.push({ kind: 'turn-start', id: 't', ts: 1, nodeId: 'n' })
+    log.recordMapTouch('P', 'n', { partId: 'api' }, 2)
+    expect(log.snapshot().events.map((e) => e.kind)).toEqual(['turn-start', 'map-touch'])
+    log.clear()
+    expect(log.snapshot().events).toEqual([])
+    log.recordMapTouch('P', 'n', { partId: 'api' }, 3)
+    expect((log.snapshot().events[0] as { count: number }).count).toBe(1)
+  })
+
+  it('listeners hear every call', () => {
+    const log = new AgentGraphLog()
+    const seen: Array<[string, number]> = []
+    log.onEvent((e) => e.kind === 'map-touch' && seen.push([e.partId ?? '', e.count]))
+    log.recordMapTouch('P', 'n', { partId: 'api' }, 1)
+    log.recordMapTouch('P', 'n', { partId: 'api' }, 2)
+    log.recordMapTouch('P', 'n', {}, 3)
+    expect(seen).toEqual([['api', 1], ['api', 2], ['', 1]])
   })
 })
