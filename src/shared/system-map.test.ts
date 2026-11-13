@@ -369,6 +369,13 @@ describe('the prompt and the format', () => {
     expect(SYSTEM_MAP_PROMPT).not.toMatch(/\n/)
   })
 
+  it('SYSTEM_MAP_PROMPT starts the session from the code map, and asks for the understand workflow only where it exists', () => {
+    expect(SYSTEM_MAP_PROMPT).toContain('docs/architecture/CODEMAP.md')
+    expect(SYSTEM_MAP_PROMPT).toContain('If the understand workflow is available')
+    // The line is single-quoted for the shell: an apostrophe would cost an escape on every launch.
+    expect(SYSTEM_MAP_PROMPT).not.toContain("'")
+  })
+
   it('the format lines are two-space indented, and the example in them is a valid map once its parts exist', () => {
     for (const line of SYSTEM_MAP_FORMAT_LINES) expect(line.startsWith('  ')).toBe(true)
     const json = SYSTEM_MAP_FORMAT_LINES.slice(0, 4).join('\n').replace('"<repo name>"', '"x"')

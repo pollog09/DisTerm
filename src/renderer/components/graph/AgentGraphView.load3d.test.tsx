@@ -67,7 +67,7 @@ describe('a 3D chunk that does not load', () => {
       document.body.appendChild(host)
       root = createRoot(host)
       await act(async () =>
-        root.render(<AgentGraphView projectId="P" nodes={[node('a', 'Orchestrator')]} linkEdges={noEdges} controlEdges={noEdges} onShowOnCanvas={() => {}} onModalNodeChange={() => {}} onMapThisRepo={() => null} />)
+        root.render(<AgentGraphView projectId="P" nodes={[node('a', 'Orchestrator')]} linkEdges={noEdges} controlEdges={noEdges} onShowOnCanvas={() => {}} onModalNodeChange={() => {}} onMapThisRepo={() => {}} />)
       )
       for (let i = 0; i < 4; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
     } finally {

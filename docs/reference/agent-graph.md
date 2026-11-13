@@ -429,7 +429,12 @@ between them, and flows that play step by step. Not the code map: that word mean
   Map-this-repo callback.
 - **DisTerm only reads the file.** There is no write path in `core/system-map/`: an agent writes the map
   (Map this repo opens a Claude session with `SYSTEM_MAP_PROMPT`; `nodeterm map` checks it) and a person
-  commits it. A map that fails any rule is not drawn at all; the view lists its problems (at most 50,
+  commits it. **Map this repo leaves the graph for the canvas** and frames the new node at the view
+  centre, never the graph's modal: only a mounted canvas terminal types a node's launch line, the modal is
+  a co-attached viewer that never launches a CLI, and a node placed off screen behind the graph does not
+  mount. Opened in the modal, the node was a bare shell with its launch still queued. The prompt starts
+  the session from the repo's code map (`docs/architecture/CODEMAP.md`, or the one `CLAUDE.md`/`AGENTS.md`
+  names) and asks for the `understand` workflow only where it exists. A map that fails any rule is not drawn at all; the view lists its problems (at most 50,
   then a count), because a half-drawn map reads as the whole system. Every string is one-lined, and the
   file is hostile like any repo content: read field by field, unknown keys and `__proto__` ignored. The
   path is `stat`ed before it is opened, so a FIFO or a folder there is a problem, not a hang.

@@ -13367,10 +13367,15 @@ export function Canvas() {
     [focusNodeById]
   )
   // The system map's empty state: a Claude session on the canvas with the prompt that writes the map.
-  const mapThisRepo = useCallback(
-    (): string | null => addAgentNode('claude', undefined, undefined, undefined, SYSTEM_MAP_PROMPT, { title: SYSTEM_MAP_NODE_TITLE })?.node.id ?? null,
-    [addAgentNode]
-  )
+  // It leaves the graph for the canvas and lands the node in view, framed. Only a canvas terminal
+  // types a node's launch line; the graph's modal is a co-attached viewer that never launches a CLI,
+  // and a node placed off screen behind the graph never mounts — so opening it in the modal left a
+  // bare shell with the launch still queued and no Claude session.
+  const mapThisRepo = useCallback((): void => {
+    showCanvas(useProjects.getState().activeProjectId)
+    const made = addAgentNode('claude', viewCenter(), undefined, undefined, SYSTEM_MAP_PROMPT, { title: SYSTEM_MAP_NODE_TITLE })
+    if (made) goToNode(made.placed)
+  }, [addAgentNode, viewCenter, goToNode])
 
   // Stable identity for the memoized KanbanView — an inline arrow here would re-render the
   // whole board on every Canvas render.

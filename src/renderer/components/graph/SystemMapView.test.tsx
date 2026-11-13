@@ -81,7 +81,7 @@ let root: Root
 let host: HTMLDivElement
 const onShowOnCanvas = vi.fn()
 const onModalNodeChange = vi.fn()
-const onMapThisRepo = vi.fn((): string | null => null)
+const onMapThisRepo = vi.fn((): void => {})
 
 function view(nodes: unknown[] = defaultNodes(), projectId = 'P') {
   return (
@@ -168,7 +168,7 @@ beforeEach(() => {
   mapListeners.length = 0
   snapshotResult.current = { events: [], dropped: 0, capacity: 2000, history: 'board-log', historyTruncated: false }
   mapResult.current = { ok: true, read: { kind: 'missing' } }
-  onMapThisRepo.mockImplementation(() => null)
+  onMapThisRepo.mockImplementation(() => {})
   useViewMode.setState({ viewByProject: {}, defaultView: 'canvas', requestedCardNodeId: null, graphPictureByProject: {} })
   useAgentGraphDisplay.setState({ dimension: '2d' })
   graph3d.last = null
@@ -243,8 +243,7 @@ describe('the picture switch', () => {
 })
 
 describe('the states', () => {
-  it('missing: the empty state, and Map this repo opens the new session in the modal once it is on the canvas', async () => {
-    onMapThisRepo.mockImplementation(() => 'c')
+  it('missing: the empty state, and Map this repo hands off to the canvas without opening the modal', async () => {
     await mount()
     await toMap()
     const empty = document.querySelector('.agent-graph__empty')!
@@ -253,10 +252,10 @@ describe('the states', () => {
     expect(empty.textContent).toContain(SV.SYSTEM_MAP_ACTION_NOTE)
     await click(button(SV.SYSTEM_MAP_ACTION))
     expect(onMapThisRepo).toHaveBeenCalledTimes(1)
-    expect(document.querySelector('[data-testid="modal-terminal"]')).toBeNull() // not on the canvas yet
+    // The modal never launches a CLI: the new node must mount on the canvas, which types its launch.
     await act(async () => root.render(view([...defaultNodes(), node('c', 'System map', 'claude')])))
     await flush()
-    expect(document.querySelector('[data-testid="modal-terminal"]')?.textContent).toBe('c')
+    expect(document.querySelector('[data-testid="modal-terminal"]')).toBeNull()
   })
 
   it('missing, and addAgentNode refused: no modal', async () => {
