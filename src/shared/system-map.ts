@@ -842,7 +842,10 @@ export const SYSTEM_MAP_FORMAT_LINES: readonly string[] = [
 
 /** The launch prompt of the Map-this-repo session. One paragraph; fits the inline launch budget. */
 export const SYSTEM_MAP_PROMPT =
-  'Write a system map of this repo to docs/system-map.json. Read the code first and write only what you have verified in it. ' +
+  'Write a system map of this repo to docs/system-map.json. Start from its code map: read docs/architecture/CODEMAP.md, ' +
+  'or the map CLAUDE.md or AGENTS.md points to, and use it to pick the parts and their files. ' +
+  'If the understand workflow is available, run it to trace how the parts connect. ' +
+  'Then read the code and write only what you have verified in it. ' +
   'It is JSON: {"version":1,"title":string,"parts":[{"id","label","subtitle"?,"kind":"caller|service|store|worker|external","files":[globs from the repo root]}],' +
   '"links":[{"from","to","label"?}],"flows":[{"id","name","group","steps":[{"from","to","label","mark"?:"guard|refusal"}]}]}. ' +
   'Ids are letters, digits, . _ -. If the nodeterm command is available, run nodeterm map to check the file. ' +

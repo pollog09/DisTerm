@@ -320,9 +320,9 @@ export interface AgentGraphViewProps {
   onShowOnCanvas: (nodeId: string) => void
   /** Tell the canvas a modal is looking at this session (`setKanbanModalNode`). */
   onModalNodeChange: (nodeId: string | null) => void
-  /** Start a Claude session with the Map-this-repo prompt: the new node's id, or null when
-   *  `addAgentNode` refused (it shows its own notice). */
-  onMapThisRepo: () => string | null
+  /** Start a Claude session with the Map-this-repo prompt. It leaves for the canvas, where the node's
+   *  terminal mounts and types the launch (the modal never launches a CLI). */
+  onMapThisRepo: () => void
 }
 
 /** The system map's 3D view takes no particle stream of its own: a playing step's time is its pulse. */
@@ -543,10 +543,6 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
     () => new Map(nodes.filter((n) => n.type === 'terminal').map((n) => [n.id, String(n.data.title ?? '')] as const)),
     [nodes]
   )
-  const mapThisRepo = useCallback(() => {
-    const id = onMapThisRepo()
-    if (id) setModalId(id)
-  }, [onMapThisRepo])
   const renderMap3d = useCallback<SystemMapViewProps['render3d']>(
     (scene) => (
       <Graph3DBoundary onError={on3dFailed}>
@@ -666,7 +662,7 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
             sessions={mapSessions}
             drawn={drawn}
             render3d={renderMap3d}
-            onMapThisRepo={mapThisRepo}
+            onMapThisRepo={onMapThisRepo}
             onHeading={setMapHeading}
           />
         ) : (
