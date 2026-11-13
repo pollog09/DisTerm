@@ -1,0 +1,106 @@
+{
+  "_provenance": "captured live from Claude Code 2.1.322 (linux-x64) on 2026-11-11, logged-in account, print mode (`claude -p --setting-sources project --permission-mode acceptEdits --model haiku`), one run in a scratch git repo, with --settings holding only capture hooks (PreToolUse and PostToolUse, matcher \"\"). Only the Edit and Write tool events are kept, Pre and Post. Kept: hook_event_name, tool_name, tool_input.file_path, tool_use_id, agent_id, agent_type, cwd. Replaced: the scratch folder prefix with /fixture-repo everywhere, session_id with a placeholder, tool_input content/old_string/new_string with \"[removed]\". Dropped: tool_response, transcript_path and every other field. Tool-use ids and agent ids are as captured. The Agent call ran in the background, so the subagent's Write follows the Agent tool's PostToolUse in the live order.",
+  "claudeVersion": "2.1.322",
+  "scenarios": {
+    "edit_write_subagent": {
+      "mode": "print",
+      "description": "one prompt that makes the session Write src/api/server.go, Edit it, Write scripts/tool.sh, then start a general-purpose subagent that Writes src/db/schema.sql (events 6-7 carry agent_id)",
+      "events": [
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/api/server.go",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_01TovrJn5jbk9X99KzsK9mXj",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/api/server.go",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_01TovrJn5jbk9X99KzsK9mXj",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Edit",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/api/server.go",
+            "old_string": "[removed]",
+            "new_string": "[removed]"
+          },
+          "tool_use_id": "toolu_01Tqzc7iq4nPBgKpiBt7u2VS",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Edit",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/api/server.go",
+            "old_string": "[removed]",
+            "new_string": "[removed]"
+          },
+          "tool_use_id": "toolu_01Tqzc7iq4nPBgKpiBt7u2VS",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/scripts/tool.sh",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_013FbcYKL8hf2KuB7os81uv1",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/scripts/tool.sh",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_013FbcYKL8hf2KuB7os81uv1",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/db/schema.sql",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_01JLzigiWA7XnwYBAt5mMKSX",
+          "agent_id": "a404fab851c0d8e25",
+          "agent_type": "general-purpose",
+          "cwd": "/fixture-repo"
+        },
+        {
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "/fixture-repo/src/db/schema.sql",
+            "content": "[removed]"
+          },
+          "tool_use_id": "toolu_01JLzigiWA7XnwYBAt5mMKSX",
+          "agent_id": "a404fab851c0d8e25",
+          "agent_type": "general-purpose",
+          "cwd": "/fixture-repo"
+        }
+      ]
+    }
+  }
+}

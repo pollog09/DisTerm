@@ -96,7 +96,11 @@ const STORE_ANSWERED_VERBS: ReadonlySet<string> = new Set([
   // (core/github/control-read.ts). A read needs no canvas at either end, and a background
   // orchestrator polling `prs` must never travel the user's view.
   'issues',
-  'prs'
+  'prs',
+  // The repo's system map, read by the shell's control handler from the caller's project folder
+  // (core/system-map/control.ts). No canvas at either end, and an agent finding its way around a
+  // repo must never travel the user's view.
+  'map'
 ])
 
 /**

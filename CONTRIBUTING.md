@@ -342,7 +342,7 @@ projects, so do not add a platform check, and do not list distributions yourself
 ## The agent graph view
 
 The graph (`ProjectView` `'graph'`, `docs/ship-graph.md`) sits over the canvas like the board does.
-Five things to know before touching a view:
+Six things to know before touching a view:
 
 - **`isKanbanOpen` asks whether the canvas is covered, and is true over the graph too.** If you mean
   the board itself, ask `isBoardView`. A new "go to node" path can keep calling `requestCard`; both
@@ -366,6 +366,10 @@ Five things to know before touching a view:
   `three/webgpu` is aliased to a stub that throws, so the WebGPU renderer does not exist in this build.
   `three` and `3d-force-graph` are exact-pinned devDependencies: Vite bundles them, and electron-builder
   packs only `dependencies`, so a move to `dependencies` adds ~58 MB to the installer.
+- **The system map (`docs/system-map.json`) is read, never written, and no edited path leaves the core.**
+  Touches cross the wire as a part id only (`core/system-map/touches.ts`), and only while a view holds
+  the map's lease. A new map field goes through `parseSystemMap` (`shared/system-map.ts`) with a test,
+  and the format lines there are what the skill text and `docs/system-map.md` print.
 
 Intel Macs are not a separate build path: `npm run dist:mac:x64` is `dist` for the other architecture,
 and `release:mac` already builds both. Nothing in a feature may branch on arch, and a new dependency has to

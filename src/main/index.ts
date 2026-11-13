@@ -85,7 +85,10 @@ import {
 } from './browser-guest-registry'
 import { appendBoardLogVia, registerBoardLogHandlers, type BoardLogRoute } from '../core/board-log-handlers'
 import { registerAgentGraphHandlers } from '../core/agent-graph/handlers'
-import { registerShipConfigHandlers, type ShipConfigRoute } from '../core/ship-config/handlers'
+import { registerShipConfigHandlers, type ShipConfigRoute, type ShipConfigRouter } from '../core/ship-config/handlers'
+import { registerSystemMapHandlers } from '../core/system-map/handlers'
+import { readSystemMapFull } from '../core/system-map/read'
+import { SYSTEM_MAP_CONTROL_REFUSAL, SYSTEM_MAP_VERB, answerSystemMapControl } from '../core/system-map/control'
 import {
   createDeliveryQueue,
   restoreDeliveryQueue,
@@ -2282,7 +2285,7 @@ app.whenReady().then(async () => {
   registerAgentGraphHandlers(corePlatform, boardLogRouter)
   // The agents an SSH project runs are the HOST's: discovery goes over the project's master, and a
   // project whose master is down says so rather than describing this machine's agents as the host's.
-  registerShipConfigHandlers(corePlatform, {
+  const shipConfigRouter: ShipConfigRouter = {
     route: (projectId: string): ShipConfigRoute => {
       const ref = sshProjectManager?.refForProject(projectId)
       if (ref?.remoteCwd) {
@@ -2301,7 +2304,10 @@ app.whenReady().then(async () => {
       }
       return { kind: 'local', cwd: workspaceStore.localCwdForProject(projectId) ?? null }
     }
-  })
+  }
+  registerShipConfigHandlers(corePlatform, shipConfigRouter)
+  // The repo's system map is read where the project's agents run, through the same route.
+  registerSystemMapHandlers(corePlatform, shipConfigRouter)
   registerLogHandlers(corePlatform, logBuffer, () => settingsStore.get().debugLogPanel)
 
   // Agent messaging (the `send`/`reply` control verbs). Canvas.tsx forwards the validated verb
@@ -4785,6 +4791,13 @@ app.whenReady().then(async () => {
         dispatch: (id) => boardDispatchReports.forProject(id),
         now: () => Date.now()
       })
+    }
+    // `map`: the repo's system map, READ-ONLY, from the CALLER's own project (core/system-map/control.ts),
+    // read where that project runs. Never forwarded. Its own guard behind `requiresVerified`, like the
+    // GitHub reads: the project is resolved from the caller's node.
+    if (verb === SYSTEM_MAP_VERB) {
+      if (!verified) return { ok: false, error: SYSTEM_MAP_CONTROL_REFUSAL, message: SYSTEM_MAP_CONTROL_REFUSAL }
+      return answerSystemMapControl(projectIdOfNode(nodeId), args, (id) => readSystemMapFull(id, shipConfigRouter))
     }
     const target = getMainWindow()
     if (!target) return { ok: false, error: 'window unavailable' }

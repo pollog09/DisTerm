@@ -750,6 +750,21 @@ describe('verified-only requests through the shim', () => {
     expect(Object.keys(args).some((k) => !['node', 'text', 'append', 'create'].includes(k))).toBe(true)
   })
 
+  it('map takes its bare positional as --path, and runs bare with no args', async () => {
+    await callVerified(['map', 'src/x.go'])
+    expect(received.at(-1)).toMatchObject({ verb: 'map', args: { path: 'src/x.go' } })
+    await callVerified(['map'])
+    expect(received.at(-1)).toMatchObject({ verb: 'map', args: {} })
+    await callVerified(['map', '--path', 'a b/c.go'])
+    expect(received.at(-1)).toMatchObject({ verb: 'map', args: { path: 'a b/c.go' } })
+  })
+
+  it('without the token, map is refused with its own refusal and never reaches the handler', async () => {
+    const before = received.length
+    await expect(callShim(['map'])).rejects.toMatchObject({ stderr: expect.stringContaining('System map read refused.') })
+    expect(received.length).toBe(before)
+  })
+
   it('without the token, sticky is refused with its own one-sentence refusal', async () => {
     const before = received.length
     await expect(callShim(['sticky', '--node', 'n1', '--text', 'x'])).rejects.toMatchObject({

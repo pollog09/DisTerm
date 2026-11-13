@@ -365,6 +365,13 @@ export const IPC = {
   shipConfigSubscribe: 'ship-config:subscribe',
   shipConfigUnsubscribe: 'ship-config:unsubscribe',
   shipConfigChanged: (projectId: string) => `ship-config:changed:${projectId}`,
+  /** One project's system map: `docs/system-map.json`, validated, its last commit and empty parts. */
+  systemMapRead: 'system-map:read',
+  /** Fire-and-forget lease renew/release (`holdShipConfigLease`): while held, the core re-reads the map
+   *  and records live touches for it. */
+  systemMapSubscribe: 'system-map:subscribe',
+  systemMapUnsubscribe: 'system-map:unsubscribe',
+  systemMapChanged: (projectId: string) => `system-map:changed:${projectId}`,
   appUpdateAvailable: 'app:update-available',
   appUpdateDownloaded: 'app:update-downloaded',
   appUpdateProgress: 'app:update-progress',

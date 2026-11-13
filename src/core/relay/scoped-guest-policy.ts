@@ -520,6 +520,10 @@ export const SCOPED_REFUSED: ReadonlySet<string> = new Set<string>([
   IPC.shipAgentSetModel,
   IPC.shipConfigSubscribe,
   IPC.shipConfigUnsubscribe,
+  // The system map is read through the host's filesystem and git, and the invite never granted that.
+  IPC.systemMapRead,
+  IPC.systemMapSubscribe,
+  IPC.systemMapUnsubscribe,
   // A whole-workspace write from a peer would replace the host's other projects.
   IPC.workspaceSave,
   // Moving a project's storage writes and deletes host files (issue #1145); host-only.

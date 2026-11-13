@@ -18,7 +18,7 @@ import {
   type NodeTypes
 } from '@xyflow/react'
 import { useStore as useZustandStore } from 'zustand'
-import type { DeliveryClass } from '@shared/agent-graph'
+import type { AgentGraphEvent, DeliveryClass } from '@shared/agent-graph'
 import { IconCanvasView, IconGraph } from '../icons'
 import { isWaitRope } from '../../lib/edgeModel'
 import { edgeToBridge } from '../../lib/noteLink'
@@ -56,7 +56,7 @@ import { SessionContext, useSessionStores } from '../../session/session'
 import { useProjects } from '../../state/projects'
 import { useStationHandovers, isHandedOver } from '../../state/stationHandovers'
 import { useStationOutcomes } from '../../state/stationOutcomes'
-import { showCanvas, useViewMode } from '../../state/viewMode'
+import { graphPictureFor, showCanvas, useViewMode, type GraphPicture } from '../../state/viewMode'
 import { useAgentGraphDisplay, type AgentGraphDimension } from '../../state/agentGraphDisplay'
 import { GRAPH_3D_FAILED_NOTICE, GRAPH_3D_LOAD_FAILED_NOTICE, WEBGL_UNAVAILABLE_NOTICE, webglAvailable } from '../../lib/webgl'
 import type { CanvasNode } from '../../state/workspace'
@@ -66,6 +66,7 @@ import { useSettings } from '../../state/settings'
 import { HarnessPanel } from './HarnessPanel'
 import { ShipProcessPanel } from './ShipProcessPanel'
 import { GraphTerminalModal } from './GraphTerminalModal'
+import { SystemMapView, type SystemMapViewProps } from './SystemMapView'
 import { useAgentGraphEvents, useEdgesInTransit, useShipConfig, useShipTemplate } from './useAgentGraphData'
 import './agent-graph.css'
 
@@ -319,9 +320,18 @@ export interface AgentGraphViewProps {
   onShowOnCanvas: (nodeId: string) => void
   /** Tell the canvas a modal is looking at this session (`setKanbanModalNode`). */
   onModalNodeChange: (nodeId: string | null) => void
+  /** Start a Claude session with the Map-this-repo prompt: the new node's id, or null when
+   *  `addAgentNode` refused (it shows its own notice). */
+  onMapThisRepo: () => string | null
 }
 
-function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCanvas, onModalNodeChange }: AgentGraphViewProps) {
+/** The system map's 3D view takes no particle stream of its own: a playing step's time is its pulse. */
+const NO_EVENTS: readonly AgentGraphEvent[] = []
+const MAP_PULSE_OF = (ts: number | undefined): number => ts ?? 0
+const NO_NODE_CLICK = (): void => {}
+const SYSTEM_MAP_3D_LABEL = 'System map in 3D. Fly with W A S D, Space and Shift; drag to turn.'
+
+function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCanvas, onModalNodeChange, onMapThisRepo }: AgentGraphViewProps) {
   // Mount is the signal, the same as the board (`canvasCovered.ts`). Done here, in the view, so a
   // new caller cannot forget it.
   useEffect(() => markCanvasCovered(document.documentElement), [])
@@ -336,6 +346,16 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const { result: shipResult, reload: reloadShip } = useShipConfig(api, projectId)
   const template = useShipTemplate(api, projectId, reloadShip)
   const [panel, setPanel] = useState<null | 'harness' | 'ship'>(null)
+  // Which picture: the agent graph or the repo's system map, per project and remembered.
+  const picture = useViewMode((s) => graphPictureFor(s, projectId))
+  const choosePicture = useCallback(
+    (p: GraphPicture) => {
+      useViewMode.getState().setGraphPicture(projectId, p)
+      if (p === 'system-map') setPanel(null)
+    },
+    [projectId]
+  )
+  const [mapHeading, setMapHeading] = useState<{ title: string; commit: string } | null>(null)
   const integrations = useSettings((st) => st.settings.agentIntegrations)
   const [modalId, setModalId] = useState<string | null>(null)
   const ship = shipResult?.ok ? shipResult.config : null
@@ -519,6 +539,38 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   )
   const onNodeClick = useCallback((_e: unknown, flowNode: Node) => openNode((flowNode as GraphFlowNode).data.node), [openNode])
 
+  const mapSessions = useMemo(
+    () => new Map(nodes.filter((n) => n.type === 'terminal').map((n) => [n.id, String(n.data.title ?? '')] as const)),
+    [nodes]
+  )
+  const mapThisRepo = useCallback(() => {
+    const id = onMapThisRepo()
+    if (id) setModalId(id)
+  }, [onMapThisRepo])
+  const renderMap3d = useCallback<SystemMapViewProps['render3d']>(
+    (scene) => (
+      <Graph3DBoundary onError={on3dFailed}>
+        <Suspense fallback={<div className="agent-graph-3d agent-graph-3d--loading">Loading the 3D view…</div>}>
+          <AgentGraph3D
+            nodes={scene.nodes}
+            edges={scene.edges}
+            pinned={scene.pinned}
+            describeNode={scene.describeNode}
+            describeEdge={scene.describeEdge}
+            pulseOf={MAP_PULSE_OF}
+            showMachine={false}
+            shown={!modalSession}
+            onNodeClick={NO_NODE_CLICK}
+            onUnsupported={setFallback}
+            clickHint={null}
+            ariaLabel={SYSTEM_MAP_3D_LABEL}
+          />
+        </Suspense>
+      </Graph3DBoundary>
+    ),
+    [on3dFailed, modalSession]
+  )
+
   const openFile = useCallback((path: string, ssh: boolean) => {
     window.dispatchEvent(new CustomEvent('nodeterm:open-file', { detail: { path, ssh } }))
   }, [])
@@ -529,7 +581,9 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
   const offer = isEmpty ? shipTemplateOffer(shipResult) : ({ kind: 'none' } as const)
   const templateFailure = template.result && !template.result.ok ? template.result.message : null
   // What the model notes is about what is drawn, so with nothing drawn only a config failure is left.
-  const notices = [...(fallback ? [fallback] : []), ...(shipNotice ? [shipNotice] : []), ...(isEmpty ? [] : model.notices)]
+  const agents = picture === 'agents'
+  // The 3D fallback is about the view, so both pictures say it; the rest is about the agent graph.
+  const notices = [...(fallback ? [fallback] : []), ...(agents && shipNotice ? [shipNotice] : []), ...(agents && !isEmpty ? model.notices : [])]
   const legend = useMemo(() => graphLegend(model.edges), [model.edges])
   const headerRef = useRef<HTMLDivElement>(null)
   useControlsClearance(headerRef)
@@ -538,8 +592,14 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
     <div className="agent-graph" role="region" aria-label="Agent graph">
       <div className="agent-graph__header" ref={headerRef}>
         <div className="agent-graph__heading">
-          <span className="agent-graph__title">Agent graph</span>
-          {(ship || (onlyMachine && onlyMachine.kind !== 'local')) && (
+          <span className="agent-graph__title">{agents ? 'Agent graph' : 'System map'}</span>
+          {!agents && mapHeading && (
+            <span className="agent-graph__meta">
+              <span className="agent-graph__source">{mapHeading.title}</span>
+              <span className="agent-graph__source">{mapHeading.commit}</span>
+            </span>
+          )}
+          {agents && (ship || (onlyMachine && onlyMachine.kind !== 'local')) && (
             <span className="agent-graph__meta">
               {onlyMachine && onlyMachine.kind !== 'local' && <span className="agent-graph__machine">{onlyMachine.label}</span>}
               {ship && (
@@ -554,6 +614,14 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
           )}
         </div>
         <span className="agent-graph__spacer" />
+        <div className="agent-graph__switch" role="group" aria-label="Picture">
+          <button className="agent-graph__button" aria-pressed={agents} onClick={() => choosePicture('agents')}>
+            Agents
+          </button>
+          <button className="agent-graph__button" aria-pressed={!agents} onClick={() => choosePicture('system-map')}>
+            System map
+          </button>
+        </div>
         <div className="agent-graph__switch" role="group" aria-label="Graph view">
           <button className="agent-graph__button" aria-pressed={drawn === '2d'} onClick={() => chooseDimension('2d')}>
             2D
@@ -562,30 +630,46 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
             3D
           </button>
         </div>
-        <button className="agent-graph__button" aria-pressed={panel === 'harness'} onClick={() => setPanel((p) => (p === 'harness' ? null : 'harness'))}>
-          Harness
-        </button>
-        <button className="agent-graph__button" aria-pressed={panel === 'ship'} onClick={() => setPanel((p) => (p === 'ship' ? null : 'ship'))}>
-          Ship process{warnings ? ` (${warnings} warning${warnings === 1 ? '' : 's'})` : ''}
-        </button>
+        {agents && (
+          <button className="agent-graph__button" aria-pressed={panel === 'harness'} onClick={() => setPanel((p) => (p === 'harness' ? null : 'harness'))}>
+            Harness
+          </button>
+        )}
+        {agents && (
+          <button className="agent-graph__button" aria-pressed={panel === 'ship'} onClick={() => setPanel((p) => (p === 'ship' ? null : 'ship'))}>
+            Ship process{warnings ? ` (${warnings} warning${warnings === 1 ? '' : 's'})` : ''}
+          </button>
+        )}
         <button className="agent-graph__button" onClick={() => showCanvas(projectId)}>
           <IconCanvasView /> Canvas
         </button>
       </div>
-      {ship && ship.pipelines.length > 0 && <p className="agent-graph__hint">{SHIP_LOOP_HINT}</p>}
+      {agents && ship && ship.pipelines.length > 0 && <p className="agent-graph__hint">{SHIP_LOOP_HINT}</p>}
       {notices.length > 0 && (
         <ul className="agent-graph__notices">
           {notices.map((n) => <li key={n}>{n}</li>)}
         </ul>
       )}
       {/* Here, not in the empty state: success ends the empty state, and a failure can too if it got far enough. */}
-      {template.result && (template.result.ok || !isEmpty) && (
+      {agents && template.result && (template.result.ok || !isEmpty) && (
         <div className="agent-graph__template-note" role={template.result.ok ? 'status' : 'alert'}>
           <span>{template.result.ok ? shipTemplateCreatedText(template.result) : templateFailure}</span>
           <button className="agent-graph__button" onClick={template.dismiss}>Dismiss</button>
         </div>
       )}
       <div className="agent-graph__body">
+        {!agents ? (
+          <SystemMapView
+            projectId={projectId}
+            api={api?.agentGraph}
+            events={snapshot?.events ?? NO_EVENTS}
+            sessions={mapSessions}
+            drawn={drawn}
+            render3d={renderMap3d}
+            onMapThisRepo={mapThisRepo}
+            onHeading={setMapHeading}
+          />
+        ) : (
         <div className="agent-graph__flow">
           {isEmpty ? (
             <div className="agent-graph__empty">
@@ -655,12 +739,13 @@ function AgentGraphInner({ projectId, nodes, linkEdges, controlEdges, onShowOnCa
             </ul>
           )}
         </div>
-        {panel === 'ship' && (
+        )}
+        {agents && panel === 'ship' && (
           <aside className="agent-graph__panel">
             <ShipProcessPanel projectId={projectId} result={shipResult} api={api?.agentGraph} session={session} onReload={reloadShip} onOpenFile={openFile} />
           </aside>
         )}
-        {panel === 'harness' && (
+        {agents && panel === 'harness' && (
           <aside className="agent-graph__panel" aria-label="Harness">
             <HarnessPanel
               model={model}

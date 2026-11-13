@@ -5,12 +5,12 @@
 Generated from the import statements under `src/`. The runtime picture that imports cannot show is in
 [README.md](README.md); the same data as JSON, with every subsystem edge, is in [graph.json](graph.json).
 
-**1,470 files, 330,826 lines of code** (non-blank), 7 process contexts, 41 subsystems, 195 subsystem edges, 10 context edges.
+**1,517 files, 340,156 lines of code** (non-blank), 7 process contexts, 44 subsystems, 215 subsystem edges, 10 context edges.
 
 ## What is counted
 
-- **Left out:** 1,757 test files (`*.test.*`, `*.test-*.*`, anything under `__fixtures__`). Test helpers without that spelling (`platform-fake.ts`, `test-tmp.ts`) are counted.
-- **Imports:** 7,049 statements. 5,913 land on a mapped file, 1,122 on a package, 14 on a non-code file, 0 on a left-out test file, 0 outside `src/`, and 0 resolve to nothing.
+- **Left out:** 1,794 test files (`*.test.*`, `*.test-*.*`, anything under `__fixtures__`). Test helpers without that spelling (`platform-fake.ts`, `test-tmp.ts`) are counted.
+- **Imports:** 7,332 statements. 6,154 land on a mapped file, 1,163 on a package, 15 on a non-code file, 0 on a left-out test file, 0 outside `src/`, and 0 resolve to nothing.
 - **Not seen:** 0 `import()` calls whose argument is not a string literal, and anything loaded by path at runtime: `new URL()`, a bundler entry, a spawned bundle such as the session host.
 - **Type-only** means the statement says so (`import type`, every specifier `type`, `typeof import()`). An `import { Foo }` used only as a type is elided by the bundler but counts as a value import here, because telling them apart takes a type checker. Value counts are therefore an upper bound on what reaches a bundle.
 - **Scan trouble:** files not lexed cleanly: 0 (an unterminated comment, template or string, or unbalanced braces). In such a file, imports after that point may be missing or wrong.
@@ -23,20 +23,20 @@ Edge labels read `value + type-only` (`12 + 3t`); a dashed arrow is an edge with
 
 ```mermaid
 flowchart LR
-  n_core["core<br/>386 files, 105,473 LOC"]
-  n_main["main<br/>124 files, 30,144 LOC"]
-  n_preload["preload<br/>3 files, 1,197 LOC"]
-  n_renderer["renderer<br/>723 files, 148,466 LOC"]
-  n_server["server<br/>25 files, 7,575 LOC"]
+  n_core["core<br/>403 files, 108,001 LOC"]
+  n_main["main<br/>124 files, 30,172 LOC"]
+  n_preload["preload<br/>3 files, 1,238 LOC"]
+  n_renderer["renderer<br/>747 files, 153,967 LOC"]
+  n_server["server<br/>25 files, 7,623 LOC"]
   n_session_host["session-host<br/>23 files, 4,508 LOC"]
-  n_shared["shared<br/>186 files, 33,463 LOC"]
+  n_shared["shared<br/>192 files, 34,647 LOC"]
   n_core -->|"11 + 4t"| n_session_host
-  n_core -->|"396 + 176t"| n_shared
-  n_main -->|"298 + 29t"| n_core
+  n_core -->|"424 + 182t"| n_shared
+  n_main -->|"303 + 29t"| n_core
   n_main -->|"95 + 38t"| n_shared
   n_preload -->|"5 + 11t"| n_shared
-  n_renderer -->|"509 + 385t"| n_shared
-  n_server -->|"148 + 19t"| n_core
+  n_renderer -->|"530 + 400t"| n_shared
+  n_server -->|"153 + 21t"| n_core
   n_server -->|"41 + 18t"| n_shared
   n_session_host -->|"8"| n_core
   n_session_host -->|"6 + 4t"| n_shared
@@ -44,13 +44,13 @@ flowchart LR
 
 | Context | Files | LOC | Subsystems | Imports inside |
 | --- | --- | --- | --- | --- |
-| `core` | 386 | 105,473 | 14 | 836 |
-| `main` | 124 | 30,144 | 4 | 201 |
-| `preload` | 3 | 1,197 | 1 | 0 |
-| `renderer` | 723 | 148,466 | 15 | 2,300 |
-| `server` | 25 | 7,575 | 2 | 43 |
+| `core` | 403 | 108,001 | 17 | 886 |
+| `main` | 124 | 30,172 | 4 | 201 |
+| `preload` | 3 | 1,238 | 1 | 0 |
+| `renderer` | 747 | 153,967 | 15 | 2,386 |
+| `server` | 25 | 7,623 | 2 | 43 |
 | `session-host` | 23 | 4,508 | 1 | 31 |
-| `shared` | 186 | 33,463 | 4 | 301 |
+| `shared` | 192 | 34,647 | 4 | 324 |
 
 ## Subsystems per context
 
@@ -60,19 +60,22 @@ Each diagram shows imports between subsystems of one context, capped at 24 subsy
 
 ```mermaid
 flowchart LR
-  n_core__root_["(root)<br/>205 files, 59,301 LOC"]
-  n_core_agent_graph["agent-graph<br/>2 files, 262 LOC"]
-  n_core_agents["agents<br/>53 files, 14,388 LOC"]
+  n_core__root_["(root)<br/>205 files, 59,614 LOC"]
+  n_core_agent_graph["agent-graph<br/>2 files, 296 LOC"]
+  n_core_agents["agents<br/>53 files, 14,399 LOC"]
+  n_core_dis_invoice["dis-invoice<br/>6 files, 655 LOC"]
   n_core_github["github<br/>21 files, 5,859 LOC"]
-  n_core_handoff["handoff<br/>1 files, 147 LOC"]
+  n_core_handoff["handoff<br/>1 files, 154 LOC"]
   n_core_presence["presence<br/>1 files, 377 LOC"]
-  n_core_relay["relay<br/>29 files, 6,571 LOC"]
+  n_core_relay["relay<br/>29 files, 6,608 LOC"]
   n_core_remote["remote<br/>1 files, 111 LOC"]
-  n_core_remote_ssh["remote-ssh<br/>30 files, 7,173 LOC"]
-  n_core_ship_config["ship-config<br/>4 files, 1,318 LOC"]
+  n_core_remote_ssh["remote-ssh<br/>30 files, 7,179 LOC"]
+  n_core_ship_config["ship-config<br/>5 files, 1,499 LOC"]
   n_core_simulator["simulator<br/>8 files, 2,316 LOC"]
   n_core_speech["speech<br/>5 files, 484 LOC"]
-  n_core_usage["usage<br/>12 files, 2,538 LOC"]
+  n_core_system_map["system-map<br/>4 files, 533 LOC"]
+  n_core_token_savers["token-savers<br/>5 files, 671 LOC"]
+  n_core_usage["usage<br/>13 files, 2,618 LOC"]
   n_core_watch_link["watch-link<br/>14 files, 4,628 LOC"]
   n_core__root_ -->|"2"| n_core_agent_graph
   n_core__root_ -->|"40 + 4t"| n_core_agents
@@ -80,14 +83,17 @@ flowchart LR
   n_core__root_ -->|"6"| n_core_handoff
   n_core__root_ -->|"1"| n_core_presence
   n_core__root_ -->|"2"| n_core_relay
-  n_core__root_ -->|"16"| n_core_remote_ssh
+  n_core__root_ -->|"17"| n_core_remote_ssh
   n_core__root_ -->|"1"| n_core_usage
   n_core__root_ -->|"3"| n_core_watch_link
   n_core_agent_graph -->|"1 + 2t"| n_core__root_
   n_core_agents -->|"33 + 5t"| n_core__root_
   n_core_agents -->|"2"| n_core_agent_graph
+  n_core_agents -->|"2"| n_core_system_map
+  n_core_dis_invoice -->|"4 + 4t"| n_core__root_
+  n_core_dis_invoice -->|"1"| n_core_remote_ssh
   n_core_github -->|"5 + 3t"| n_core__root_
-  n_core_handoff -->|"2"| n_core__root_
+  n_core_handoff -->|"3"| n_core__root_
   n_core_handoff -->|"1"| n_core_agents
   n_core_presence -->|"1"| n_core__root_
   n_core_relay -->|"2 + 6t"| n_core__root_
@@ -96,11 +102,17 @@ flowchart LR
   n_core_remote_ssh -->|"1"| n_core_relay
   n_core_remote_ssh -->|"2"| n_core_watch_link
   n_core_ship_config -->|"1 + 1t"| n_core__root_
+  n_core_ship_config -->|"2"| n_core_agents
   n_core_simulator -->|"6"| n_core__root_
   n_core_speech -->|"1"| n_core__root_
-  n_core_usage -->|"8"| n_core__root_
+  n_core_system_map -->|"2 + 1t"| n_core__root_
+  n_core_system_map -->|"1"| n_core_agent_graph
+  n_core_system_map -->|"2 + 1t"| n_core_ship_config
+  n_core_token_savers -->|"7"| n_core__root_
+  n_core_token_savers -->|"2"| n_core_agents
+  n_core_usage -->|"9"| n_core__root_
   n_core_usage -->|"1"| n_core_agents
-  n_core_usage -->|"1"| n_core_remote_ssh
+  n_core_usage -->|"2"| n_core_remote_ssh
   n_core_watch_link -->|"4 + 6t"| n_core__root_
   n_core_watch_link -->|"3 + 4t"| n_core_relay
   n_core_watch_link -->|"1"| n_core_remote_ssh
@@ -108,13 +120,13 @@ flowchart LR
 
 Nothing dropped from this diagram.
 
-Imports out: `shared` 396 + 176t, `session-host` 11 + 4t. Imported by: `main` 298 + 29t, `server` 148 + 19t, `session-host` 8.
+Imports out: `shared` 424 + 182t, `session-host` 11 + 4t. Imported by: `main` 303 + 29t, `server` 153 + 21t, `session-host` 8.
 
 ### main
 
 ```mermaid
 flowchart LR
-  n_main__root_["(root)<br/>73 files, 18,380 LOC"]
+  n_main__root_["(root)<br/>73 files, 18,408 LOC"]
   n_main_handoff["handoff<br/>9 files, 533 LOC"]
   n_main_remote["remote<br/>29 files, 4,581 LOC"]
   n_main_remote_ssh["remote-ssh<br/>13 files, 6,650 LOC"]
@@ -128,13 +140,13 @@ flowchart LR
 
 Nothing dropped from this diagram.
 
-Imports out: `core` 298 + 29t, `shared` 95 + 38t. Imported by: none.
+Imports out: `core` 303 + 29t, `shared` 95 + 38t. Imported by: none.
 
 ### preload
 
 ```mermaid
 flowchart LR
-  n_preload__root_["(root)<br/>3 files, 1,197 LOC"]
+  n_preload__root_["(root)<br/>3 files, 1,238 LOC"]
 ```
 
 Nothing dropped from this diagram.
@@ -145,19 +157,19 @@ Imports out: `shared` 5 + 11t. Imported by: none.
 
 ```mermaid
 flowchart LR
-  n_renderer__root_["(root)<br/>5 files, 353 LOC"]
-  n_renderer_bridge["bridge<br/>10 files, 3,222 LOC"]
-  n_renderer_canvas["canvas<br/>26 files, 24,796 LOC"]
-  n_renderer_components["components<br/>194 files, 41,445 LOC"]
+  n_renderer__root_["(root)<br/>7 files, 580 LOC"]
+  n_renderer_bridge["bridge<br/>10 files, 3,293 LOC"]
+  n_renderer_canvas["canvas<br/>26 files, 25,157 LOC"]
+  n_renderer_components["components<br/>203 files, 44,298 LOC"]
   n_renderer_editor["editor<br/>2 files, 123 LOC"]
   n_renderer_glyphgrid["glyphgrid<br/>16 files, 5,933 LOC"]
   n_renderer_hud["hud<br/>3 files, 591 LOC"]
-  n_renderer_lib["lib<br/>265 files, 30,423 LOC"]
-  n_renderer_nodes["nodes<br/>51 files, 17,241 LOC"]
+  n_renderer_lib["lib<br/>275 files, 31,955 LOC"]
+  n_renderer_nodes["nodes<br/>51 files, 17,272 LOC"]
   n_renderer_remote["remote<br/>1 files, 12 LOC"]
   n_renderer_session["session<br/>8 files, 1,280 LOC"]
-  n_renderer_state["state<br/>68 files, 12,096 LOC"]
-  n_renderer_terminal["terminal<br/>61 files, 10,252 LOC"]
+  n_renderer_state["state<br/>71 files, 12,508 LOC"]
+  n_renderer_terminal["terminal<br/>61 files, 10,266 LOC"]
   n_renderer_ui["ui<br/>10 files, 380 LOC"]
   n_renderer_whiteboard["whiteboard<br/>3 files, 319 LOC"]
   n_renderer__root_ -->|"3"| n_renderer_components
@@ -165,36 +177,36 @@ flowchart LR
   n_renderer__root_ -->|"7"| n_renderer_state
   n_renderer__root_ -->|"4"| n_renderer_terminal
   n_renderer_bridge -->|"3 + 1t"| n_renderer_lib
-  n_renderer_canvas -->|"54 + 6t"| n_renderer_components
+  n_renderer_canvas -->|"54 + 7t"| n_renderer_components
   n_renderer_canvas -->|"7 + 1t"| n_renderer_glyphgrid
-  n_renderer_canvas -->|"149 + 3t"| n_renderer_lib
+  n_renderer_canvas -->|"152 + 3t"| n_renderer_lib
   n_renderer_canvas -->|"15"| n_renderer_nodes
   n_renderer_canvas -->|"9 + 1t"| n_renderer_session
-  n_renderer_canvas -->|"64 + 1t"| n_renderer_state
+  n_renderer_canvas -->|"65 + 1t"| n_renderer_state
   n_renderer_canvas -->|"16"| n_renderer_terminal
   n_renderer_components -->|"16"| n_renderer_bridge
   n_renderer_components -->|"6"| n_renderer_canvas
-  n_renderer_components -->|"220 + 11t"| n_renderer_lib
+  n_renderer_components -->|"238 + 14t"| n_renderer_lib
   n_renderer_components -->|"10"| n_renderer_nodes
-  n_renderer_components -->|"37 + 2t"| n_renderer_session
-  n_renderer_components -->|"218 + 3t"| n_renderer_state
+  n_renderer_components -->|"39 + 2t"| n_renderer_session
+  n_renderer_components -->|"230 + 4t"| n_renderer_state
   n_renderer_components -->|"48"| n_renderer_terminal
-  n_renderer_components -->|"112"| n_renderer_ui
+  n_renderer_components -->|"116"| n_renderer_ui
   n_renderer_hud -->|"6"| n_renderer_lib
   n_renderer_lib -->|"5"| n_renderer_bridge
   n_renderer_lib -->|"4"| n_renderer_canvas
   n_renderer_lib -->|"4 + 11t"| n_renderer_components
   n_renderer_lib -->|"3 + 8t"| n_renderer_session
-  n_renderer_lib -->|"43 + 19t"| n_renderer_state
+  n_renderer_lib -->|"49 + 19t"| n_renderer_state
   n_renderer_lib -->|"7 + 1t"| n_renderer_terminal
   n_renderer_nodes -->|"64 + 1t"| n_renderer_components
   n_renderer_nodes -->|"101"| n_renderer_lib
   n_renderer_nodes -->|"14"| n_renderer_session
-  n_renderer_nodes -->|"65 + 11t"| n_renderer_state
+  n_renderer_nodes -->|"66 + 11t"| n_renderer_state
   n_renderer_nodes -->|"58 + 1t"| n_renderer_terminal
   n_renderer_session -->|"3 + 1t"| n_renderer_bridge
   n_renderer_session -->|"6 + 2t"| n_renderer_state
-  n_renderer_state -->|"25 + 6t"| n_renderer_lib
+  n_renderer_state -->|"27 + 6t"| n_renderer_lib
   n_renderer_state -->|"4"| n_renderer_session
   n_renderer_state -->|"2 + 2t"| n_renderer_terminal
   n_renderer_terminal -->|"2 + 4t"| n_renderer_glyphgrid
@@ -204,13 +216,13 @@ flowchart LR
 
 Dropped from this diagram: 21 of 61 edges dropped; only the 40 heaviest are drawn (each with at least 3 imports).
 
-Imports out: `shared` 509 + 385t. Imported by: none.
+Imports out: `shared` 530 + 400t. Imported by: none.
 
 ### server
 
 ```mermaid
 flowchart LR
-  n_server__root_["(root)<br/>24 files, 7,429 LOC"]
+  n_server__root_["(root)<br/>24 files, 7,477 LOC"]
   n_server_handlers["handlers<br/>1 files, 146 LOC"]
   n_server__root_ -->|"1"| n_server_handlers
   n_server_handlers -->|"1 + 1t"| n_server__root_
@@ -218,7 +230,7 @@ flowchart LR
 
 Nothing dropped from this diagram.
 
-Imports out: `core` 148 + 19t, `shared` 41 + 18t. Imported by: none.
+Imports out: `core` 153 + 21t, `shared` 41 + 18t. Imported by: none.
 
 ### session-host
 
@@ -235,8 +247,8 @@ Imports out: `shared` 6 + 4t, `core` 8. Imported by: `core` 11 + 4t.
 
 ```mermaid
 flowchart LR
-  n_shared__root_["(root)<br/>153 files, 27,528 LOC"]
-  n_shared_agents["agents<br/>22 files, 4,929 LOC"]
+  n_shared__root_["(root)<br/>157 files, 28,631 LOC"]
+  n_shared_agents["agents<br/>24 files, 5,010 LOC"]
   n_shared_remote["remote<br/>3 files, 69 LOC"]
   n_shared_watch_link["watch-link<br/>8 files, 937 LOC"]
   n_shared__root_ -->|"8 + 15t"| n_shared_agents
@@ -246,65 +258,65 @@ flowchart LR
 
 Nothing dropped from this diagram.
 
-Imports out: none. Imported by: `renderer` 509 + 385t, `core` 396 + 176t, `main` 95 + 38t, `server` 41 + 18t, `preload` 5 + 11t, `session-host` 6 + 4t.
+Imports out: none. Imported by: `renderer` 530 + 400t, `core` 424 + 182t, `main` 95 + 38t, `server` 41 + 18t, `preload` 5 + 11t, `session-host` 6 + 4t.
 
 ## Largest subsystems
 
-The 20 largest of 41, by LOC.
+The 20 largest of 44, by LOC.
 
 | Subsystem | Files | LOC | Imports inside |
 | --- | --- | --- | --- |
-| `core/(root)` | 205 | 59,301 | 375 |
-| `renderer/components` | 194 | 41,445 | 410 |
-| `renderer/lib` | 265 | 30,423 | 113 |
-| `shared/(root)` | 153 | 27,528 | 232 |
-| `renderer/canvas` | 26 | 24,796 | 26 |
-| `main/(root)` | 73 | 18,380 | 96 |
-| `renderer/nodes` | 51 | 17,241 | 56 |
-| `core/agents` | 53 | 14,388 | 85 |
-| `renderer/state` | 68 | 12,096 | 33 |
-| `renderer/terminal` | 61 | 10,252 | 19 |
-| `server/(root)` | 24 | 7,429 | 40 |
-| `core/remote-ssh` | 30 | 7,173 | 24 |
+| `core/(root)` | 205 | 59,614 | 377 |
+| `renderer/components` | 203 | 44,298 | 428 |
+| `renderer/lib` | 275 | 31,955 | 125 |
+| `shared/(root)` | 157 | 28,631 | 253 |
+| `renderer/canvas` | 26 | 25,157 | 26 |
+| `main/(root)` | 73 | 18,408 | 96 |
+| `renderer/nodes` | 51 | 17,272 | 56 |
+| `core/agents` | 53 | 14,399 | 85 |
+| `renderer/state` | 71 | 12,508 | 35 |
+| `renderer/terminal` | 61 | 10,266 | 19 |
+| `server/(root)` | 24 | 7,477 | 40 |
+| `core/remote-ssh` | 30 | 7,179 | 24 |
 | `main/remote-ssh` | 13 | 6,650 | 12 |
-| `core/relay` | 29 | 6,571 | 55 |
+| `core/relay` | 29 | 6,608 | 55 |
 | `renderer/glyphgrid` | 16 | 5,933 | 40 |
 | `core/github` | 21 | 5,859 | 38 |
-| `shared/agents` | 22 | 4,929 | 18 |
+| `shared/agents` | 24 | 5,010 | 20 |
 | `core/watch-link` | 14 | 4,628 | 19 |
 | `main/remote` | 29 | 4,581 | 43 |
 | `session-host/(root)` | 23 | 4,508 | 31 |
 
 ## Most depended-on modules
 
-The 25 of 1,439 imported files with the most distinct importing files. "Outside" counts importers from another subsystem.
+The 25 of 1,482 imported files with the most distinct importing files. "Outside" counts importers from another subsystem.
 
 | File | Importers | Outside | Value imports | Type-only imports |
 | --- | --- | --- | --- | --- |
-| `src/shared/types.ts` | 348 | 314 | 27 | 333 |
-| `src/shared/agents/config.ts` | 109 | 101 | 91 | 24 |
-| `src/shared/ipc.ts` | 86 | 84 | 86 | 0 |
-| `src/core/platform.ts` | 74 | 24 | 52 | 22 |
-| `src/renderer/session/session.ts` | 70 | 65 | 57 | 14 |
-| `src/renderer/state/settings.ts` | 70 | 63 | 70 | 0 |
-| `src/renderer/state/projects.ts` | 69 | 66 | 68 | 1 |
-| `src/renderer/components/icons.tsx` | 68 | 25 | 68 | 0 |
-| `src/shared/ssh.ts` | 68 | 64 | 51 | 38 |
-| `src/core/fs-atomic.ts` | 48 | 28 | 48 | 0 |
-| `src/renderer/state/workspace.ts` | 48 | 45 | 27 | 21 |
+| `src/shared/types.ts` | 353 | 318 | 27 | 338 |
+| `src/shared/agents/config.ts` | 113 | 105 | 94 | 25 |
+| `src/shared/ipc.ts` | 89 | 87 | 89 | 0 |
+| `src/core/platform.ts` | 77 | 27 | 53 | 24 |
+| `src/renderer/state/projects.ts` | 72 | 69 | 71 | 1 |
+| `src/renderer/session/session.ts` | 71 | 66 | 58 | 14 |
+| `src/renderer/state/settings.ts` | 71 | 63 | 71 | 0 |
+| `src/renderer/components/icons.tsx` | 70 | 25 | 70 | 0 |
+| `src/shared/ssh.ts` | 70 | 66 | 53 | 38 |
+| `src/core/fs-atomic.ts` | 52 | 32 | 52 | 0 |
+| `src/renderer/state/workspace.ts` | 50 | 47 | 29 | 21 |
 | `src/shared/agents/normalize.ts` | 45 | 45 | 9 | 37 |
-| `src/renderer/state/agentStatus.ts` | 31 | 28 | 21 | 10 |
-| `src/renderer/components/settings/SearchableRow.tsx` | 29 | 0 | 29 | 0 |
-| `src/renderer/components/settings/SettingsSection.tsx` | 29 | 0 | 29 | 0 |
-| `src/renderer/ui/Button.tsx` | 29 | 28 | 29 | 0 |
+| `src/renderer/state/agentStatus.ts` | 32 | 29 | 22 | 10 |
+| `src/renderer/components/settings/SearchableRow.tsx` | 31 | 0 | 31 | 0 |
+| `src/renderer/components/settings/SettingsSection.tsx` | 31 | 0 | 31 | 0 |
+| `src/renderer/ui/Button.tsx` | 31 | 30 | 31 | 0 |
+| `src/renderer/components/settings/FieldRow.tsx` | 28 | 0 | 28 | 0 |
 | `src/shared/platform-utils.ts` | 27 | 27 | 27 | 0 |
 | `src/shared/safe-id.ts` | 27 | 19 | 27 | 0 |
+| `src/core/exec-path.ts` | 26 | 11 | 27 | 0 |
 | `src/renderer/bridge/runtime.ts` | 26 | 26 | 26 | 0 |
 | `src/renderer/components/dialog-stack.ts` | 26 | 1 | 26 | 0 |
-| `src/renderer/components/settings/FieldRow.tsx` | 26 | 0 | 26 | 0 |
 | `src/shared/github-issue-ref.ts` | 26 | 22 | 19 | 7 |
 | `src/shared/github-issues.ts` | 26 | 25 | 0 | 29 |
-| `src/core/exec-path.ts` | 25 | 10 | 26 | 0 |
 | `src/shared/presence.ts` | 25 | 21 | 11 | 14 |
 
 ## Forbidden boundary crossings

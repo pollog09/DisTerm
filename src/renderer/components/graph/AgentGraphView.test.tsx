@@ -107,6 +107,7 @@ function view(nodes: unknown[], projectId = 'P', linkEdges: Edge[] = noEdges) {
       controlEdges={noEdges}
       onShowOnCanvas={onShowOnCanvas}
       onModalNodeChange={onModalNodeChange}
+      onMapThisRepo={() => null}
     />
   )
 }

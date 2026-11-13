@@ -11,6 +11,9 @@ import { issueUrl, type IssueRef } from '@shared/github-issue-ref'
 
 export const PROJECT_VIEW_KEY = 'nodeterm.projectView'
 export const GLOBAL_KANBAN_KEY = 'nodeterm.globalKanban'
+/** Which picture each project's graph view shows: the agent graph or the repo's system map. Personal and
+ *  per machine like the view itself. */
+export const GRAPH_PICTURE_KEY = 'nodeterm.graphPicture'
 
 export type ProjectView = 'canvas' | 'kanban' | 'graph'
 
@@ -21,6 +24,21 @@ export function parseViewMap(raw: string | null): Record<string, ProjectView> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     const out: Record<string, ProjectView> = {}
     for (const [id, v] of Object.entries(parsed)) if (v === 'kanban' || v === 'canvas' || v === 'graph') out[id] = v
+    return out
+  } catch {
+    return {}
+  }
+}
+
+export type GraphPicture = 'agents' | 'system-map'
+
+/** Keeps only `agents` / `system-map` entries; anything else, or bad JSON, is dropped. */
+export function parseGraphPictureMap(raw: string | null): Record<string, GraphPicture> {
+  try {
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, GraphPicture> = {}
+    for (const [id, v] of Object.entries(parsed)) if (v === 'agents' || v === 'system-map') out[id] = v
     return out
   } catch {
     return {}
@@ -71,6 +89,16 @@ interface ViewModeState {
   requestedIssue: IssueRef | null
   requestIssue(ref: IssueRef): void
   clearIssueRequest(): void
+  /** The graph view's picture per project (absent = the agent graph). */
+  graphPictureByProject: Record<string, GraphPicture>
+  /** Switch a project's graph picture. It never drops a pending card or issue request: the picture is
+   *  a part of the graph view, not a different view, and both pictures consume card requests. */
+  setGraphPicture(projectId: string, picture: GraphPicture): void
+}
+
+/** A project with no entry shows the agent graph. */
+export function graphPictureFor(s: Pick<ViewModeState, 'graphPictureByProject'>, projectId: string): GraphPicture {
+  return s.graphPictureByProject[projectId] ?? 'agents'
 }
 
 /** The resolved view for a project: its explicit entry, or the default. */
@@ -101,6 +129,18 @@ export const useViewMode = create<ViewModeState>((set) => ({
   requestedIssue: null,
   requestIssue: (ref) => set({ requestedIssue: ref }),
   clearIssueRequest: () => set({ requestedIssue: null }),
+  graphPictureByProject: parseGraphPictureMap(readLocal(GRAPH_PICTURE_KEY)),
+  setGraphPicture: (projectId, picture) =>
+    set((s) => {
+      if (s.graphPictureByProject[projectId] === picture) return s
+      const next: Record<string, GraphPicture> = { ...s.graphPictureByProject, [projectId]: picture }
+      try {
+        writeLocal(GRAPH_PICTURE_KEY, JSON.stringify(next))
+      } catch {
+        /* quota/private-mode: the picture choice is a nicety, never fail the UI */
+      }
+      return { graphPictureByProject: next }
+    }),
   toggle: (projectId) =>
     set((s) => {
       // Flip the RESOLVED view and store it EXPLICITLY, so this choice now overrides the default.

@@ -37,7 +37,9 @@ import {
 import { DownloadTickets } from '../core/download-tickets'
 import { registerBoardLogHandlers, type BoardLogRoute } from '../core/board-log-handlers'
 import { registerAgentGraphHandlers } from '../core/agent-graph/handlers'
-import { registerShipConfigHandlers, type ShipConfigRoute } from '../core/ship-config/handlers'
+import { registerShipConfigHandlers, type ShipConfigRoute, type ShipConfigRouter } from '../core/ship-config/handlers'
+import { registerSystemMapHandlers } from '../core/system-map/handlers'
+import { readSystemMapFull } from '../core/system-map/read'
 import { ProjectTrustStore } from '../core/project-trust-store'
 import { ProjectSetupService } from '../core/project-setup-service'
 import {
@@ -466,12 +468,15 @@ export async function startServer(
   registerAgentGraphHandlers(platform, boardLogRouter)
   // No SSH on the Server Edition: an SSH project's agents are on a host this shell cannot reach, so
   // it answers that instead of passing this server's agents off as the host's.
-  registerShipConfigHandlers(platform, {
+  const shipConfigRouter: ShipConfigRouter = {
     route: (projectId: string): ShipConfigRoute =>
       workspaceStore.projectTargetInfo(projectId)?.ssh
         ? { kind: 'unsupported', reason: "The Server Edition cannot read an SSH host's agents." }
         : { kind: 'local', cwd: workspaceStore.localCwdForProject(projectId) ?? null }
-  })
+  }
+  registerShipConfigHandlers(platform, shipConfigRouter)
+  // The repo's system map, through the same route (an SSH project's map is on a host this shell cannot reach).
+  registerSystemMapHandlers(platform, shipConfigRouter)
 
   // Debug log ring (issue #78) — same core registrar as desktop. Headless is where a swallowed
   // console hurts most; the browser-side panel reads this process's ring over the bridge.
@@ -868,6 +873,8 @@ export async function startServer(
           snapshot: (projectId) => github.service.controlSnapshot(projectId),
           dispatch: (projectId) => boardDispatchReports.forProject(projectId)
         },
+        // `map`: the repo's system map, read through the ship-config route (local projects only here).
+        systemMapRead: (projectId) => readSystemMapFull(projectId, shipConfigRouter),
         // The durable orchestration facts follow hook-endpoint ownership, like the request ledger.
         ownsDurableState: hookStartupWarning === null
       })

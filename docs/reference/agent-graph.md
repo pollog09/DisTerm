@@ -409,3 +409,102 @@ observes and writes nothing to the canvas. User-facing format and limits: `docs/
   inventory, because the ship channels are Editor-only. SSH nodes report through the hook tunnel, so their boxes
   work and their inventory is partial (skills yes, MCP not read). Kanban N/A. Mobile N/A, a follow-up for the
   phone would need the log over the relay.
+
+## System map
+
+The graph view's second picture (**Agents | System map** in its header; `graphPictureByProject` in
+`state/viewMode.ts`, `nodeterm.graphPicture`, absent = Agents). It draws the repo's
+`docs/system-map.json`: parts in columns by kind (caller, service, store, worker, external), the links
+between them, and flows that play step by step. Not the code map: that word means
+`docs/architecture/CODEMAP.md` and the import graph (`GLOSSARY.md`). User-facing format and limits:
+`docs/system-map.md`.
+
+- **Where things are.** Format, validator, globs, ownership and path containment: `shared/system-map.ts`
+  (pure, no Node). Reading: `core/system-map/read.ts`, through the ship-config router, so a local project
+  reads its folder and an SSH project its host (one read-only `sh -s` script with nonce markers).
+  Leases and polling: `core/system-map/handlers.ts`. Live touches: `core/system-map/touches.ts`, fed by
+  `shared/agents/file-edit.ts` from the hook server. The verb: `core/system-map/control.ts`. The picture:
+  `renderer/lib/systemMapModel.ts`, `systemMapLayout.ts`, `systemMap3d.ts`, and
+  `components/graph/SystemMapView.tsx`. `AgentGraphView.tsx` holds the switch; `Canvas.tsx` only the
+  Map-this-repo callback.
+- **DisTerm only reads the file.** There is no write path in `core/system-map/`: an agent writes the map
+  (Map this repo opens a Claude session with `SYSTEM_MAP_PROMPT`; `nodeterm map` checks it) and a person
+  commits it. A map that fails any rule is not drawn at all; the view lists its problems (at most 50,
+  then a count), because a half-drawn map reads as the whole system. Every string is one-lined, and the
+  file is hostile like any repo content: read field by field, unknown keys and `__proto__` ignored. The
+  path is `stat`ed before it is opened, so a FIFO or a folder there is a problem, not a hang.
+- **No path on the wire.** A Claude `PostToolUse` of `Edit`/`Write` (fixture
+  `__fixtures__/claude/file-edit-hook-payloads.json`, measured on 2.1.322: `file_path` is absolute, `cwd` is
+  sent, a subagent's carries `agent_id`/`agent_type`) is matched in `touches.ts` against the roots and globs
+  of every map being viewed. Only the part id leaves, as a `map-touch` row in the agent graph log (one per
+  project, session, subagent and part, with a running count, bounded at `MAX_TOUCH_KEYS` like access
+  rows). An edit inside the project that no part owns is a row with no `partId`: a counter, never drawn.
+  `PreToolUse` is not counted (one count per call). The call sits after the pane-origin gate and inside the
+  access `try`, so an inherited node id counts for nobody and a throw never fails the hook POST.
+- **Touches are recorded only while someone views the map.** A project is registered with `touches.ts`
+  only while a view holds its lease, and dropped when the last lease ends or lapses. No viewer, no
+  matching: an open system map is the only thing that pays for it, and a crashed renderer or a dropped
+  relay peer stops it within `SHIP_LEASE_MS`. A touch is lit for `WORKING_STALE_MS`, and the renderer keeps
+  only rows whose `projectId` is its project and whose node is one of its terminals, so two projects that
+  contain the same path each get their own row and neither lights the other.
+- **Polling.** The same lease model as ship config. A local tick `stat`s the file and reads in full only
+  on a change, on the first tick, or every `SYSTEM_MAP_FULL_READ_MS` (a commit changes the header without
+  changing the file); a full read runs git twice (`log -1`, `ls-files -co --exclude-standard`). A remote
+  tick reads in full every 20 s. A view reloads on `systemMapChanged`, which fires only on a real change.
+- **"No files" is checked, or it says it was not.** A part whose globs match no listed file is flagged.
+  Not a git repo, more than 50 000 files, or a failed listing: nothing is flagged and the side panel says
+  why the parts were not checked (no silent cap). A glob with no wildcard covers itself and what is under
+  it; `**` at the end needs at least one segment. The first part in file order owns a file, the same rule
+  for touches and for `nodeterm map --path`.
+- **Globs are matched without regexes, under a budget,** because the file is hostile input read on the
+  core thread: in the empty-parts check, inside the hook POST and in `nodeterm map --path`. A backtracking
+  RegExp from `*a*a*a*a*a*b` (12 characters) did not finish on a 200-character name in 100 s, and ten
+  `**` segments in a row took over a second per path (review round 1). `compileSystemMapGlob` returns
+  tokens (consecutive `**` collapsed, runs of `*` collapsed) and `matchSystemMapGlob` is a segment-wise
+  reachability pass plus a one-backtrack-point wildcard match per segment: O(glob characters × path
+  length), every step charged. `systemMapEmptyParts` stops testing a part at its first matching file and
+  runs under `SYSTEM_MAP_CHECK_BUDGET` steps; out of budget it is `fileCheck: 'over-budget'` (reported, no
+  flags). `systemMapOwner` runs under `SYSTEM_MAP_OWNER_BUDGET` per call; out of budget a touch records
+  nothing (not even the unmatched counter, which would claim a match that was never checked) and
+  `nodeterm map --path` answers `map-too-complex`. Caps: 3 `*` per name, 4 `**` per glob, 2000 globs per
+  map, paths over 4096 characters never match. Budgets are step counts, not time, so results are
+  deterministic; the check budget is 60 000 000 steps (under a second) and the owner budget 2 000 000.
+  The caps alone do not keep an honest map inside the check budget, and two designs failed it. The first
+  charged each glob test a split of the path and two fresh arrays, so a stale part paid that on every
+  file: 20 stale `x/**` globs over 50 000 files went over budget (review round 2). The second bucketed
+  globs by their first folder only, which does nothing when every glob is under `src/`: 150 parts × 3
+  `src/pN/**` globs over 50 000 files in `git ls-files` order went over budget with no part stale
+  (review round 3). Now each file is prepared once (`prepareSystemMapPath`: split once, the reach arrays
+  reused across globs and files, all zero between matches, even after a budget error), and each glob is
+  indexed by its WHOLE literal prefix (`CompiledGlob.prefix`, `CompiledSystemMap.byPrefix`): a file looks up
+  each of its own path prefixes (`forEachSystemMapCandidate`, up to `maxPrefix`) and is tried only against
+  the globs found there plus the wildcard-led ones (`wildLed`). A literal glob found at a prefix is a match
+  without the matcher. `systemMapOwner` uses the same index and merges candidates by file order, so the
+  first part in file order still wins. What is guaranteed (pinned by tests): at the 50 000-file cap, files
+  in `git ls-files` order, paths of 5 segments, the check finishes in full and under 1 s for up to 200
+  parts with up to 6 globs each of the form `<literal folders>/**` or a literal path, all under one shared
+  first folder, any of them stale; and, on top of 180 such live parts, 20 stale globs that start with a
+  wildcard (`**/*.x`) or have one right under the shared folder (`src/**/*.x`). Nothing stronger: a map
+  with many stale globs that are tested against every file can still go over budget, and says so.
+- **Layout is keyed on structure.** Columns are kinds present, rows are file order, every column centred on
+  the tallest (`layoutSystemMap`, no dagre: the columns are the meaning). Touches and playback never move a
+  box (`systemMapStructureKey`), and a new structure resets the selection to none. In 3D the parts reuse
+  `AgentGraph3D` through optional props (pinned `fx/fy/fz`, its own hover text, no Click row) and the
+  planet looks of existing kinds (`PART_3D_KIND`); columns recede in depth.
+- **Idle energy.** Nothing plays on open; a flow plays once and stops on its last step. While nothing is
+  selected there is no timer and no animation. A lit part is a static glow with a transition; the dots run
+  one iteration and never read `--nt-anim-state`; Reduce Motion hides them, and playback still steps.
+  The one timer otherwise is the fade at `nextFadeAt`.
+- **The verb.** `nodeterm map [--path <file>]` is verified-only, store-answered (no canvas), and reads
+  only the caller's own project: no `--project`. Its errors are named (`map-missing`, `map-invalid`,
+  `map-path-outside`, `map-too-complex`, `map-unavailable`, `map-no-project`). The skill text renders the format from
+  `SYSTEM_MAP_FORMAT_LINES`, the same lines `docs/system-map.md` quotes, and tells agents to keep the map
+  current when they add, remove or rewire a part.
+- **Out of scope here.** Worktree frames inside a project (the map is read from the project root only; a
+  project whose folder is a worktree checkout reads that checkout's map), tools other than Claude's `Edit`
+  and `Write`, clicking a part, editing the map in the UI.
+- **Surfaces.** Desktop full. Server Edition: the same core read and verb for local projects; an SSH
+  project answers `unsupported`, as ship config does. Relay Viewer/Commenter and scoped guests: the map
+  channels are Editor-only and `SCOPED_REFUSED`, so their view shows the refusal; `map-touch` rows reach
+  them only for shared nodes (`agentGraphEventShared`'s `nodeId` check). Kanban N/A (not a view of nodes).
+  Mobile: not in this fork; a phone would need the map channel and the rows over the relay.

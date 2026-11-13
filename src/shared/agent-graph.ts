@@ -112,9 +112,27 @@ export interface AgentGraphAccessEvent {
   count: number
 }
 
+/** A session (or subagent) edited a file the project's system map assigns to a part. One row per
+ *  (project, session, subagent, part), replaced with a running count. The file's PATH is never here:
+ *  only the part id it matched, or no part at all for an edit no part owns. */
+export interface AgentGraphMapTouchEvent {
+  kind: 'map-touch'
+  /** `map-touch:<projectId>:<nodeId>:<subId>:<partId>` ('' for an absent subId / partId). */
+  id: string
+  ts: number
+  projectId: string
+  nodeId: string
+  subId?: string
+  subType?: string
+  /** Absent: the edit was inside the project but no part owns it (counted, never drawn). */
+  partId?: string
+  count: number
+}
+
 export type AgentGraphEvent =
   | AgentGraphDeliveryEvent
   | AgentGraphAccessEvent
+  | AgentGraphMapTouchEvent
   | AgentGraphTurnStartEvent
   | AgentGraphSubagentStartEvent
   | AgentGraphSubagentEndEvent

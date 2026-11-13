@@ -54,6 +54,8 @@ import {
   resolveGitHubReadProject,
   type GitHubReadDeps
 } from '../core/github/control-read'
+import { answerSystemMapControl } from '../core/system-map/control'
+import type { SystemMapReadOutcome } from '../core/system-map/read'
 
 export interface ServerCanvasControlDeps {
   workspaceStore: WorkspaceStore
@@ -73,6 +75,9 @@ export interface ServerCanvasControlDeps {
   /** The GitHub service's cache reads behind `issues` / `prs` (core/github/control-read.ts).
    *  Absent = those verbs answer that the GitHub lane is unavailable here. */
   githubRead?: Pick<GitHubReadDeps, 'snapshot' | 'dispatch'>
+  /** The repo's system map behind `map` (core/system-map/control.ts). Absent = that verb answers that
+   *  the system map is unavailable here. */
+  systemMapRead?: (projectId: string) => Promise<SystemMapReadOutcome>
   /**
    * Does this process own the hook endpoint (`hookServer.startForApp()` returned no warning)? The
    * durable orchestration facts (queue, station reports, hand-over holds) belong to the owning
@@ -336,6 +341,17 @@ export async function initServerCanvasControl(
         agentState: (id) => nodeState(id),
         now: () => Date.now()
       })
+    },
+    // The repo's system map, read-only, from the caller's own project — the same core module the desktop
+    // answers with.
+    systemMap: async (sourceNodeId, args) => {
+      const read = deps.systemMapRead
+      if (!read) {
+        const msg = 'map-unavailable: the system map is not available on this server. Do not retry.'
+        return { ok: false, error: msg, message: msg }
+      }
+      const ids = deps.workspaceStore.projectIdsForNode(sourceNodeId)
+      return answerSystemMapControl(ids.length === 1 ? ids[0] : undefined, args, read)
     },
     settings: async (sourceNodeId, args) =>
       serverSettingsControl(

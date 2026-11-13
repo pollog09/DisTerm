@@ -942,6 +942,20 @@ const api: NodeTerminalApi = {
         ipcRenderer.removeListener(ch, handler)
         release()
       }
+    },
+    readSystemMap: (projectId) => ipcRenderer.invoke(IPC.systemMapRead, projectId),
+    onSystemMapChanged: (projectId, cb) => {
+      const ch = IPC.systemMapChanged(projectId)
+      const handler = (): void => cb()
+      ipcRenderer.on(ch, handler)
+      const release = holdShipConfigLease({
+        subscribe: (leaseId) => ipcRenderer.send(IPC.systemMapSubscribe, projectId, leaseId),
+        unsubscribe: (leaseId) => ipcRenderer.send(IPC.systemMapUnsubscribe, projectId, leaseId)
+      })
+      return () => {
+        ipcRenderer.removeListener(ch, handler)
+        release()
+      }
     }
   },
   logs: {

@@ -216,6 +216,7 @@ describe('the enabled Server Edition handler parses and dispatches the v1 surfac
     run: vi.fn(async () => ({ ok: true as const })),
     reportOutcome: vi.fn(async () => ({ ok: true as const, message: 'recorded' })),
     githubRead: vi.fn(async () => ({ ok: true as const, message: 'lane' })),
+    systemMap: vi.fn(async () => ({ ok: true as const, message: 'map' })),
     deliver: vi.fn(async () => ({ ok: true as const, message: 'queued' }))
   })
 
@@ -249,6 +250,20 @@ describe('the enabled Server Edition handler parses and dispatches the v1 surfac
     await expect(handler({ verb: 'issues', nodeId: 'src', args: {}, verified: false }))
       .resolves.toMatchObject({ ok: false, error: expect.stringContaining('identity-refused') })
     expect(a.githubRead).toHaveBeenCalledTimes(2)
+  })
+
+  it('routes map to the system map action with its args, after the shared parse and the identity gate', async () => {
+    const a = actions()
+    const handler = createServerEditionControlHandler(a)
+    await expect(handler({ verb: 'map', nodeId: 'src', args: {}, verified: true })).resolves.toEqual({ ok: true, message: 'map' })
+    expect(a.systemMap).toHaveBeenCalledWith('src', {})
+    await handler({ verb: 'map', nodeId: 'src', args: { path: 'src/x.go' }, verified: true })
+    expect(a.systemMap).toHaveBeenLastCalledWith('src', { path: 'src/x.go' })
+    await expect(handler({ verb: 'map', nodeId: 'src', args: { x: '1' }, verified: true }))
+      .resolves.toMatchObject({ ok: false, error: 'map: unknown flag --x' })
+    await expect(handler({ verb: 'map', nodeId: 'src', args: {}, verified: false }))
+      .resolves.toMatchObject({ ok: false })
+    expect(a.systemMap).toHaveBeenCalledTimes(2)
   })
 
   it('refuses the --after <id>:ok form and a malformed --after-success before any action', async () => {
@@ -549,6 +564,7 @@ describe('the enabled Server Edition handler, behind the request ledger', () => 
       run: vi.fn(),
       reportOutcome: vi.fn(),
       githubRead: vi.fn(),
+      systemMap: vi.fn(),
       deliver: vi.fn()
     })
     hookServer.setControlHandler(handler)

@@ -1133,6 +1133,9 @@ export interface AgentGraphApi {
   ): Promise<import('./ship-config').ShipAgentModelResult>
   /** Subscribe to config changes on the machine this project runs on; returns an unsubscribe. */
   onShipConfigChanged(projectId: string, cb: () => void): () => void
+  readSystemMap(projectId: string): Promise<import('./system-map').SystemMapResult>
+  /** Hold a lease on the map's polling and touch recording; `cb` runs on a real change. Returns the release. */
+  onSystemMapChanged(projectId: string, cb: () => void): () => void
 }
 
 export interface BoardLogApi {
