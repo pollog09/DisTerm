@@ -693,6 +693,10 @@ function hostedWorld() {
   return { svc, dir, connect }
 }
 
+// The relay handshakes here are real crypto over the real service: ~250 ms for the whole test on a
+// quiet machine, but a loaded CI runner timed out a reconnect step at vi.waitFor's 1 s default.
+const E2E_WAIT = { timeout: 5000 }
+
 describe('joinHostedTeam against the hosted service', () => {
   it('first join asks both humans; the reconnect confirms itself; a removal reaches onClosed and drops the pin', async () => {
     const w = hostedWorld()
@@ -701,7 +705,7 @@ describe('joinHostedTeam against the hosted service', () => {
     await w.svc.addOwner(pub(ownerKeys), 'Enes')
     await w.svc.share('P', true)
     expect(await w.svc.start()).toBe('started')
-    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1))
+    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1), E2E_WAIT)
 
     const ownerFrames: string[] = []
     let ownerOpen = false
@@ -709,7 +713,7 @@ describe('joinHostedTeam against the hosted service', () => {
       url: 'ws://127.0.0.1/r', token: 'T', hostKeyB64: w.svc.info()!.hostPublicKeyB64, ourKeys: ownerKeys, autoApprove: true,
       onSas: () => {}, onApproved: () => { ownerOpen = true }, onFrame: (j) => ownerFrames.push(j), onPtyData: () => {}, onClose: () => {}
     })
-    await vi.waitFor(() => expect(ownerOpen).toBe(true))
+    await vi.waitFor(() => expect(ownerOpen).toBe(true), E2E_WAIT)
 
     const joinerKeys = genKeyPair()
     const store = new BookmarkStore(path.join(w.dir, 'relay-bookmarks.json'))
@@ -718,29 +722,29 @@ describe('joinHostedTeam against the hosted service', () => {
     const joinCode = w.svc.joinCode()!
 
     // 1. First join: the SAS is shown, the human confirms, an owner approves.
-    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1))
+    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1), E2E_WAIT)
     const e1 = events()
     const s1 = await joinHostedTeam(joinCode, deps, e1.ev)
     expect(e1.log.some((l) => l.startsWith('sas:'))).toBe(true)
     s1.confirm()
-    await vi.waitFor(() => expect(w.svc.status().pending.some((p) => p.peerKeyB64 === pub(joinerKeys))).toBe(true))
+    await vi.waitFor(() => expect(w.svc.status().pending.some((p) => p.peerKeyB64 === pub(joinerKeys))).toBe(true), E2E_WAIT)
     const pendingId = w.svc.status().pending.find((p) => p.peerKeyB64 === pub(joinerKeys))!.pendingId
     owner.send(JSON.stringify({ t: 'req', id: 1, method: IPC.relayHostedApprove, args: [pendingId, 'viewer'] }))
-    await vi.waitFor(() => expect(e1.log).toContain('approved'))
-    await vi.waitFor(async () => expect((await store.list())[0]?.approvedAt).not.toBeNull())
+    await vi.waitFor(() => expect(e1.log).toContain('approved'), E2E_WAIT)
+    await vi.waitFor(async () => expect((await store.list())[0]?.approvedAt).not.toBeNull(), E2E_WAIT)
     s1.close()
 
     // 2. Reconnect: no SAS for this human, no device mint, and it opens on the host's pin alone.
-    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1))
+    await vi.waitFor(() => expect(w.svc.status().scheduler?.idle).toBe(1), E2E_WAIT)
     const e2 = events()
     await joinHostedTeam(joinCode, deps, e2.ev)
-    await vi.waitFor(() => expect(e2.log).toContain('approved'))
+    await vi.waitFor(() => expect(e2.log).toContain('approved'), E2E_WAIT)
     expect(e2.log.some((l) => l.startsWith('sas:'))).toBe(false)
     expect(a.count('device')).toBe(1)
 
     // 3. An owner removes this device: the reason reaches onClosed, and the pin is withdrawn.
     expect(await w.svc.remove(pub(joinerKeys), false)).toBe('removed')
-    await vi.waitFor(() => expect(e2.closed).toEqual(['removed']))
-    await vi.waitFor(async () => expect((await store.list())[0].approvedAt).toBeNull())
-  })
+    await vi.waitFor(() => expect(e2.closed).toEqual(['removed']), E2E_WAIT)
+    await vi.waitFor(async () => expect((await store.list())[0].approvedAt).toBeNull(), E2E_WAIT)
+  }, 30_000)
 })
