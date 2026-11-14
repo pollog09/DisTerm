@@ -13,7 +13,12 @@ the same script hand-packs `build/icon.icns` (size-checked frames — issue #369
 (local **unsigned** arm64 `.dmg` smoke test; `npm run dist:mac:x64` is the same for Intel, and `release:mac` already builds both), `npm run dist:win` (unsigned x64 NSIS installer +
 zip, `--publish never`). `release.yml` (mac + Linux) is `workflow_dispatch` only: run it by hand
 against a version tag. It attaches the packages to a GitHub Release that stays a prerelease, and
-publishes no feed. Windows has its own tag-triggered workflow (**Releasing** below).
+publishes no feed. Windows has its own tag-triggered workflow (**Releasing** below). A manual run uses the workflow file
+as it was at that tag, so a fix to `release.yml` reaches only tags cut after it. Its Linux job is pinned to
+`ubuntu-24.04`: there `npm ci` compiles smart-whisper's bundled whisper.cpp, which Ubuntu 26.04's GCC rejects
+(CI never compiles it, since it installs with `--ignore-scripts`). Its mac job needs a self-hosted Apple Silicon
+runner (`self-hosted, macOS, ARM64`). On a repository with none registered, that job only queues, and the
+`publish` job that waits on it never runs. The Linux packages still upload on their own.
 
 **`THIRD-PARTY-NOTICES.md` is how the installers ship licence notices.** Vite strips licence comments
 from the bundles, so no other file carries them, and some licences (the BSD-3-Clause ngraph packages

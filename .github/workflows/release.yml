@@ -174,7 +174,12 @@ jobs:
   # parallel with the self-hosted mac job — it must never queue behind notarization.
   # Publishes AppImage + deb + rpm to the SAME tag's GitHub Release.
   release-linux:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: `npm ci` here runs smart-whisper's install script, which compiles
+    # its bundled whisper.cpp, and Ubuntu 26.04's GCC rejects that source (implicit declarations of
+    # the glibc CPU-affinity calls CPU_ZERO / pthread_setaffinity_np are hard errors there). CI
+    # never sees it: it installs with --ignore-scripts. Move this forward only after a release run
+    # on the newer image builds smart-whisper.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
